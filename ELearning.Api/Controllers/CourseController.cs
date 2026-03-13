@@ -73,21 +73,32 @@ public class CourseController : ControllerBase
                 {
                     try
                     {
-                        var list = JsonSerializer.Deserialize<List<JsonSection>>(l.SectionsJson);
+                        var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var list = JsonSerializer.Deserialize<List<JsonSection>>(l.SectionsJson, jsonOpts);
                         sections = list?.Select(s => new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl)).ToList();
                     }
                     catch { }
                 }
                 if (sections == null)
                 {
-                    sections = new List<LessonSectionDto>
+                    var hasContent = !string.IsNullOrWhiteSpace(l.Overview) || !string.IsNullOrWhiteSpace(l.Content) || !string.IsNullOrWhiteSpace(l.ReviewContent) || !string.IsNullOrWhiteSpace(l.EssayQuestion);
+                    var hasMedia = l.VideoUrl1 != null || l.VideoUrl2 != null || l.VideoUrl3 != null || l.VideoUrl4 != null || l.VideoUrl5 != null;
+                    var hasQuiz = l.ShowQuiz1 || l.ShowQuiz2 || l.ShowQuiz3 || l.ShowQuiz4 || l.ShowQuiz5;
+                    if (!hasContent && !hasMedia && !hasQuiz)
                     {
-                        new(l.Section1Title ?? "1. Giới thiệu bài học", l.Overview, l.ShowVideo1, l.ShowQuiz1, l.VideoUrl1),
-                        new(l.Section2Title ?? "2. Bài giảng chi tiết", l.Content, l.ShowVideo2, l.ShowQuiz2, l.VideoUrl2),
-                        new(l.Section3Title ?? "3. Phần ôn tập", l.ReviewContent, l.ShowVideo3, l.ShowQuiz3, l.VideoUrl3),
-                        new(l.Section4Title ?? "4. Câu hỏi tự luận", l.EssayQuestion, l.ShowVideo4, l.ShowQuiz4, l.VideoUrl4),
-                        new(l.Section5Title ?? "5. Tổng kết bài học", null, l.ShowVideo5, l.ShowQuiz5, l.VideoUrl5)
-                    };
+                        sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, null) };
+                    }
+                    else
+                    {
+                        sections = new List<LessonSectionDto>
+                        {
+                            new(l.Section1Title ?? "1. Giới thiệu bài học", l.Overview, l.ShowVideo1, l.ShowQuiz1, l.VideoUrl1),
+                            new(l.Section2Title ?? "2. Bài giảng chi tiết", l.Content, l.ShowVideo2, l.ShowQuiz2, l.VideoUrl2),
+                            new(l.Section3Title ?? "3. Phần ôn tập", l.ReviewContent, l.ShowVideo3, l.ShowQuiz3, l.VideoUrl3),
+                            new(l.Section4Title ?? "4. Câu hỏi tự luận", l.EssayQuestion, l.ShowVideo4, l.ShowQuiz4, l.VideoUrl4),
+                            new(l.Section5Title ?? "5. Tổng kết bài học", null, l.ShowVideo5, l.ShowQuiz5, l.VideoUrl5)
+                        };
+                    }
                 }
                 return new LessonDto(
                     l.Id, l.Title, l.Overview, l.Content, null, l.ReviewContent, l.EssayQuestion, l.ScheduledDate, l.LessonType, l.DurationInMinutes, l.OrderIndex,
@@ -167,7 +178,8 @@ public class CourseController : ControllerBase
 
             if (!string.IsNullOrEmpty(form.SectionsJson))
             {
-                var sections = JsonSerializer.Deserialize<List<JsonSection>>(form.SectionsJson);
+                var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var sections = JsonSerializer.Deserialize<List<JsonSection>>(form.SectionsJson, jsonOpts);
                 if (sections != null && sections.Count > 0)
                 {
                     var videoFiles = new[] { form.VideoFile0, form.VideoFile1, form.VideoFile2, form.VideoFile3, form.VideoFile4, form.VideoFile5, form.VideoFile6, form.VideoFile7, form.VideoFile8, form.VideoFile9, form.VideoFile10, form.VideoFile11, form.VideoFile12, form.VideoFile13, form.VideoFile14, form.VideoFile15, form.VideoFile16, form.VideoFile17, form.VideoFile18, form.VideoFile19 };
@@ -294,7 +306,8 @@ public class CourseController : ControllerBase
             string? videoUrl = num switch { 1=>lesson.VideoUrl1, 2=>lesson.VideoUrl2, 3=>lesson.VideoUrl3, 4=>lesson.VideoUrl4, 5=>lesson.VideoUrl5, _=>null };
             if (num >= 6 && !string.IsNullOrEmpty(lesson.SectionsJson))
             {
-                var sections = JsonSerializer.Deserialize<List<JsonSection>>(lesson.SectionsJson);
+                var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var sections = JsonSerializer.Deserialize<List<JsonSection>>(lesson.SectionsJson, jsonOpts);
                 if (sections != null && num - 1 < sections.Count)
                 {
                     videoUrl = sections[num - 1].VideoUrl;

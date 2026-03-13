@@ -5,7 +5,7 @@ import {
   Settings, LogOut, Menu, X, Bell, UserCircle, Search
 } from 'lucide-react';
 
-const UserLayout = ({ children, hideSidebar = false }) => {
+const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,7 +71,8 @@ const UserLayout = ({ children, hideSidebar = false }) => {
 
       {/* Main Content */}
       <main className="flex-grow-1 d-flex flex-column">
-        {/* Header */}
+        {/* Header - ẩn khi hideHeader */}
+        {!hideHeader && (
         <header className="bg-white border-bottom px-4 py-2 d-flex align-items-center justify-content-between sticky-top">
           <div className="d-flex align-items-center gap-3">
             {!hideSidebar && (
@@ -109,9 +110,10 @@ const UserLayout = ({ children, hideSidebar = false }) => {
             </div>
           </div>
         </header>
+        )}
 
         {/* Page Content */}
-        <div className={`overflow-auto ${hideSidebar ? 'p-3 p-md-4' : 'p-4'}`}>
+        <div className={`overflow-auto ${hideHeader ? 'p-0' : hideSidebar ? 'p-3 p-md-4' : 'p-4'}`}>
           {children}
         </div>
       </main>

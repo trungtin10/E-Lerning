@@ -4,7 +4,7 @@ import api from '../../api/axios';
 import {
   CheckCircle2, Circle, PlayCircle, FileText,
   ArrowLeft, Loader2, ChevronRight, ChevronLeft,
-  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle, Bookmark
+  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle, Bookmark, Minus, Plus
 } from 'lucide-react';
 import VideoPlayer from '../../components/common/VideoPlayer';
 
@@ -616,27 +616,31 @@ const LearningView = () => {
   );
 
   return (
-    <div className="min-vh-100 bg-light d-flex flex-column overflow-hidden">
-      {/* Header */}
-      <header className="bg-dark text-white px-4 py-2 d-flex align-items-center justify-content-between sticky-top shadow-sm" style={{ height: '60px', zIndex: 1000 }}>
+    <div className="min-vh-100 d-flex flex-column overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
+      {/* Header - giống trang /course */}
+      <header 
+        className="bg-white px-4 px-md-5 py-2 d-flex align-items-center justify-content-between sticky-top" 
+        style={{ zIndex: 1000, borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+      >
         <div className="d-flex align-items-center gap-3">
-          <button className="btn btn-link text-white p-0" onClick={() => navigate('/dashboard')}><ArrowLeft size={20} /></button>
-          <div className="vr opacity-25 my-2" />
-          <h6 className="mb-0 fw-bold text-truncate d-none d-md-block" style={{ maxWidth: '400px' }}>{data.courseTitle}</h6>
-        </div>
-        <div className="d-flex align-items-center gap-4">
-          <div className="d-flex align-items-center gap-3">
-            <div className="text-end d-none d-sm-block">
-              <div className="fw-bold text-success small">{Math.round(data.progressPercentage)}%</div>
-            </div>
-            <div className="progress" style={{ width: '100px', height: '6px', backgroundColor: 'rgba(255,255,255,0.1)' }}>
-              <div className="progress-bar bg-success" style={{ width: `${data.progressPercentage}%`, transition: 'width 0.4s' }} />
-            </div>
-          </div>
-          <button className="btn btn-outline-light btn-sm rounded-circle p-2 border-0" onClick={() => setSidebarOpen(!isSidebarOpen)}>
-            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          <button 
+            className="btn btn-link p-2 d-inline-flex align-items-center justify-content-center rounded-circle text-decoration-none" 
+            style={{ color: '#64748b', marginLeft: '-0.5rem' }}
+            onClick={() => navigate(`/course/${courseId}`)}
+            title="Quay lại khóa học"
+          >
+            <ArrowLeft size={24} />
           </button>
+          <div className="vr my-2" style={{ opacity: 0.3, borderColor: '#cbd5e1' }} />
+          <h1 className="mb-0 fw-bold text-truncate" style={{ maxWidth: '400px', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>{data.courseTitle}</h1>
         </div>
+        <button 
+          className="btn btn-light rounded-circle p-2 border" 
+          style={{ borderColor: '#e2e8f0' }}
+          onClick={() => setSidebarOpen(!isSidebarOpen)}
+        >
+          {isSidebarOpen ? <X size={20} style={{ color: '#475569' }} /> : <Menu size={20} style={{ color: '#475569' }} />}
+        </button>
       </header>
 
       <div className="flex-grow-1 d-flex overflow-hidden">
@@ -727,6 +731,7 @@ const LearningView = () => {
 
       <style>{`
         .btn-white { background: white; }
+        .btn-link.rounded-circle:hover { background-color: rgba(0,0,0,0.05); color: #6366f1 !important; }
         .hover-bg-light:hover { background-color: #f8f9fa; }
         .hover-bg-white:hover { background-color: white; }
         .transition-all { transition: all 0.2s ease; }

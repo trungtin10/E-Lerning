@@ -46,51 +46,85 @@ const AdminLayout = ({ children }) => {
     { path: '/admin/settings', icon: Settings, label: 'Cài đặt công ty' },
   ];
 
+  const getInitials = (name) => {
+    if (!name) return 'AD';
+    return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  };
+
   return (
-    <div className="min-h-screen bg-light d-flex">
+    <div className="min-h-screen d-flex" style={{ backgroundColor: '#f8fafc' }}>
       <aside
-        className={`bg-dark text-white transition-all ${isSidebarOpen ? 'w-250' : 'w-0 overflow-hidden'}`}
-        style={{ width: isSidebarOpen ? '260px' : '0', minHeight: '100vh', transition: '0.3s' }}
+        className={`bg-white transition-all d-flex flex-column ${isSidebarOpen ? 'w-250' : 'w-0 overflow-hidden'}`}
+        style={{ 
+          width: isSidebarOpen ? '280px' : '0', 
+          minHeight: '100vh', 
+          transition: '0.3s',
+          boxShadow: '2px 0 12px rgba(0,0,0,0.06)'
+        }}
       >
-        <div className="p-4 d-flex align-items-center gap-3 border-bottom border-secondary">
-          <div className="bg-primary p-2 rounded-3">
-            <BookOpen size={24} className="text-white" />
+        <div className="p-4 d-flex align-items-center gap-3 border-bottom" style={{ borderColor: '#f1f5f9' }}>
+          <div className="p-2 rounded-2" style={{ backgroundColor: 'rgba(99,102,241,0.12)' }}>
+            <BookOpen size={22} style={{ color: '#6366f1' }} />
           </div>
-          <span className="fw-bold fs-5 tracking-tight">E-Learning CMS</span> {/* Đã đổi lại tên */}
+          <span className="fw-bold" style={{ fontSize: '1.1rem', color: '#1e293b' }}>E-Learning CMS</span>
         </div>
 
-        <div className="py-4 px-3">
-          <small className="text-secondary text-uppercase fw-bold mb-3 d-block px-2" style={{ fontSize: '0.7rem' }}>
+        <div className="p-3">
+          <div 
+            className="d-flex align-items-center gap-3 p-3 rounded-3 mb-4 cursor-pointer"
+            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
+            onClick={() => setUserMenuOpen(!isUserMenuOpen)}
+          >
+            <div 
+              className="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0 fw-bold"
+              style={{ width: 44, height: 44, backgroundColor: '#6366f1', color: 'white', fontSize: '0.9rem' }}
+            >
+              {getInitials(user.fullName)}
+            </div>
+            <div className="flex-grow-1 min-w-0">
+              <div className="fw-bold text-truncate" style={{ fontSize: '0.9rem', color: '#1e293b' }}>{user.fullName || 'Admin'}</div>
+              <div className="text-truncate small" style={{ fontSize: '0.75rem', color: '#64748b' }}>{user.email || user.account || 'admin@example.com'}</div>
+            </div>
+            <ChevronDown size={18} className="flex-shrink-0" style={{ color: '#94a3b8' }} />
+          </div>
+
+          <small className="text-uppercase fw-semibold mb-2 d-block px-2" style={{ fontSize: '0.65rem', color: '#94a3b8', letterSpacing: '0.05em' }}>
             {isSuperAdmin ? 'QUẢN TRỊ HỆ THỐNG' : 'QUẢN TRỊ CÔNG TY'}
           </small>
-          <nav className="nav flex-column gap-1">
+          <nav className="nav flex-column gap-0">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path || (item.path.includes('courses') && location.pathname.startsWith('/admin/courses'));
               return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`nav-link d-flex align-items-center gap-3 px-3 py-2 rounded-3 transition-all ${
-                  isActive ? 'bg-primary text-white shadow-sm' : 'text-secondary hover-bg-secondary'
-                }`}
-              >
-                <item.icon size={20} />
-                <span className="fw-medium">{item.label}</span>
-              </Link>
-            );})}
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`nav-link d-flex align-items-center gap-3 px-3 py-2 rounded-2 transition-all border-0 ${
+                    isActive 
+                      ? 'admin-nav-active' 
+                      : 'admin-nav-item'
+                  }`}
+                >
+                  <item.icon size={20} style={isActive ? { color: '#6366f1' } : { color: '#94a3b8' }} />
+                  <span className="fw-medium" style={{ fontSize: '0.9rem' }}>{item.label}</span>
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
-        <div className="mt-auto p-3 border-top border-secondary">
-          <button onClick={handleLogout} className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center gap-2 border-0">
+        <div className="mt-auto p-3 border-top" style={{ borderColor: '#f1f5f9' }}>
+          <button 
+            onClick={handleLogout} 
+            className="btn w-100 d-flex align-items-center justify-content-center gap-2 border-0 rounded-2 py-2 transition-all admin-logout-btn"
+          >
             <LogOut size={18} />
-            <span>Đăng xuất</span>
+            <span className="fw-medium small">Đăng xuất</span>
           </button>
         </div>
       </aside>
 
       <main className="flex-grow-1 d-flex flex-column">
-        <header className="bg-white border-bottom px-4 py-2 d-flex align-items-center justify-content-between sticky-top" style={{ zIndex: 900 }}>
+        <header className="bg-white px-4 py-2 d-flex align-items-center justify-content-between sticky-top" style={{ zIndex: 900, borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <button className="btn btn-light p-2 rounded-circle border-0" onClick={() => setSidebarOpen(!isSidebarOpen)}>
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -154,11 +188,17 @@ const AdminLayout = ({ children }) => {
       </main>
 
       <style>{`
-        .hover-bg-secondary:hover { background-color: rgba(255,255,255,0.05); color: white !important; }
-        .dropdown-item:hover { background-color: #f8f9fa; color: #0d6efd !important; }
+        .admin-nav-active { background-color: rgba(99,102,241,0.12) !important; color: #6366f1 !important; }
+        .admin-nav-active:hover { background-color: rgba(99,102,241,0.18) !important; color: #6366f1 !important; }
+        .admin-nav-item { color: #475569 !important; }
+        .admin-nav-item:hover { background-color: #f1f5f9 !important; color: #1e293b !important; }
+        .admin-logout-btn { background-color: transparent; color: #64748b; }
+        .admin-logout-btn:hover { background-color: #fee2e2 !important; color: #dc2626 !important; }
+        .dropdown-item:hover { background-color: #f8f9fa; color: #6366f1 !important; }
         .btn-white:hover.text-danger { background-color: #fee2e2; }
-        .w-250 { width: 260px; }
-        .transition-all { transition: all 0.3s ease; }
+        .w-250 { width: 280px; }
+        .transition-all { transition: all 0.2s ease; }
+        .cursor-pointer { cursor: pointer; }
       `}</style>
     </div>
   );

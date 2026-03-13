@@ -171,21 +171,32 @@ public class LearningController : ControllerBase
             {
                 try
                 {
-                    var list = System.Text.Json.JsonSerializer.Deserialize<List<JsonSection>>(p.Lesson.SectionsJson);
+                    var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<JsonSection>>(p.Lesson.SectionsJson, jsonOpts);
                     sections = list?.Select(s => new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl)).ToList();
                 }
                 catch { }
             }
             if (sections == null)
             {
-                sections = new List<LessonSectionDto>
+                var hasContent = !string.IsNullOrWhiteSpace(p.Lesson.Overview) || !string.IsNullOrWhiteSpace(p.Lesson.Content) || !string.IsNullOrWhiteSpace(p.Lesson.ReviewContent) || !string.IsNullOrWhiteSpace(p.Lesson.EssayQuestion);
+                var hasMedia = p.Lesson.VideoUrl1 != null || p.Lesson.VideoUrl2 != null || p.Lesson.VideoUrl3 != null || p.Lesson.VideoUrl4 != null || p.Lesson.VideoUrl5 != null;
+                var hasQuiz = p.Lesson.ShowQuiz1 || p.Lesson.ShowQuiz2 || p.Lesson.ShowQuiz3 || p.Lesson.ShowQuiz4 || p.Lesson.ShowQuiz5;
+                if (!hasContent && !hasMedia && !hasQuiz)
                 {
-                    new(p.Lesson.Section1Title ?? "1. Giới thiệu bài học", p.Lesson.Overview, p.Lesson.ShowVideo1, p.Lesson.ShowQuiz1, p.Lesson.VideoUrl1),
-                    new(p.Lesson.Section2Title ?? "2. Bài giảng chi tiết", p.Lesson.Content, p.Lesson.ShowVideo2, p.Lesson.ShowQuiz2, p.Lesson.VideoUrl2),
-                    new(p.Lesson.Section3Title ?? "3. Phần ôn tập", p.Lesson.ReviewContent, p.Lesson.ShowVideo3, p.Lesson.ShowQuiz3, p.Lesson.VideoUrl3),
-                    new(p.Lesson.Section4Title ?? "4. Câu hỏi tự luận", p.Lesson.EssayQuestion, p.Lesson.ShowVideo4, p.Lesson.ShowQuiz4, p.Lesson.VideoUrl4),
-                    new(p.Lesson.Section5Title ?? "5. Tổng kết bài học", null, p.Lesson.ShowVideo5, p.Lesson.ShowQuiz5, p.Lesson.VideoUrl5)
-                };
+                    sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, null) };
+                }
+                else
+                {
+                    sections = new List<LessonSectionDto>
+                    {
+                        new(p.Lesson.Section1Title ?? "1. Giới thiệu bài học", p.Lesson.Overview, p.Lesson.ShowVideo1, p.Lesson.ShowQuiz1, p.Lesson.VideoUrl1),
+                        new(p.Lesson.Section2Title ?? "2. Bài giảng chi tiết", p.Lesson.Content, p.Lesson.ShowVideo2, p.Lesson.ShowQuiz2, p.Lesson.VideoUrl2),
+                        new(p.Lesson.Section3Title ?? "3. Phần ôn tập", p.Lesson.ReviewContent, p.Lesson.ShowVideo3, p.Lesson.ShowQuiz3, p.Lesson.VideoUrl3),
+                        new(p.Lesson.Section4Title ?? "4. Câu hỏi tự luận", p.Lesson.EssayQuestion, p.Lesson.ShowVideo4, p.Lesson.ShowQuiz4, p.Lesson.VideoUrl4),
+                        new(p.Lesson.Section5Title ?? "5. Tổng kết bài học", null, p.Lesson.ShowVideo5, p.Lesson.ShowQuiz5, p.Lesson.VideoUrl5)
+                    };
+                }
             }
             return new UserLessonProgressDto(
             p.LessonId,

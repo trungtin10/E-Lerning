@@ -66,13 +66,14 @@ const CourseDetail = () => {
       const currentLesson = course.lessons.find(l => l.id === activeItem.data.id);
       if (currentLesson) {
         let sections;
-        if (currentLesson.sections && Array.isArray(currentLesson.sections) && currentLesson.sections.length > 0) {
-          sections = currentLesson.sections.map(s => ({
-            title: s.title || '',
-            content: s.content || '',
-            showVideo: Boolean(s.showVideo),
-            showQuiz: Boolean(s.showQuiz),
-            videoUrl: s.videoUrl || ''
+        const apiSections = currentLesson.sections || currentLesson.Sections;
+        if (apiSections && Array.isArray(apiSections) && apiSections.length > 0) {
+          sections = apiSections.map(s => ({
+            title: (s.title ?? s.Title) || '',
+            content: (s.content ?? s.Content) ?? '',
+            showVideo: Boolean(s.showVideo ?? s.ShowVideo),
+            showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
+            videoUrl: (s.videoUrl ?? s.VideoUrl) || ''
           }));
         } else {
           const hasContent = !!(currentLesson.overview?.trim() || currentLesson.content?.trim() || currentLesson.reviewContent?.trim() || currentLesson.essayQuestion?.trim());
@@ -114,7 +115,8 @@ const CourseDetail = () => {
       const response = await api.get(`/course/${id}`);
       setCourse(response.data);
       setLoading(false);
-    } catch (err) { setError("Lỗi tải dữ liệu."); setLoading(false); }
+      return response.data;
+    } catch (err) { setError("Lỗi tải dữ liệu."); setLoading(false); return null; }
   };
 
   const handleSaveIntro = async (saveType = 'all') => {
@@ -151,8 +153,8 @@ const CourseDetail = () => {
 
     try {
       await api.put(`/course/lessons/${activeItem.data.id}`, data);
-      await fetchCourseDetail();
-      const msg = saveType === 'content' ? 'Đã lưu nội dung!' : saveType === 'video' ? 'Đã lưu video!' : num === 'Tất cả' ? 'Đã lưu toàn bộ!' : `Đã lưu mục ${num}!`;
+      if (saveType !== 'content') await fetchCourseDetail();
+      const msg = saveType === 'content' ? 'Đã lưu nội dung!' : saveType === 'video' ? 'Đã lưu video!' : 'Đã lưu!';
       showToast(msg);
     } catch (err) { showToast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
   };
@@ -232,9 +234,6 @@ const CourseDetail = () => {
                 <input className="form-check-input cursor-pointer" type="checkbox" id={`showQuiz${index}`} checked={section.showQuiz} onChange={e => updateSection(index, 'showQuiz', e.target.checked)} />
                 <label className="form-check-label small fw-bold cursor-pointer" htmlFor={`showQuiz${index}`}>Trắc nghiệm</label>
             </div>
-            <button className="btn btn-primary btn-xs px-3 fw-bold rounded-pill d-flex align-items-center gap-1 shadow-sm ms-2" onClick={() => handleSaveLesson(num, 'all')} disabled={submitting}>
-                {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu mục {num}
-            </button>
         </div>
       </div>
 
@@ -244,7 +243,7 @@ const CourseDetail = () => {
             {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu nội dung
           </button>
         </div>
-        <TiptapEditor content={section.content} onChange={(val) => updateSection(index, 'content', val)} />
+        <TiptapEditor key={`lesson-${activeItem.data?.id}-${index}`} content={section.content} onChange={(val) => updateSection(index, 'content', val)} />
       </div>
 
       {section.showQuiz && (
@@ -306,15 +305,18 @@ const CourseDetail = () => {
   const handleQuickAddLesson = async () => {
     if (!newLessonTitle.trim()) { setIsAdding(false); return; }
     setSubmitting(true);
+    const title = newLessonTitle.trim();
     const data = new FormData();
     data.append('CourseId', parseInt(id));
-    data.append('Title', newLessonTitle.trim());
+    data.append('Title', title);
     data.append('OrderIndex', (course?.lessons?.length || 0) + 1);
     try {
       const response = await api.post('/course/lessons', data);
+      const newId = response.data?.id ?? response.data?.Id;
       setNewLessonTitle(''); setIsAdding(false);
-      await fetchCourseDetail();
-      setActiveItem({ type: 'ls', data: response.data });
+      const updated = await fetchCourseDetail();
+      const newLesson = updated?.lessons?.find(l => l.id === newId);
+      setActiveItem({ type: 'ls', data: newLesson || { id: newId, title: response.data?.title || title } });
     } catch (err) { showToast('Lỗi khi tạo bài học.', 'error'); } finally { setSubmitting(false); }
   };
 
@@ -467,9 +469,6 @@ const CourseDetail = () => {
               <div className="lesson-editor">
                 <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3 bg-white p-3 rounded-3 shadow-sm">
                   <h4 className="fw-bold mb-0 text-primary">{editData.title}</h4>
-                  <button className="btn btn-primary px-4 py-2 fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => handleSaveLesson("Tất cả", 'all')} disabled={submitting}>
-                    {submitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Lưu Toàn Bộ
-                  </button>
                 </div>
 
                 <div className="row mb-4 bg-white p-3 mx-0 rounded-3 shadow-sm border">
