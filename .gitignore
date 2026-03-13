@@ -1,0 +1,31 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.vs/
+.vs/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Uploads
+ELearning.Api/Uploads/
+
+# Env
+.env
+.env.local
+appsettings.Development.json
