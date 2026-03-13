@@ -61,6 +61,7 @@ const TiptapEditor = ({ content, onChange, placeholder }) => {
       attributes: {
         class: 'form-control rounded-bottom-4 p-4 min-vh-20 focus-none border-top-0',
         style: 'min-height: 250px; outline: none;',
+        spellcheck: 'false',
       },
     },
   });

@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import {
   CheckCircle2, Circle, PlayCircle, FileText,
-  ArrowLeft, Loader2, ChevronRight, ChevronLeft, ChevronDown,
-  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle
+  ArrowLeft, Loader2, ChevronRight, ChevronLeft,
+  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle, Bookmark
 } from 'lucide-react';
+import VideoPlayer from '../../components/common/VideoPlayer';
 
 const ProgressCircle = ({ percentage, size = 36 }) => {
   const r = (size - 6) / 2;
@@ -135,9 +136,11 @@ const LearningView = () => {
   const [expandedLessonId, setExpandedLessonId] = useState(null);
   const [showIntro, setShowIntro] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [bookmarked, setBookmarked] = useState(new Set());
   const [finishedVideos, setFinishedVideos] = useState(new Set());
   const [sectionProgress, setSectionProgress] = useState({});
   const [initialised, setInitialised] = useState(false);
+  const introFromUrlRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(`sp_${courseId}`);
@@ -162,13 +165,24 @@ const LearningView = () => {
 
   const getSections = useCallback((lesson) => {
     if (!lesson) return [];
+    if (lesson.sections && Array.isArray(lesson.sections) && lesson.sections.length > 0) {
+      return lesson.sections.map((s, i) => ({
+        num: i + 1,
+        title: s.title,
+        hasVideo: s.showVideo,
+        hasQuiz: s.showQuiz
+      }));
+    }
     const contents = [lesson.overview, lesson.content, lesson.reviewContent, lesson.essayQuestion, null];
     const videos = [lesson.showVideo1, lesson.showVideo2, lesson.showVideo3, lesson.showVideo4, lesson.showVideo5];
     const quizzes = [lesson.showQuiz1, lesson.showQuiz2, lesson.showQuiz3, lesson.showQuiz4, lesson.showQuiz5];
     const titles = [lesson.section1Title, lesson.section2Title, lesson.section3Title, lesson.section4Title, lesson.section5Title];
     const out = [];
+    const hasAny = contents.some((c, i) => c || videos[i] || quizzes[i]);
     for (let i = 0; i < 5; i++) {
-      if (contents[i] || videos[i] || quizzes[i]) {
+      if (i === 0 && hasAny) {
+        out.push({ num: 1, title: titles[0], hasVideo: videos[0], hasQuiz: quizzes[0] });
+      } else if (i > 0 && (contents[i] || videos[i] || quizzes[i])) {
         out.push({ num: i + 1, title: titles[i], hasVideo: videos[i], hasQuiz: quizzes[i] });
       }
     }
@@ -185,6 +199,7 @@ const LearningView = () => {
   }, [courseId]);
 
   useEffect(() => {
+    introFromUrlRef.current = false;
     fetchProgress().then(d => {
       if (!d) return;
       const introP = searchParams.get('intro');
@@ -192,6 +207,7 @@ const LearningView = () => {
       const sectionP = searchParams.get('section');
 
       if (introP === '1') {
+        introFromUrlRef.current = true;
         setShowIntro(true);
       } else if (lessonP) {
         const lesson = d.lessons.find(l => l.lessonId === parseInt(lessonP));
@@ -222,8 +238,15 @@ const LearningView = () => {
     }
   }, [activeLesson, activeSection, showIntro, initialised]);
 
-  const getContent = (lesson, num) => [lesson.overview, lesson.content, lesson.reviewContent, lesson.essayQuestion, null][num - 1];
+  const getContent = (lesson, num) => {
+    if (lesson.sections && lesson.sections[num - 1]) return lesson.sections[num - 1].content;
+    return [lesson.overview, lesson.content, lesson.reviewContent, lesson.essayQuestion, null][num - 1];
+  };
   const getVideo = (lesson, num) => {
+    if (lesson.sections && lesson.sections[num - 1]) {
+      const s = lesson.sections[num - 1];
+      return { url: s.videoUrl, ext: null, show: s.showVideo };
+    }
     const map = {
       1: { url: lesson.videoUrl1, ext: lesson.externalVideoUrl1, show: lesson.showVideo1 },
       2: { url: lesson.videoUrl2, ext: lesson.externalVideoUrl2, show: lesson.showVideo2 },
@@ -233,7 +256,10 @@ const LearningView = () => {
     };
     return map[num] || { url: null, ext: null, show: false };
   };
-  const getQuiz = (lesson, num) => [lesson.showQuiz1, lesson.showQuiz2, lesson.showQuiz3, lesson.showQuiz4, lesson.showQuiz5][num - 1];
+  const getQuiz = (lesson, num) => {
+    if (lesson.sections && lesson.sections[num - 1]) return lesson.sections[num - 1].showQuiz;
+    return [lesson.showQuiz1, lesson.showQuiz2, lesson.showQuiz3, lesson.showQuiz4, lesson.showQuiz5][num - 1];
+  };
 
   const handleSelectLesson = (lesson) => {
     if (expandedLessonId === lesson.lessonId) {
@@ -243,7 +269,24 @@ const LearningView = () => {
     setExpandedLessonId(lesson.lessonId);
   };
 
+  const toggleBookmark = () => {
+    const key = showIntro ? 'intro' : (activeLesson ? `${activeLesson.lessonId}_${activeSection}` : null);
+    if (!key) return;
+    setBookmarked(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const isBookmarked = () => {
+    const key = showIntro ? 'intro' : (activeLesson ? `${activeLesson.lessonId}_${activeSection}` : null);
+    return key ? bookmarked.has(key) : false;
+  };
+
   const handleSelectSection = (lesson, sectionNum) => {
+    introFromUrlRef.current = false;
     setActiveLesson(lesson);
     setActiveSection(sectionNum);
     setShowIntro(false);
@@ -253,9 +296,10 @@ const LearningView = () => {
       try {
         const sp = JSON.parse(savedVids);
         const vids = new Set();
-        for (let i = 1; i <= 5; i++) {
-          if (sp[`${lesson.lessonId}_video_${i}`]) vids.add(i);
-        }
+        const secs = getSections(lesson);
+        secs.forEach(s => {
+          if (sp[`${lesson.lessonId}_video_${s.num}`]) vids.add(s.num);
+        });
         setFinishedVideos(vids);
       } catch { /* ignore */ }
     }
@@ -313,62 +357,119 @@ const LearningView = () => {
     }
   };
 
+  const introVideoWatched = sectionProgress['0_video_intro'];
+
   const renderIntro = () => (
-    <div className="mx-auto py-5" style={{ maxWidth: '800px' }}>
-      <div className="text-center mb-5">
-        <div className="badge bg-primary-subtle text-primary px-4 py-2 rounded-pill mb-4 fs-6 fw-bold">Giới thiệu khóa học</div>
-        <h1 className="display-5 fw-bold text-dark mb-3">{data.courseTitle}</h1>
-        <p className="text-muted fs-5">Chào mừng bạn đến với khóa học! Hãy xem tổng quan nội dung bên dưới.</p>
-      </div>
-
-      <div className="card border-0 shadow-sm rounded-4 p-5 mb-5">
-        <h5 className="fw-bold mb-4 d-flex align-items-center gap-2"><BookOpen size={22} className="text-primary" /> Tổng quan khóa học</h5>
-        <div className="row g-3 mb-4">
-          <div className="col-6 col-md-3">
-            <div className="text-center p-3 bg-light rounded-3">
-              <div className="fw-bold fs-4 text-primary">{data.lessons.length}</div>
-              <div className="text-muted small">Bài học</div>
-            </div>
-          </div>
-          <div className="col-6 col-md-3">
-            <div className="text-center p-3 bg-light rounded-3">
-              <div className="fw-bold fs-4 text-success">{data.lessons.filter(l => l.isCompleted).length}</div>
-              <div className="text-muted small">Đã hoàn thành</div>
-            </div>
-          </div>
-          <div className="col-6 col-md-3">
-            <div className="text-center p-3 bg-light rounded-3">
-              <div className="fw-bold fs-4 text-info">{Math.round(data.progressPercentage)}%</div>
-              <div className="text-muted small">Tiến độ</div>
-            </div>
-          </div>
-        </div>
-
-        <h6 className="fw-bold mb-3">Danh sách bài học:</h6>
-        <div className="d-flex flex-column gap-2">
-          {data.lessons.map((l, i) => (
-            <div key={l.lessonId} className="d-flex align-items-center gap-3 p-2 rounded-3 bg-light">
-              {l.isCompleted ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-muted opacity-40" />}
-              <span className="small fw-medium">{i + 1}. {l.title}</span>
-            </div>
-          ))}
+    <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+      <div className="d-flex align-items-start justify-content-between gap-4 p-4 pb-3 border-bottom" style={{ borderColor: '#e9ecef' }}>
+        <div className="flex-grow-1">
+          <h2 className="fw-bold mb-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>Giới thiệu học phần</h2>
+          <button type="button" className="btn btn-link p-0 text-body-secondary d-inline-flex align-items-center gap-2 small" onClick={toggleBookmark}>
+            <Bookmark size={16} fill={isBookmarked() ? 'currentColor' : 'none'} />
+            Đánh dấu trang này
+          </button>
         </div>
       </div>
 
-      <div className="text-center">
-        <button className="btn btn-primary btn-lg px-5 py-3 rounded-3 fw-bold shadow-lg d-inline-flex align-items-center gap-2"
-          onClick={() => {
-            setShowIntro(false);
-            const first = data.lessons.find(l => !l.isCompleted) || data.lessons[0];
-            if (first) {
-              setActiveLesson(first);
-              setExpandedLessonId(first.lessonId);
-              const secs = getSections(first);
-              setActiveSection(secs.length > 0 ? secs[0].num : 1);
-            }
-          }}>
-          Bắt đầu học <ChevronRight size={22} />
-        </button>
+      <div className="p-4 p-md-5">
+        <p className="text-secondary mb-4" style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+          Chào mừng bạn đến với khóa học! Hãy xem tổng quan nội dung bên dưới.
+        </p>
+
+        {data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl) && (
+          <div className="mb-4">
+            <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
+              <Video size={18} className="text-primary" />
+              Video giới thiệu khóa học
+              {introVideoWatched && <span className="badge bg-success rounded-pill ms-2 small">Đã xem ✓</span>}
+            </h6>
+            <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
+              {data.introVideoUrl ? (
+                <VideoPlayer
+                  key={data.introVideoUrl}
+                  src={data.introVideoUrl}
+                  onEnded={() => {
+                    setSectionProgress(prev => {
+                      if (prev['0_video_intro']) return prev;
+                      const next = { ...prev, '0_video_intro': true };
+                      saveSP(next);
+                      return next;
+                    });
+                  }}
+                />
+              ) : (
+                <div className="position-relative w-100 h-100">
+                  <iframe className="w-100 h-100 border-0" src={data.introExternalVideoUrl} title="Intro" allowFullScreen />
+                  {!introVideoWatched && (
+                    <button className="btn btn-primary btn-sm position-absolute bottom-0 end-0 m-3 shadow rounded-pill px-3 py-2 fw-bold"
+                      onClick={() => {
+                        setSectionProgress(prev => {
+                          if (prev['0_video_intro']) return prev;
+                          const next = { ...prev, '0_video_intro': true };
+                          saveSP(next);
+                          return next;
+                        });
+                      }}>
+                      Đã xem xong video <ChevronRight size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-4">
+          <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
+            <BookOpen size={18} className="text-primary" />
+            Tổng quan khóa học
+          </h6>
+          <div className="row g-3 mb-4">
+            <div className="col-4">
+              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                <div className="fw-bold fs-5 text-primary">{data.lessons.length}</div>
+                <div className="text-muted small">Bài học</div>
+              </div>
+            </div>
+            <div className="col-4">
+              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                <div className="fw-bold fs-5 text-success">{data.lessons.filter(l => l.isCompleted).length}</div>
+                <div className="text-muted small">Đã hoàn thành</div>
+              </div>
+            </div>
+            <div className="col-4">
+              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                <div className="fw-bold fs-5 text-info">{Math.round(data.progressPercentage)}%</div>
+                <div className="text-muted small">Tiến độ</div>
+              </div>
+            </div>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {data.lessons.map((l, i) => (
+              <div key={l.lessonId} className="d-flex align-items-center gap-3 p-2 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                {l.isCompleted ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-secondary" style={{ color: '#adb5bd' }} />}
+                <span className="small fw-medium">{i + 1}. {l.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="text-center pt-3">
+          <button className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-inline-flex align-items-center gap-2"
+            onClick={() => {
+              introFromUrlRef.current = false;
+              setShowIntro(false);
+              const first = data.lessons.find(l => !l.isCompleted) || data.lessons[0];
+              if (first) {
+                setActiveLesson(first);
+                setExpandedLessonId(first.lessonId);
+                const secs = getSections(first);
+                setActiveSection(secs.length > 0 ? secs[0].num : 1);
+              }
+            }}>
+            Bắt đầu học <ChevronRight size={20} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -376,95 +477,123 @@ const LearningView = () => {
   const renderSectionContent = () => {
     if (!activeLesson) return (
       <div className="h-100 d-flex align-items-center justify-content-center text-muted">
-        Chọn bài học từ danh sách bên phải
+        Chọn bài học từ mục lục bên trái
       </div>
     );
 
     const content = getContent(activeLesson, activeSection);
     const video = getVideo(activeLesson, activeSection);
     const showQuiz = getQuiz(activeLesson, activeSection);
-    const titles = [activeLesson.section1Title, activeLesson.section2Title, activeLesson.section3Title, activeLesson.section4Title, activeLesson.section5Title];
-    const sectionTitle = titles[activeSection - 1];
+    const sectionTitle = activeLesson.sections?.[activeSection - 1]?.title ?? [activeLesson.section1Title, activeLesson.section2Title, activeLesson.section3Title, activeLesson.section4Title, activeLesson.section5Title][activeSection - 1] ?? 'Giới thiệu bài học';
     const lessonIdx = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId);
     const videoWatched = finishedVideos.has(activeSection);
 
     return (
-      <div className="mx-auto" style={{ maxWidth: '1000px' }}>
-        <div className="mb-4">
-          <div className="badge bg-primary px-3 py-2 rounded-pill mb-3 text-uppercase fw-bold" style={{ fontSize: '0.7rem' }}>
-            BÀI {lessonIdx + 1} &mdash; MỤC {activeSection}
+      <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+        {/* Header + Nav arrows + Bookmark */}
+        <div className="d-flex align-items-start justify-content-between gap-4 p-4 pb-3 border-bottom" style={{ borderColor: '#e9ecef' }}>
+          <div className="flex-grow-1">
+            <h2 className="fw-bold mb-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>{sectionTitle}</h2>
+            <button type="button" className="btn btn-link p-0 text-body-secondary d-inline-flex align-items-center gap-2 small" onClick={toggleBookmark}>
+              <Bookmark size={16} fill={isBookmarked() ? 'currentColor' : 'none'} />
+              Đánh dấu trang này
+            </button>
           </div>
-          <h2 className="fw-bold text-dark mb-1">{activeLesson.title}</h2>
-          <h5 className="text-muted">{sectionTitle}</h5>
+          <div className="d-flex align-items-center gap-1 flex-shrink-0">
+            <button type="button" className="btn btn-outline-secondary btn-sm rounded-circle p-2" onClick={goPrev} title="Bài trước">
+              <ChevronLeft size={20} />
+            </button>
+            <button type="button" className="btn btn-outline-secondary btn-sm rounded-circle p-2" onClick={goNext} title="Bài tiếp">
+              <ChevronRight size={20} />
+            </button>
+          </div>
         </div>
 
-        {/* Content + Video card */}
-        <div className="bg-white rounded-4 border shadow-sm overflow-hidden mb-4">
-          <div className="p-4 p-md-5">
-            {content && (
-              <div className="lesson-content fs-5 text-secondary" dangerouslySetInnerHTML={{ __html: content }} />
-            )}
+        <div className="p-4 p-md-5">
+          {/* Mục tiêu bài học - overview (phần giới thiệu) khi có */}
+          {activeLesson.overview && activeSection === 1 && (
+            <div className="mb-4">
+              <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
+                <FileText size={18} className="text-primary" />
+                Mục tiêu bài học
+              </h6>
+              <div className="lesson-content" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: activeLesson.overview }} />
+            </div>
+          )}
 
-            {video.show && (video.url || video.ext) && (
-              <div className={content ? 'mt-4 pt-4 border-top' : ''}>
-                <div className="d-flex align-items-center gap-2 mb-3">
-                  <Video size={20} className="text-primary" />
-                  <h6 className="fw-bold mb-0">Video bài giảng</h6>
-                  {videoWatched && <span className="badge bg-success rounded-pill ms-2 small">Đã xem ✓</span>}
+          {/* Nội dung bài học */}
+          {content ? (
+            <div className="mb-4">
+              <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
+                <BookOpen size={18} className="text-primary" />
+                Nội dung bài học
+              </h6>
+              <div className="lesson-content" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: content }} />
+            </div>
+          ) : !video.show && (
+            <p className="text-secondary mb-4" style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+              Để học tốt bài học này, người học cần xem video bài giảng, đọc tài liệu kèm theo, thực hành và tham gia thảo luận.
+            </p>
+          )}
+
+          {/* Video */}
+          {video.show && (video.url || video.ext) && (
+            <div className="mb-4">
+              <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
+                <Video size={18} className="text-primary" />
+                Video giới thiệu bài học
+                {video.url && <span className="text-muted small fw-normal">[Video]</span>}
+              </h6>
+              {showQuiz && !videoWatched && (
+                <div className="alert alert-primary d-flex align-items-center gap-2 rounded-3 border-0 mb-3" style={{ backgroundColor: 'rgba(13,110,253,0.08)' }}>
+                  <Info size={18} />
+                  <span className="small fw-bold">Xem hết video để mở bài tập trắc nghiệm.</span>
                 </div>
-
-                {showQuiz && !videoWatched && (
-                  <div className="alert alert-primary d-flex align-items-center gap-2 rounded-3 border-0 bg-primary bg-opacity-10 text-primary mb-3">
-                    <Info size={18} />
-                    <span className="small fw-bold">Xem hết video để mở bài tập trắc nghiệm.</span>
+              )}
+              <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
+                {video.url ? (
+                  <VideoPlayer
+                    key={video.url}
+                    src={video.url}
+                    onEnded={() => {
+                      setFinishedVideos(p => new Set([...p, activeSection]));
+                      markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
+                    }}
+                  />
+                ) : (
+                  <div className="position-relative w-100 h-100">
+                    <iframe className="w-100 h-100 border-0" src={video.ext} title="Video" allowFullScreen />
+                    {!videoWatched && (
+                      <button className="btn btn-primary btn-sm position-absolute bottom-0 end-0 m-3 shadow rounded-pill px-3 py-2 fw-bold"
+                        onClick={() => {
+                          setFinishedVideos(p => new Set([...p, activeSection]));
+                          markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
+                        }}>
+                        Đã xem xong video <ChevronRight size={14} />
+                      </button>
+                    )}
                   </div>
                 )}
-
-                <div className="ratio ratio-16x9 rounded-4 overflow-hidden bg-black shadow-lg">
-                  {video.url ? (
-                    <video key={video.url} controls controlsList="nodownload"
-                      onEnded={() => {
-                        setFinishedVideos(p => new Set([...p, activeSection]));
-                        markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
-                      }}>
-                      <source src={video.url} type="video/mp4" />
-                    </video>
-                  ) : (
-                    <div className="position-relative w-100 h-100">
-                      <iframe className="w-100 h-100 border-0" src={video.ext} title="Video" allowFullScreen />
-                      {!videoWatched && (
-                        <button className="btn btn-primary btn-sm position-absolute bottom-0 end-0 m-3 shadow-lg rounded-pill px-3 py-2 fw-bold"
-                          onClick={() => {
-                            setFinishedVideos(p => new Set([...p, activeSection]));
-                            markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
-                          }}>
-                          Đã xem xong video <ChevronRight size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
               </div>
-            )}
-          </div>
-        </div>
+              {videoWatched && <span className="badge bg-success rounded-pill mt-2 small">Đã xem ✓</span>}
+            </div>
+          )}
 
-        {/* Quiz card - separate from content */}
-        {showQuiz && (!video.show || videoWatched) && (
-          <div className="bg-white rounded-4 border shadow-sm overflow-hidden mb-4">
-            <div className="p-4 p-md-5">
+          {/* Quiz */}
+          {showQuiz && (!video.show || videoWatched) && (
+            <div className="mb-4">
               <QuizSection courseId={courseId} lessonId={activeLesson.lessonId} section={activeSection}
                 onComplete={(passed) => { if (passed) markSectionDone(activeLesson.lessonId, `quiz_${activeSection}`); }} />
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Nav buttons */}
-        <div className="d-flex justify-content-between align-items-center pt-4 pb-5">
-          <button className="btn btn-white border px-4 py-2 rounded-3 fw-bold d-flex align-items-center gap-2 shadow-sm" onClick={goPrev}>
+        {/* Nav buttons dưới */}
+        <div className="d-flex justify-content-between align-items-center p-4 border-top" style={{ borderColor: '#e9ecef' }}>
+          <button className="btn btn-outline-secondary px-4 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goPrev}>
             <ChevronLeft size={20} /> Trước
           </button>
-          <button className="btn btn-primary px-5 py-2 rounded-3 fw-bold shadow-lg d-flex align-items-center gap-2" onClick={goNext}>
+          <button className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goNext}>
             Tiếp theo <ChevronRight size={20} />
           </button>
         </div>
@@ -511,101 +640,74 @@ const LearningView = () => {
       </header>
 
       <div className="flex-grow-1 d-flex overflow-hidden">
-        {/* Main content */}
-        <main className="flex-grow-1 overflow-auto bg-light p-3 p-md-5">
-          {showIntro ? renderIntro() : renderSectionContent()}
-        </main>
-
-        {/* Sidebar */}
-        <aside className={`bg-white border-start shadow-sm flex-shrink-0 ${isSidebarOpen ? 'd-flex flex-column' : 'd-none'}`} style={{ width: '340px', zIndex: 10 }}>
-          <div className="p-3 border-bottom bg-white sticky-top">
-            <h6 className="fw-bold mb-0 text-uppercase small text-secondary" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>Nội dung khóa học</h6>
+        {/* Sidebar trái - Mục lục */}
+        <aside className={`bg-white border-end flex-shrink-0 d-flex flex-column overflow-hidden ${!isSidebarOpen ? 'toc-collapsed' : ''}`} style={{ width: isSidebarOpen ? '320px' : 0, minWidth: isSidebarOpen ? '320px' : 0, borderColor: '#dee2e6', zIndex: 10, transition: 'width 0.25s ease, min-width 0.25s ease' }}>
+          <div className="d-flex align-items-center justify-content-between p-3 border-bottom flex-shrink-0" style={{ borderColor: '#dee2e6' }}>
+            <h6 className="fw-bold mb-0" style={{ color: '#1a1a2e', fontSize: '1rem' }}>Mục lục</h6>
+            <button type="button" className="btn btn-link p-1 text-body-secondary" onClick={() => setSidebarOpen(!isSidebarOpen)} title={isSidebarOpen ? 'Thu gọn' : 'Mở rộng'}>
+              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
-          <div className="overflow-auto flex-grow-1">
-            {/* Intro item */}
+          <div className="overflow-auto flex-grow-1 py-2">
+            {/* Giới thiệu học phần */}
             <div
-              className={`p-3 border-bottom d-flex align-items-center gap-3 ${showIntro ? 'bg-primary bg-opacity-10 border-start border-primary border-4' : ''}`}
-              style={{ cursor: 'pointer' }}
+              className={`toc-item d-flex align-items-center gap-3 px-3 py-2 mx-2 my-1 rounded ${showIntro ? 'toc-active' : ''}`}
+              style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
               onClick={() => { setShowIntro(true); }}
             >
-              <Info size={18} className={showIntro ? 'text-primary' : 'text-muted'} />
-              <span className={`small fw-bold ${showIntro ? 'text-primary' : 'text-dark'}`}>Giới thiệu khóa học</span>
+              <div className="flex-shrink-0">
+                {introVideoWatched ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} className="text-secondary" style={{ color: '#adb5bd' }} />}
+              </div>
+              <span className={`flex-grow-1 small ${showIntro ? 'fw-semibold text-primary' : ''}`} style={{ color: showIntro ? '' : '#334155' }}>Giới thiệu học phần</span>
+              <ChevronRight size={18} className="text-secondary flex-shrink-0" />
             </div>
 
-            {/* Lessons */}
+            {/* Các bài học */}
             {data.lessons.map((lesson, idx) => {
               const sections = getSections(lesson);
               const isExpanded = expandedLessonId === lesson.lessonId;
               const isActiveLesson = activeLesson?.lessonId === lesson.lessonId && !showIntro;
-              const completedSections = sections.filter(s => sectionProgress[`${lesson.lessonId}_${s.num}`]).length;
 
               return (
                 <div key={lesson.lessonId}>
-                  {/* Lesson header */}
                   <div
-                    className={`p-3 border-bottom d-flex align-items-center gap-2 ${isActiveLesson && !isExpanded ? 'bg-primary bg-opacity-5' : ''}`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => handleSelectLesson(lesson)}
+                    className={`toc-item d-flex align-items-center gap-3 px-3 py-2 mx-2 my-1 rounded ${isActiveLesson ? 'toc-active' : ''}`}
+                    style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
+                    onClick={() => {
+                      if (expandedLessonId === lesson.lessonId) {
+                        setExpandedLessonId(null);
+                      } else {
+                        setExpandedLessonId(lesson.lessonId);
+                        handleSelectSection(lesson, sections[0]?.num || 1);
+                      }
+                    }}
                   >
                     <div className="flex-shrink-0">
-                      {lesson.isCompleted
-                        ? <CheckCircle2 size={20} className="text-success" />
-                        : <Circle size={20} className="text-muted opacity-30" />}
+                      {lesson.isCompleted ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} className="text-secondary" style={{ color: '#adb5bd' }} />}
                     </div>
-                    <div className="flex-grow-1 min-width-0">
-                      <div className={`small fw-bold ${isActiveLesson ? 'text-primary' : 'text-dark'}`} style={{ lineHeight: 1.3 }}>
-                        {idx + 1}. {lesson.title}
-                      </div>
-                      <div className="text-muted" style={{ fontSize: '0.65rem' }}>
-                        {lesson.isCompleted ? 'Đã hoàn thành' : sections.length > 0 ? `${completedSections}/${sections.length} mục` : 'Chưa học'}
-                      </div>
-                    </div>
-                    <ChevronDown size={16} className={`text-muted transition-all ${isExpanded ? '' : 'rotate-minus-90'}`} />
+                    <span className={`flex-grow-1 small ${isActiveLesson ? 'fw-semibold text-primary' : ''}`} style={{ color: isActiveLesson ? '' : '#334155' }}>Bài {idx + 1}: {lesson.title}</span>
+                    <ChevronRight size={18} className="text-secondary flex-shrink-0" />
                   </div>
 
-                  {/* Sections dropdown */}
+                  {/* Các phần con khi mở rộng */}
                   {isExpanded && (
-                    <div className="bg-light bg-opacity-50">
+                    <div className="ms-3 me-2 mb-1">
                       {sections.map(sec => {
                         const isActiveSec = isActiveLesson && activeSection === sec.num;
                         const isDone = sectionProgress[`${lesson.lessonId}_${sec.num}`];
-                        const videoSeen = sectionProgress[`${lesson.lessonId}_video_${sec.num}`];
 
                         return (
-                          <div key={sec.num}>
-                            {/* Section content item */}
-                            <div
-                              className={`ps-5 pe-3 py-2 border-bottom d-flex align-items-center gap-2 ${isActiveSec ? 'bg-primary bg-opacity-10 border-start border-primary border-3' : ''}`}
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => handleSelectSection(lesson, sec.num)}
-                            >
-                              <div className="flex-shrink-0">
-                                {isDone
-                                  ? <CheckCircle2 size={16} className="text-success" />
-                                  : <Circle size={16} className="text-muted opacity-30" />}
-                              </div>
-                              <div className="flex-grow-1">
-                                <span className={`small ${isActiveSec ? 'fw-bold text-primary' : 'text-dark'}`}>{sec.title}</span>
-                              </div>
-                              {sectionIcons[sec.num - 1]}
+                          <div
+                            key={sec.num}
+                            className={`toc-item d-flex align-items-center gap-2 px-3 py-2 my-1 rounded ${isActiveSec ? 'toc-active' : ''}`}
+                            style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
+                            onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num); }}
+                          >
+                            <div className="flex-shrink-0">
+                              {isDone ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-secondary" style={{ color: '#adb5bd' }} />}
                             </div>
-
-                            {/* Video sub-item */}
-                            {sec.hasVideo && (
-                              <div
-                                className="ps-5 pe-3 py-2 border-bottom d-flex align-items-center gap-2"
-                                style={{ paddingLeft: '3.5rem', cursor: 'pointer', backgroundColor: 'rgba(0,0,0,0.01)' }}
-                                onClick={() => handleSelectSection(lesson, sec.num)}
-                              >
-                                <div className="flex-shrink-0">
-                                  {videoSeen
-                                    ? <CheckCircle2 size={14} className="text-success" />
-                                    : <PlayCircle size={14} className="text-muted opacity-40" />}
-                                </div>
-                                <span className="small text-muted">Video bài giảng</span>
-                                {videoSeen && <span className="badge bg-success-subtle text-success rounded-pill" style={{ fontSize: '0.6rem' }}>Đã xem</span>}
-                              </div>
-                            )}
+                            <span className={`flex-grow-1 small ${isActiveSec ? 'fw-semibold text-primary' : ''}`} style={{ color: isActiveSec ? '' : '#334155', fontSize: '0.85rem' }}>{sec.title}</span>
+                            <ChevronRight size={16} className="text-secondary flex-shrink-0" />
                           </div>
                         );
                       })}
@@ -616,6 +718,11 @@ const LearningView = () => {
             })}
           </div>
         </aside>
+
+        {/* Nội dung chính bên phải */}
+        <main className="flex-grow-1 overflow-auto p-4 p-md-5" style={{ backgroundColor: '#fafafa' }}>
+          {showIntro ? renderIntro() : renderSectionContent()}
+        </main>
       </div>
 
       <style>{`
@@ -624,13 +731,17 @@ const LearningView = () => {
         .hover-bg-white:hover { background-color: white; }
         .transition-all { transition: all 0.2s ease; }
         .lesson-content img { max-width: 100%; height: auto; border-radius: 12px; margin: 20px 0; }
-        .lesson-content p { line-height: 1.8; }
+        .lesson-content ul, .lesson-content ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .lesson-content p { line-height: 1.8; margin-bottom: 0.75rem; }
         .quiz-question:hover { border-color: #0d6efd !important; }
         .rotate-minus-90 { transform: rotate(-90deg); }
         .min-width-0 { min-width: 0; }
         .cursor-pointer { cursor: pointer; }
         .scale-in { animation: scaleIn 0.3s ease-out; }
         @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .toc-item:hover { background-color: #f8fafc !important; }
+        .toc-active { background-color: #e8f4fd !important; border-color: #b6d4fe !important; }
+        .toc-collapsed { overflow: hidden; }
       `}</style>
     </div>
   );

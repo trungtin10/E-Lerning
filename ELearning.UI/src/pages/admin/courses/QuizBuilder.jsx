@@ -28,9 +28,11 @@ const QuizBuilder = () => {
     ]
   });
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const section = searchParams.get('section') || '0';
   const lessonId = searchParams.get('lessonId');
+  const [passingScore, setPassingScore] = useState(80);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(15);
 
   useEffect(() => {
     fetchQuiz();
@@ -41,6 +43,10 @@ const QuizBuilder = () => {
       const url = `/quiz/${id}?section=${section}${lessonId ? `&lessonId=${lessonId}` : ''}`;
       const response = await api.get(url);
       setQuiz(response.data);
+      if (response.data) {
+        setPassingScore(response.data.passingScore ?? 80);
+        setTimeLimitMinutes(response.data.timeLimitMinutes ?? 15);
+      }
     } catch (err) {
       console.error("Lỗi khi tải bài kiểm tra:", err);
       const errorMsg = err.response?.data;
@@ -96,23 +102,48 @@ const QuizBuilder = () => {
     } catch (err) { alert('Lỗi khi xóa.'); }
   };
 
+  const handleSaveQuiz = async () => {
+    if (!quiz?.id) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/quiz/update/${quiz.id}`, { passingScore: passingScore, timeLimitMinutes: timeLimitMinutes || null });
+      alert('Đã lưu bài trắc nghiệm!');
+      fetchQuiz();
+    } catch (err) { alert('Lỗi khi lưu.'); } finally { setSubmitting(false); }
+  };
+
   if (loading) return <AdminLayout><div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={48} /></div></AdminLayout>;
 
   return (
     <AdminLayout>
-      <div className="mb-4 d-flex align-items-center justify-content-between">
+      <div className="mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div className="d-flex align-items-center gap-3">
           <button className="btn btn-light rounded-circle p-2 shadow-sm" onClick={() => navigate(`/admin/courses/${id}`)}>
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h2 className="fw-bold tracking-tight mb-0">Thiết lập Bài kiểm tra</h2>
+            <h2 className="fw-bold tracking-tight mb-0">Bài trắc nghiệm {section !== '0' && lessonId ? `- Mục ${section}` : ''}</h2>
             <p className="text-muted small mb-0">Khóa học: <span className="fw-bold text-primary">{quiz?.title}</span></p>
           </div>
         </div>
-        <button className="btn btn-primary fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => { setEditingQuestion(null); setShowForm(true); }}>
-          <Plus size={18} /> Thêm câu hỏi
-        </button>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <div className="d-flex align-items-center gap-2 bg-light rounded-3 px-3 py-2">
+            <label className="small fw-bold text-muted mb-0">Điểm đạt:</label>
+            <input type="number" min="0" max="100" className="form-control form-control-sm" style={{ width: '60px' }} value={passingScore} onChange={e => setPassingScore(parseInt(e.target.value, 10) || 80)} />
+            <span className="small">%</span>
+          </div>
+          <div className="d-flex align-items-center gap-2 bg-light rounded-3 px-3 py-2">
+            <label className="small fw-bold text-muted mb-0">Thời gian:</label>
+            <input type="number" min="1" max="120" className="form-control form-control-sm" style={{ width: '60px' }} value={timeLimitMinutes ?? ''} onChange={e => setTimeLimitMinutes(e.target.value ? parseInt(e.target.value, 10) : null)} placeholder="phút" />
+            <span className="small">phút</span>
+          </div>
+          <button className="btn btn-success fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={handleSaveQuiz} disabled={submitting}>
+            {submitting ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Lưu bài trắc nghiệm
+          </button>
+          <button className="btn btn-primary fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => { setEditingQuestion(null); setShowForm(true); }}>
+            <Plus size={18} /> Thêm câu hỏi
+          </button>
+        </div>
       </div>
 
       <div className="row g-4">
@@ -198,19 +229,10 @@ const QuizBuilder = () => {
               </form>
             </div>
           ) : (
-            <div className="card border-0 shadow-sm rounded-4 p-4 bg-primary text-white">
-              <Settings size={32} className="mb-3 opacity-50" />
-              <h5 className="fw-bold">Cấu hình bài thi</h5>
-              <p className="small opacity-75">Thiết lập điểm đạt và thời gian làm bài để hệ thống tự động chấm điểm và cấp chứng chỉ.</p>
-              <hr className="opacity-25" />
-              <div className="d-flex justify-content-between small mb-2">
-                <span>Điểm đạt:</span>
-                <span className="fw-bold">{quiz?.passingScore}%</span>
-              </div>
-              <div className="d-flex justify-content-between small">
-                <span>Thời gian:</span>
-                <span className="fw-bold">{quiz?.timeLimitMinutes || 15} phút</span>
-              </div>
+            <div className="card border-0 shadow-sm rounded-4 p-4 bg-white border">
+              <Settings size={28} className="mb-2 text-primary" />
+              <h5 className="fw-bold text-dark">Soạn câu hỏi</h5>
+              <p className="small text-muted mb-0">Nhấn "Thêm câu hỏi" để tạo câu hỏi trắc nghiệm cho mục này.</p>
             </div>
           )}
         </div>

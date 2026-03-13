@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, Building2, User, CheckCircle2, XCircle, Trash2, Edit2, Loader2, Calendar, ExternalLink, Layers, Hash, Clock, Eye } from 'lucide-react';
 
 const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
@@ -62,7 +62,7 @@ const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
               <td className="py-3">
                 <div
                   className="fw-bold text-primary fs-6 cursor-pointer hover-underline d-flex align-items-center gap-3"
-                  onClick={() => navigate(`/admin/courses/${course.id}`)}
+                  onClick={() => navigate(`/admin/courses/${course.id}`, { state: { from: location.pathname } })}
                   title="Nhấn để xem nội dung khóa học"
                 >
                   {course.thumbnailUrl ? (

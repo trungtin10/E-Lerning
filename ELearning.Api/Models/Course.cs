@@ -40,7 +40,7 @@ public class Lesson
     [Required, MaxLength(200)]
     public string Title { get; set; } = string.Empty;
 
-    public string? Section1Title { get; set; } = "1. Nội dung tổng quát";
+    public string? Section1Title { get; set; } = "1. Giới thiệu bài học";
     public string? Section2Title { get; set; } = "2. Bài giảng chi tiết";
     public string? Section3Title { get; set; } = "3. Phần ôn tập";
     public string? Section4Title { get; set; } = "4. Câu hỏi tự luận";
@@ -75,6 +75,9 @@ public class Lesson
     public bool ShowQuiz3 { get; set; } = false;
     public bool ShowQuiz4 { get; set; } = false;
     public bool ShowQuiz5 { get; set; } = false;
+
+    /// <summary>JSON array of sections when using dynamic sections. Format: [{title,content,showVideo,showQuiz,videoUrl},...]</summary>
+    public string? SectionsJson { get; set; }
 
     public DateTime? ScheduledDate { get; set; }
 

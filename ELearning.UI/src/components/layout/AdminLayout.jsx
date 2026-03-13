@@ -64,18 +64,20 @@ const AdminLayout = ({ children }) => {
             {isSuperAdmin ? 'QUẢN TRỊ HỆ THỐNG' : 'QUẢN TRỊ CÔNG TY'}
           </small>
           <nav className="nav flex-column gap-1">
-            {menuItems.map((item) => (
+            {menuItems.map((item) => {
+              const isActive = location.pathname === item.path || (item.path.includes('courses') && location.pathname.startsWith('/admin/courses'));
+              return (
               <Link
                 key={item.path}
                 to={item.path}
                 className={`nav-link d-flex align-items-center gap-3 px-3 py-2 rounded-3 transition-all ${
-                  location.pathname === item.path ? 'bg-primary text-white shadow-sm' : 'text-secondary hover-bg-secondary'
+                  isActive ? 'bg-primary text-white shadow-sm' : 'text-secondary hover-bg-secondary'
                 }`}
               >
                 <item.icon size={20} />
                 <span className="fw-medium">{item.label}</span>
               </Link>
-            ))}
+            );})}
           </nav>
         </div>
 

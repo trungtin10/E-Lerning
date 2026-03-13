@@ -112,6 +112,17 @@ public class QuizController : ControllerBase
         catch (Exception ex) { return StatusCode(500, ex.Message); }
     }
 
+    [HttpPut("update/{id}")]
+    public async Task<IActionResult> UpdateQuiz(int id, [FromBody] UpdateQuizDto dto)
+    {
+        var quiz = await _context.Quizzes.FindAsync(id);
+        if (quiz == null) return NotFound();
+        quiz.PassingScore = dto.PassingScore;
+        quiz.TimeLimitMinutes = dto.TimeLimitMinutes;
+        await _context.SaveChangesAsync();
+        return Ok(new { Message = "Đã lưu cài đặt bài kiểm tra!" });
+    }
+
     [HttpDelete("questions/{id}")]
     public async Task<IActionResult> DeleteQuestion(int id)
     {

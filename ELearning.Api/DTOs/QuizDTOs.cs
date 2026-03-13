@@ -41,6 +41,8 @@ public record CreateQuizDto(
     int? TimeLimitMinutes = 15
 );
 
+public record UpdateQuizDto(int PassingScore, int? TimeLimitMinutes);
+
 public record UpsertQuestionDto(
     int? Id,
     int QuizId,

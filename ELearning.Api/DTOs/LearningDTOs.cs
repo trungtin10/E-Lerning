@@ -7,12 +7,16 @@ public record UserCourseProgressDto(
     int CourseId,
     string CourseTitle,
     double ProgressPercentage,
-    List<UserLessonProgressDto> Lessons
+    List<UserLessonProgressDto> Lessons,
+    bool ShowIntroVideo = false,
+    string? IntroVideoUrl = null,
+    string? IntroExternalVideoUrl = null
 );
 
 public record UserLessonProgressDto(
     int LessonId,
     string Title,
+    List<LessonSectionDto>? Sections,
     string? Overview,
     string? Content,
     string? ReviewContent,

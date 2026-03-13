@@ -35,6 +35,17 @@ public record CourseDetailDto(
     string? IntroExternalVideoUrl = null
 );
 
+public record LessonSectionDto(string Title, string? Content, bool ShowVideo, bool ShowQuiz, string? VideoUrl);
+
+public class JsonSection
+{
+    public string? Title { get; set; }
+    public string? Content { get; set; }
+    public bool ShowVideo { get; set; }
+    public bool ShowQuiz { get; set; }
+    public string? VideoUrl { get; set; }
+}
+
 public record LessonDto(
     int Id,
     string? Title,
@@ -47,6 +58,7 @@ public record LessonDto(
     string? LessonType,
     int DurationInMinutes,
     int OrderIndex,
+    List<LessonSectionDto>? Sections,
     string? Section1Title,
     string? Section2Title,
     string? Section3Title,
@@ -91,6 +103,21 @@ public class CreateLessonFormDto
     public IFormFile? VideoFile3 { get; set; }
     public IFormFile? VideoFile4 { get; set; }
     public IFormFile? VideoFile5 { get; set; }
+    public IFormFile? VideoFile0 { get; set; }
+    public IFormFile? VideoFile6 { get; set; }
+    public IFormFile? VideoFile7 { get; set; }
+    public IFormFile? VideoFile8 { get; set; }
+    public IFormFile? VideoFile9 { get; set; }
+    public IFormFile? VideoFile10 { get; set; }
+    public IFormFile? VideoFile11 { get; set; }
+    public IFormFile? VideoFile12 { get; set; }
+    public IFormFile? VideoFile13 { get; set; }
+    public IFormFile? VideoFile14 { get; set; }
+    public IFormFile? VideoFile15 { get; set; }
+    public IFormFile? VideoFile16 { get; set; }
+    public IFormFile? VideoFile17 { get; set; }
+    public IFormFile? VideoFile18 { get; set; }
+    public IFormFile? VideoFile19 { get; set; }
 
     public string? ExternalVideoUrl1 { get; set; }
     public string? ExternalVideoUrl2 { get; set; }
@@ -103,6 +130,8 @@ public class CreateLessonFormDto
     public string? Section3Title { get; set; }
     public string? Section4Title { get; set; }
     public string? Section5Title { get; set; }
+
+    public string? SectionsJson { get; set; }
 
     public bool ShowVideo1 { get; set; }
     public bool ShowVideo2 { get; set; }

@@ -14,6 +14,7 @@ import QuizBuilder from './pages/admin/courses/QuizBuilder';
 import UserDashboard from './pages/user/Dashboard';
 import LearningView from './pages/user/LearningView';
 import CourseOverview from './pages/user/CourseOverview';
+import CourseList from './pages/user/CourseList';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
         {/* SỬA ROUTE: Thêm tham số :subDomain */}
         <Route path="/admin/company-users/:subDomain" element={<CompanyUsers />} />
         <Route path="/admin/courses" element={<Courses />} />
+        <Route path="/admin/company-courses" element={<Courses />} />
         <Route path="/admin/courses/:id" element={<CourseDetail />} />
         <Route path="/admin/courses/:id/quiz" element={<QuizBuilder />} />
         <Route path="/admin/categories" element={<Categories />} />
@@ -37,6 +39,8 @@ function App() {
 
         {/* User Routes */}
         <Route path="/dashboard" element={<UserDashboard />} />
+        <Route path="/course" element={<Navigate to="/courses" replace />} />
+        <Route path="/courses" element={<CourseList />} />
         <Route path="/course/:id" element={<CourseOverview />} />
         <Route path="/learning/:courseId" element={<LearningView />} />
         <Route path="/my-courses" element={<UserDashboard />} />
