@@ -13,6 +13,35 @@ const API_URL = window.location.hostname.includes('ngrok-free.dev')
   ? '/api'
   : 'http://127.0.0.1:5211/api';
 
+// Base URL cho uploads (ảnh, video)
+// - localhost: dùng path tương đối /uploads/xxx → Vite proxy chuyển tiếp, tránh CORS
+// - ngrok: dùng full URL backend + query param ngrok-skip-browser-warning để load ảnh
+export const getUploadUrl = (path) => {
+  if (!path) return null;
+  const isNgrok = window.location.hostname.includes('ngrok-free.dev');
+  let url = path;
+
+  if (!path.startsWith('http')) {
+    const p = path.startsWith('/') ? path : '/' + path;
+    url = isNgrok ? `${BACKEND_NGROK_URL}${p}` : p;
+  } else {
+    // Backend trả full URL → localhost dùng path tương đối để proxy hoạt động
+    if (!isNgrok) {
+      try {
+        const u = new URL(path);
+        url = u.pathname;
+      } catch {
+        url = path;
+      }
+    }
+  }
+
+  if (url.includes('ngrok-free.dev') && !url.includes('ngrok-skip-browser-warning')) {
+    url += (url.includes('?') ? '&' : '?') + 'ngrok-skip-browser-warning=1';
+  }
+  return url;
+};
+
 const api = axios.create({
   baseURL: API_URL,
 });

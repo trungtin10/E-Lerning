@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
-import { Plus, Trash2, Save, HelpCircle, X, CheckCircle2, Circle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Save, HelpCircle, X, CheckCircle2, Circle, Loader2, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { useNotify } from '../../context/NotifyContext';
 
 const QuizSectionInline = ({ courseId, section, lessonId, onToast }) => {
+  const { toast, confirm } = useNotify();
+  const notify = onToast || toast;
   const [collapsed, setCollapsed] = useState(false);
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -68,13 +71,26 @@ const QuizSectionInline = ({ courseId, section, lessonId, onToast }) => {
     } catch (err) { if (onToast) onToast('Lỗi khi lưu câu hỏi.', 'error'); } finally { setSubmitting(false); }
   };
 
+  const handleEditQuestion = (q) => {
+    setEditingQuestion(q);
+    setQuestionData({
+      content: q.content,
+      questionType: q.questionType ?? 'SingleChoice',
+      answers: (q.answers || []).length > 0
+        ? q.answers.map(a => ({ content: a.content, isCorrect: a.isCorrect }))
+        : [{ content: '', isCorrect: true }, { content: '', isCorrect: false }, { content: '', isCorrect: false }, { content: '', isCorrect: false }]
+    });
+    setShowForm(true);
+  };
+
   const handleDeleteQuestion = async (qId) => {
-    if (!window.confirm('Xóa câu hỏi này?')) return;
+    const ok = await confirm({ title: 'Xóa câu hỏi', message: 'Xóa câu hỏi này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/quiz/questions/${qId}`);
       fetchQuiz();
-      if (onToast) onToast('Đã xóa câu hỏi.');
-    } catch (err) { if (onToast) onToast('Lỗi khi xóa.', 'error'); }
+      notify('Đã xóa câu hỏi.', 'success');
+    } catch (err) { notify('Lỗi khi xóa.', 'error'); }
   };
 
   const handleSaveQuiz = async () => {
@@ -83,8 +99,8 @@ const QuizSectionInline = ({ courseId, section, lessonId, onToast }) => {
     try {
       await api.put(`/quiz/update/${quiz.id}`, { passingScore: passingScore, timeLimitMinutes: timeLimitMinutes || null });
       fetchQuiz();
-      if (onToast) onToast('Đã lưu bài trắc nghiệm!');
-    } catch (err) { if (onToast) onToast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
+      notify('Đã lưu bài trắc nghiệm!', 'success');
+    } catch (err) { notify('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
   };
 
   if (loading) return <div className="text-center py-3"><Loader2 className="animate-spin text-primary" size={24} /></div>;
@@ -135,7 +151,10 @@ const QuizSectionInline = ({ courseId, section, lessonId, onToast }) => {
               <div key={q.id} className="card border-0 shadow-sm rounded-3 p-3 bg-white">
                 <div className="d-flex justify-content-between align-items-start mb-2">
                   <div className="fw-bold small text-dark">Câu {idx + 1}: {q.content}</div>
-                  <button className="btn btn-link p-0 text-danger" onClick={() => handleDeleteQuestion(q.id)}><Trash2 size={14} /></button>
+                  <div className="d-flex gap-1">
+                    <button className="btn btn-link p-0" onClick={() => handleEditQuestion(q)} title="Chỉnh sửa câu hỏi"><Settings size={14} /></button>
+                    <button className="btn btn-link p-0 text-danger" onClick={() => handleDeleteQuestion(q.id)} title="Xóa câu hỏi"><Trash2 size={14} /></button>
+                  </div>
                 </div>
                 <div className="row g-1">
                   {q.answers.map(ans => (

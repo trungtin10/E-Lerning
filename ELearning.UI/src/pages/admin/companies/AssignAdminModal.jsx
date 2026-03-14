@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useNotify } from '../../../context/NotifyContext';
 import { UserPlus, Shield, Loader2, Mail, Eye, EyeOff } from 'lucide-react';
 import api from '../../../api/axios';
 
 const AssignAdminModal = ({ isOpen, onClose, company }) => {
+  const { toast } = useNotify();
   const [formData, setFormData] = useState({ account: '', email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -16,13 +18,13 @@ const AssignAdminModal = ({ isOpen, onClose, company }) => {
         fullName: `Admin ${company.companyName}`,
         companyId: company.id
       });
-      alert(response.data.message || 'Thành công!');
+      toast(response.data.message || 'Thành công!', 'success');
       setFormData({ account: '', email: '', password: '' });
       setShowPassword(false);
       onClose();
     } catch (err) {
       const errorMsg = err.response?.data || 'Lỗi không xác định.';
-      alert('LỖI: ' + (typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)));
+      toast(typeof errorMsg === 'string' ? errorMsg : 'Lỗi không xác định.', 'error');
     } finally {
       setSubmitting(false);
     }

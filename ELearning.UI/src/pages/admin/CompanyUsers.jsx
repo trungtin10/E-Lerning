@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layout/AdminLayout';
 import api from '../../api/axios';
+import { useNotify } from '../../context/NotifyContext';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Search, UserPlus, Mail, Eye, EyeOff,
@@ -11,6 +12,7 @@ import {
 const CompanyUsers = () => {
   const { subDomain } = useParams();
   const navigate = useNavigate();
+  const { toast, confirm } = useNotify();
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
   const isSuperAdmin = user.roles?.includes('SuperAdmin');
   const [users, setUsers] = useState([]);
@@ -56,16 +58,16 @@ const CompanyUsers = () => {
 
   const handleResendActivation = async (userId) => {
     if (!isSuperAdmin) {
-      alert('Tính năng này chỉ dành cho SuperAdmin.');
+      toast('Tính năng này chỉ dành cho SuperAdmin.', 'warning');
       return;
     }
     setResending(prev => ({ ...prev, [userId]: true }));
     try {
       await api.post(`/superadmin/users/${userId}/resend-activation`);
-      alert('Đã gửi lại email kích hoạt thành công! Bộ đếm 24h đã được reset.');
+      toast('Đã gửi lại email kích hoạt thành công! Bộ đếm 24h đã được reset.', 'success');
       fetchCompanyUsers(); // Tải lại để cập nhật trạng thái
     } catch (err) {
-      alert('Lỗi khi gửi lại email.');
+      toast('Lỗi khi gửi lại email.', 'error');
     } finally {
       setResending(prev => ({ ...prev, [userId]: false }));
     }
@@ -78,18 +80,18 @@ const CompanyUsers = () => {
   const handleDeleteUser = async (userId, userRole, e) => {
     e.stopPropagation();
     if (userRole === 'SuperAdmin') {
-      alert('Không thể xóa tài khoản SuperAdmin!');
+      toast('Không thể xóa tài khoản SuperAdmin!', 'warning');
       return;
     }
-    if (window.confirm('Bạn có chắc chắn muốn xóa nhân viên này khỏi hệ thống? Phép toán này không thể hoàn tác.')) {
-      try {
-        const endpoint = isSuperAdmin ? `/superadmin/users/${userId}` : `/admin/users/${userId}`;
-        await api.delete(endpoint);
-        alert('Đã xóa nhân viên thành công.');
-        fetchCompanyUsers();
-      } catch (err) {
-        alert(err.response?.data || 'Lỗi khi xóa nhân viên.');
-      }
+    const ok = await confirm({ title: 'Xóa nhân viên', message: 'Bạn có chắc chắn muốn xóa nhân viên này khỏi hệ thống? Phép toán này không thể hoàn tác.', confirmText: 'Xóa' });
+    if (!ok) return;
+    try {
+      const endpoint = isSuperAdmin ? `/superadmin/users/${userId}` : `/admin/users/${userId}`;
+      await api.delete(endpoint);
+      toast('Đã xóa nhân viên thành công.', 'success');
+      fetchCompanyUsers();
+    } catch (err) {
+      toast(err.response?.data || 'Lỗi khi xóa nhân viên.', 'error');
     }
   };
 
@@ -125,12 +127,12 @@ const CompanyUsers = () => {
         });
       }
 
-      alert('Thêm nhân viên thành công!');
+      toast('Thêm nhân viên thành công!', 'success');
       setShowAddModal(false);
       setFormData({ ...formData, fullName: '', account: '', email: '', password: '' });
       fetchCompanyUsers();
     } catch (err) {
-      alert(err.response?.data || err.message || 'Lỗi khi thêm nhân viên.');
+      toast(err.response?.data || err.message || 'Lỗi khi thêm nhân viên.', 'error');
     } finally {
       setSubmitting(false);
     }

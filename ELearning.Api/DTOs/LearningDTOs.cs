@@ -6,11 +6,14 @@ namespace ELearning.Api.DTOs;
 public record UserCourseProgressDto(
     int CourseId,
     string CourseTitle,
+    string? CourseCode,
+    DateTime? StartDate,
     double ProgressPercentage,
     List<UserLessonProgressDto> Lessons,
     bool ShowIntroVideo = false,
     string? IntroVideoUrl = null,
-    string? IntroExternalVideoUrl = null
+    string? IntroExternalVideoUrl = null,
+    string? Description = null
 );
 
 public record UserLessonProgressDto(

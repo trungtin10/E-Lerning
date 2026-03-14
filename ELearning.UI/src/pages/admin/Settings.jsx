@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import AdminLayout from '../../components/layout/AdminLayout';
+import { useNotify } from '../../context/NotifyContext';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon, Globe, Mail, Shield,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 
 const Settings = () => {
+  const { toast } = useNotify();
   const [activeTab, setActiveTab] = useState('general');
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -16,7 +18,7 @@ const Settings = () => {
     setSubmitting(true);
     setTimeout(() => {
       setSubmitting(false);
-      alert('Đã lưu cấu hình hệ thống thành công!');
+      toast('Đã lưu cấu hình hệ thống thành công!', 'success');
     }, 1000);
   };
 

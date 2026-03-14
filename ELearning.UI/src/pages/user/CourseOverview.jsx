@@ -2,14 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import UserLayout from '../../components/layout/UserLayout';
 import api from '../../api/axios';
+import { useNotify } from '../../context/NotifyContext';
 import {
   BookOpen, PlayCircle, CheckCircle2, ArrowLeft, Loader2, Circle,
-  Calendar, Layers, Hash, Video, Info, RefreshCw, HelpCircle, Minus, Plus, ClipboardCheck
+  Calendar, Layers, Hash, Video, Info, RefreshCw, HelpCircle, Minus, Plus, ClipboardCheck, FileStack
 } from 'lucide-react';
-
 const CourseOverview = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useNotify();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -28,23 +29,10 @@ const CourseOverview = () => {
     const hasIntroContent = (course.description && String(course.description).trim());
     const hasIntroVideo = course.showIntroVideo && (course.introVideoUrl || course.introExternalVideoUrl);
     const hasIntro = hasIntroContent || hasIntroVideo;
-    const hasSectionContent = (s) => (s.content && String(s.content).trim()) || s.showVideo || s.showQuiz;
-    const validLessons = (course.lessons || []).filter(lesson => {
-      const apiSections = lesson.sections || lesson.Sections;
-      const sections = (apiSections && Array.isArray(apiSections) && apiSections.length > 0)
-        ? apiSections
-        : [
-            { content: lesson.overview, showVideo: lesson.showVideo1, showQuiz: lesson.showQuiz1 },
-            { content: lesson.content, showVideo: lesson.showVideo2, showQuiz: lesson.showQuiz2 },
-            { content: lesson.reviewContent, showVideo: lesson.showVideo3, showQuiz: lesson.showQuiz3 },
-            { content: lesson.essayQuestion, showVideo: lesson.showVideo4, showQuiz: lesson.showQuiz4 },
-            { content: null, showVideo: lesson.showVideo5, showQuiz: lesson.showQuiz5 }
-          ];
-      return sections.some(hasSectionContent);
-    });
+    const allLessons = course.lessons || [];
     const initial = new Set();
     if (hasIntro) initial.add('intro');
-    if (validLessons.length > 0) initial.add(validLessons[0].id);
+    if (allLessons.length > 0) initial.add(allLessons[0].id);
     setExpandedSections(initial);
   }, [course?.id, course?.description, course?.showIntroVideo, course?.introVideoUrl, course?.introExternalVideoUrl, course?.lessons]);
 
@@ -82,33 +70,20 @@ const CourseOverview = () => {
     });
   };
 
-  const { hasIntro, validLessons } = useMemo(() => {
-    if (!course) return { hasIntro: false, validLessons: [] };
+  const { hasIntro, displayLessons } = useMemo(() => {
+    if (!course) return { hasIntro: false, displayLessons: [] };
     const hasIntroContent = (course.description && String(course.description).trim());
     const hasIntroVideo = course.showIntroVideo && (course.introVideoUrl || course.introExternalVideoUrl);
     const hasIntro = hasIntroContent || hasIntroVideo;
-    const hasSectionContent = (s) => (s.content && String(s.content).trim()) || s.showVideo || s.showQuiz;
-    const validLessons = (course.lessons || []).filter(lesson => {
-      const apiSections = lesson.sections || lesson.Sections;
-      const sections = (apiSections && Array.isArray(apiSections) && apiSections.length > 0)
-        ? apiSections
-        : [
-            { content: lesson.overview, showVideo: lesson.showVideo1, showQuiz: lesson.showQuiz1 },
-            { content: lesson.content, showVideo: lesson.showVideo2, showQuiz: lesson.showQuiz2 },
-            { content: lesson.reviewContent, showVideo: lesson.showVideo3, showQuiz: lesson.showQuiz3 },
-            { content: lesson.essayQuestion, showVideo: lesson.showVideo4, showQuiz: lesson.showQuiz4 },
-            { content: null, showVideo: lesson.showVideo5, showQuiz: lesson.showQuiz5 }
-          ];
-      return sections.some(hasSectionContent);
-    });
-    return { hasIntro, validLessons };
+    const displayLessons = (course.lessons || []).slice().sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    return { hasIntro, displayLessons };
   }, [course]);
 
-  const totalSections = validLessons.length + (hasIntro ? 1 : 0);
+  const totalSections = displayLessons.length + (hasIntro ? 1 : 0);
   const isAllExpanded = totalSections > 0 && expandedSections.size >= totalSections;
 
   const expandAll = () => {
-    const lessonIds = validLessons.map(l => l.id);
+    const lessonIds = displayLessons.map(l => l.id);
     if (isAllExpanded) {
       setExpandedSections(new Set());
     } else {
@@ -118,12 +93,31 @@ const CourseOverview = () => {
     }
   };
 
+  const getLessonSections = (lesson) => {
+    const apiSections = lesson.sections || lesson.Sections;
+    if (apiSections && Array.isArray(apiSections) && apiSections.length > 0) {
+      return apiSections.map(s => ({
+        title: s.title ?? s.Title ?? '',
+        content: s.content ?? s.Content,
+        showVideo: s.showVideo ?? s.ShowVideo,
+        showQuiz: s.showQuiz ?? s.ShowQuiz
+      }));
+    }
+    return [
+      { title: lesson.section1Title || '1. Giới thiệu bài học', content: lesson.overview, showVideo: lesson.showVideo1, showQuiz: lesson.showQuiz1 },
+      { title: lesson.section2Title || '2. Bài giảng chi tiết', content: lesson.content, showVideo: lesson.showVideo2, showQuiz: lesson.showQuiz2 },
+      { title: lesson.section3Title || '3. Phần ôn tập', content: lesson.reviewContent, showVideo: lesson.showVideo3, showQuiz: lesson.showQuiz3 },
+      { title: lesson.section4Title || '4. Câu hỏi tự luận', content: lesson.essayQuestion, showVideo: lesson.showVideo4, showQuiz: lesson.showQuiz4 },
+      { title: lesson.section5Title || '5. Tổng kết bài học', content: null, showVideo: lesson.showVideo5, showQuiz: lesson.showQuiz5 }
+    ].filter(s => s.title != null && s.title !== '');
+  };
+
   const handleEnroll = async () => {
     try {
       await api.post('/learning/enroll', { courseId: parseInt(id) });
       navigate(`/learning/${id}?intro=1`);
     } catch (err) {
-      alert('Lỗi khi đăng ký khóa học.');
+      toast('Lỗi khi đăng ký khóa học.', 'error');
     }
   };
 
@@ -148,14 +142,17 @@ const CourseOverview = () => {
   return (
     <UserLayout hideSidebar hideHeader>
       <div className="container-fluid px-4 px-md-5 pt-3 pb-5" style={{ maxWidth: '1400px', margin: '0 auto', fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' }}>
-        <button className="btn btn-link text-body-secondary p-2 mt-0 mb-1 d-inline-flex align-items-center justify-content-center rounded-circle text-decoration-none back-arrow-btn" style={{ marginLeft: '-0.5rem' }} onClick={() => navigate('/courses')} title="Quay lại">
-          <ArrowLeft size={24} />
-        </button>
-
-        {/* Header: Mã khóa + Tiêu đề + Bài học chính + Ngày khai giảng */}
+        {/* Header: Nút quay lại, Mã khóa, Tên khóa (theo hình tham chiếu) */}
+        <div className="d-flex align-items-flex-start gap-3 mb-3">
+          <button className="btn btn-link text-body-secondary p-2 mt-0 d-inline-flex align-items-center justify-content-center rounded-circle text-decoration-none back-arrow-btn flex-shrink-0" style={{ marginLeft: '-0.5rem' }} onClick={() => navigate('/dashboard')} title="Quay lại">
+            <ArrowLeft size={24} />
+          </button>
+          <div className="min-width-0 flex-grow-1">
+            <div className="mb-1" style={{ fontSize: '0.875rem', color: '#64748b', fontWeight: 500 }}>{course.courseCode || '—'}</div>
+            <h1 className="fw-bold mb-3" style={{ fontSize: '1.75rem', lineHeight: 1.35, color: '#0f172a', letterSpacing: '-0.02em', fontWeight: 700, wordBreak: 'break-word' }}>{course.title}</h1>
+          </div>
+        </div>
         <div className="mb-3">
-          <div className="mb-1" style={{ fontSize: '0.875rem', color: '#64748b', fontWeight: 500 }}>{course.courseCode}</div>
-          <h1 className="fw-bold mb-3" style={{ fontSize: '1.75rem', lineHeight: 1.35, color: '#0f172a', letterSpacing: '-0.02em', fontWeight: 700 }}>{course.title}</h1>
           <div className="row g-3 mb-0">
             <div className="col-auto">
               <div className="d-flex align-items-center gap-3 p-3 bg-white rounded-3 shadow-sm border">
@@ -225,7 +222,7 @@ const CourseOverview = () => {
 
             <div className="d-flex align-items-center justify-content-between mb-3">
               <h4 className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ color: '#0f172a', fontSize: '1.25rem', fontWeight: 600 }}>
-                <Layers size={22} /> Nội dung chương trình học
+                <FileStack size={22} /> Nội dung chương trình học
               </h4>
               <button type="button" className="btn btn-outline-secondary btn-sm rounded-3" onClick={expandAll}>
                 {isAllExpanded ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
@@ -248,7 +245,7 @@ const CourseOverview = () => {
                     >
                       <div className="d-flex align-items-center gap-3">
                         <Circle size={20} className="text-secondary flex-shrink-0" style={{ color: '#adb5bd' }} />
-                        <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Giới thiệu học phần</span>
+                        <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Giới thiệu khóa học</span>
                       </div>
                       {expandedSections.has('intro') ? <Minus size={20} className="text-secondary" /> : <Plus size={20} className="text-secondary" />}
                     </div>
@@ -256,7 +253,12 @@ const CourseOverview = () => {
                       <div className="px-4 pb-4 pt-0" style={{ backgroundColor: '#fff', borderTop: '1px solid #dee2e6' }}>
                         <div className="ps-5">
                           {introItems.map((item, i) => (
-                            <div key={i} className="d-flex align-items-center gap-3 py-2 border-bottom" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
+                            <div 
+                              key={i} 
+                              className="d-flex align-items-center gap-3 py-2 border-bottom cursor-pointer" 
+                              style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                              onClick={() => isEnrolled && navigate(`/learning/${id}?intro=1`)}
+                            >
                               {item.done ? <CheckCircle2 size={20} className="text-success flex-shrink-0" /> : <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
                               <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 500 }}>{item.title}</span>
                             </div>
@@ -268,31 +270,16 @@ const CourseOverview = () => {
                 ) : null;
               })()}
 
-              {validLessons.length === 0 && !hasIntro ? (
+              {displayLessons.length === 0 && !hasIntro ? (
                   <div className="p-5 text-center">
                     <BookOpen size={40} className="mb-2 opacity-50" />
                     <p className="mb-0" style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 500 }}>Chưa có bài học nào. Nội dung sẽ được cập nhật khi giảng viên thêm bài học.</p>
                   </div>
-                ) : validLessons.map((lesson, index) => {
+                ) : displayLessons.map((lesson, index) => {
                   const isExpanded = expandedSections.has(lesson.id);
                   const lessonDone = isLessonCompleted(lesson.id);
-                  const apiSections = lesson.sections || lesson.Sections;
-                  const rawSections = (apiSections && Array.isArray(apiSections) && apiSections.length > 0)
-                    ? apiSections.map(s => ({
-                        title: s.title ?? s.Title ?? '',
-                        content: s.content ?? s.Content,
-                        showVideo: s.showVideo ?? s.ShowVideo,
-                        showQuiz: s.showQuiz ?? s.ShowQuiz
-                      }))
-                    : [
-                        { title: lesson.section1Title || '1. Giới thiệu bài học', content: lesson.overview, showVideo: lesson.showVideo1, showQuiz: lesson.showQuiz1 },
-                        { title: lesson.section2Title || '2. Bài giảng chi tiết', content: lesson.content, showVideo: lesson.showVideo2, showQuiz: lesson.showQuiz2 },
-                        { title: lesson.section3Title || '3. Phần ôn tập', content: lesson.reviewContent, showVideo: lesson.showVideo3, showQuiz: lesson.showQuiz3 },
-                        { title: lesson.section4Title || '4. Câu hỏi tự luận', content: lesson.essayQuestion, showVideo: lesson.showVideo4, showQuiz: lesson.showQuiz4 },
-                        { title: lesson.section5Title || '5. Tổng kết bài học', content: null, showVideo: lesson.showVideo5, showQuiz: lesson.showQuiz5 }
-                      ].filter(s => s?.title);
-                  const hasContent = (s) => (s.content && String(s.content).trim()) || s.showVideo || s.showQuiz;
-                  const sections = rawSections.filter(hasContent);
+                  const sections = getLessonSections(lesson);
+                  const lessonTitle = (lesson.title || '').replace(/^Bài\s*\d+\s*:\s*/i, '').trim() || lesson.title || '';
                   return (
                     <div key={lesson.id} className="border-bottom" style={{ borderColor: '#dee2e6' }}>
                       <div
@@ -302,25 +289,35 @@ const CourseOverview = () => {
                       >
                         <div className="d-flex align-items-center gap-3">
                           {lessonDone ? <CheckCircle2 size={20} className="text-success flex-shrink-0" /> : <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
-                          <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>{lesson.title}</span>
+                          <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Bài {index + 1}: {lessonTitle}</span>
                         </div>
                         {isExpanded ? <Minus size={20} className="text-secondary" /> : <Plus size={20} className="text-secondary" />}
                       </div>
                       <div className={isExpanded ? '' : 'd-none'}>
                         <div className="px-4 pb-4 pt-0" style={{ backgroundColor: '#fff', borderTop: '1px solid #dee2e6' }}>
                           <div className="ps-5">
-                            {sections.map((sec, i) => (
-                              <div key={i} className="d-flex align-items-center justify-content-between py-2 border-bottom" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
+                            {sections.length > 0 ? sections.map((sec, i) => {
+                              const secTitle = (sec.title || '').replace(/^\d+\.\s*/, '').trim() || sec.title || `Phần ${i + 1}`;
+                              return (
+                              <div 
+                                key={i} 
+                                className="d-flex align-items-center justify-content-between py-2 border-bottom cursor-pointer" 
+                                style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                                onClick={() => isEnrolled && navigate(`/learning/${id}?lesson=${lesson.id}&section=${i + 1}`)}
+                              >
                                 <div className="d-flex align-items-center gap-3">
                                   <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />
-                                  <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 500 }}>{sec.title || `Phần ${i + 1}`}</span>
+                                  <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 500 }}>{secTitle}</span>
                                 </div>
                                 <div className="d-flex align-items-center gap-2">
                                   {sec.showVideo && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd' }}><Video size={10} className="me-1" /> Video</span>}
                                   {sec.showQuiz && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754' }}><ClipboardCheck size={10} className="me-1" /> Quiz</span>}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            }) : (
+                              <div className="py-2 text-muted small">Chưa có phần nội dung</div>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useNotify } from '../../context/NotifyContext';
 import {
   CheckCircle2, Circle, PlayCircle, FileText,
   ArrowLeft, Loader2, ChevronRight, ChevronLeft,
-  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle, Bookmark, Minus, Plus
+  Menu, X, Award, Video, Info, BookOpen, RefreshCw, HelpCircle, Bookmark, Minus, Plus, ClipboardCheck, Calendar, MessageSquare, StickyNote, Hash, FileStack
 } from 'lucide-react';
 import VideoPlayer from '../../components/common/VideoPlayer';
 
@@ -25,7 +26,7 @@ const ProgressCircle = ({ percentage, size = 36 }) => {
   );
 };
 
-const QuizSection = ({ courseId, lessonId, section, onComplete }) => {
+const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
   const [quiz, setQuiz] = useState(null);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -44,7 +45,8 @@ const QuizSection = ({ courseId, lessonId, section, onComplete }) => {
 
   const handleSubmit = async () => {
     if (!quiz || Object.keys(selectedAnswers).length < quiz.questions.length) {
-      alert('Vui lòng trả lời tất cả các câu hỏi!'); return;
+      onToast?.('Vui lòng trả lời tất cả các câu hỏi!', 'warning');
+      return;
     }
     setSubmitting(true);
     try {
@@ -57,7 +59,7 @@ const QuizSection = ({ courseId, lessonId, section, onComplete }) => {
       const passed = score >= (quiz.passingScore || 80);
       setResult({ score, isPassed: passed, correctCount: correct, total: quiz.questions.length });
       if (onComplete) onComplete(passed);
-    } catch { alert('Lỗi khi nộp bài.'); }
+    } catch { onToast?.('Lỗi khi nộp bài.', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -128,19 +130,30 @@ const LearningView = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { toast } = useNotify();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
   const [activeSection, setActiveSection] = useState(1);
   const [expandedLessonId, setExpandedLessonId] = useState(null);
+  const [expandedIntro, setExpandedIntro] = useState(true);
   const [showIntro, setShowIntro] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [bookmarked, setBookmarked] = useState(new Set());
   const [finishedVideos, setFinishedVideos] = useState(new Set());
   const [sectionProgress, setSectionProgress] = useState({});
   const [initialised, setInitialised] = useState(false);
+  const [headerTab, setHeaderTab] = useState('content');
   const introFromUrlRef = useRef(false);
+
+  const headerTabs = [
+    { id: 'content', label: 'Nội dung', icon: BookOpen },
+    { id: 'progress', label: 'Tiến độ', icon: Award },
+    { id: 'dates', label: 'Ngày quan trọng', icon: Calendar },
+    { id: 'discussion', label: 'Thảo luận', icon: MessageSquare },
+    { id: 'notes', label: 'Ghi chú', icon: StickyNote }
+  ];
 
   useEffect(() => {
     const saved = localStorage.getItem(`sp_${courseId}`);
@@ -168,9 +181,9 @@ const LearningView = () => {
     if (lesson.sections && Array.isArray(lesson.sections) && lesson.sections.length > 0) {
       return lesson.sections.map((s, i) => ({
         num: i + 1,
-        title: s.title,
-        hasVideo: s.showVideo,
-        hasQuiz: s.showQuiz
+        title: s.title ?? s.Title,
+        hasVideo: s.showVideo ?? s.ShowVideo,
+        hasQuiz: s.showQuiz ?? s.ShowQuiz
       }));
     }
     const contents = [lesson.overview, lesson.content, lesson.reviewContent, lesson.essayQuestion, null];
@@ -303,6 +316,11 @@ const LearningView = () => {
         setFinishedVideos(vids);
       } catch { /* ignore */ }
     }
+    const secs = getSections(lesson);
+    const sec = secs.find(s => s.num === sectionNum);
+    if (sec && !sec.hasVideo && !sec.hasQuiz) {
+      markSectionDone(lesson.lessonId, sectionNum);
+    }
   };
 
   const goNext = async () => {
@@ -358,6 +376,18 @@ const LearningView = () => {
   };
 
   const introVideoWatched = sectionProgress['0_video_intro'];
+  const introContentViewed = sectionProgress['intro_content'];
+
+  useEffect(() => {
+    if (showIntro) {
+      setSectionProgress(prev => {
+        if (prev['intro_content']) return prev;
+        const next = { ...prev, 'intro_content': true };
+        saveSP(next);
+        return next;
+      });
+    }
+  }, [showIntro, saveSP]);
 
   const renderIntro = () => (
     <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
@@ -372,9 +402,13 @@ const LearningView = () => {
       </div>
 
       <div className="p-4 p-md-5">
-        <p className="text-secondary mb-4" style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
-          Chào mừng bạn đến với khóa học! Hãy xem tổng quan nội dung bên dưới.
-        </p>
+        {data.description ? (
+          <div className="lesson-content mb-4" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: data.description }} />
+        ) : (
+          <p className="text-secondary mb-4" style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+            Chào mừng bạn đến với khóa học! Hãy xem tổng quan nội dung bên dưới.
+          </p>
+        )}
 
         {data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl) && (
           <div className="mb-4">
@@ -424,34 +458,66 @@ const LearningView = () => {
             <BookOpen size={18} className="text-primary" />
             Tổng quan khóa học
           </h6>
-          <div className="row g-3 mb-4">
-            <div className="col-4">
-              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
-                <div className="fw-bold fs-5 text-primary">{data.lessons.length}</div>
-                <div className="text-muted small">Bài học</div>
-              </div>
-            </div>
-            <div className="col-4">
-              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
-                <div className="fw-bold fs-5 text-success">{data.lessons.filter(l => l.isCompleted).length}</div>
-                <div className="text-muted small">Đã hoàn thành</div>
-              </div>
-            </div>
-            <div className="col-4">
-              <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
-                <div className="fw-bold fs-5 text-info">{Math.round(data.progressPercentage)}%</div>
-                <div className="text-muted small">Tiến độ</div>
-              </div>
-            </div>
-          </div>
-          <div className="d-flex flex-column gap-2">
-            {data.lessons.map((l, i) => (
-              <div key={l.lessonId} className="d-flex align-items-center gap-3 p-2 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
-                {l.isCompleted ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-secondary" style={{ color: '#adb5bd' }} />}
-                <span className="small fw-medium">{i + 1}. {l.title}</span>
-              </div>
-            ))}
-          </div>
+          {(() => {
+            const totalSections = data.lessons.reduce((acc, l) => acc + getSections(l).length, 0) + (data.description ? 1 : 0) + (data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl) ? 1 : 0);
+            const completedLessons = data.lessons.filter(l => l.isCompleted).length;
+            return (
+              <>
+                <div className="row g-3 mb-4">
+                  <div className="col-4">
+                    <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                      <div className="fw-bold fs-5 text-primary">{data.lessons.length}</div>
+                      <div className="text-muted small">Bài học</div>
+                    </div>
+                  </div>
+                  <div className="col-4">
+                    <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                      <div className="fw-bold fs-5 text-success">{completedLessons}</div>
+                      <div className="text-muted small">Bài đã hoàn thành</div>
+                    </div>
+                  </div>
+                  <div className="col-4">
+                    <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                      <div className="fw-bold fs-5" style={{ color: '#6366f1' }}>{totalSections}</div>
+                      <div className="text-muted small">Phần nội dung</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {data.lessons.map((l, i) => {
+                    const secs = getSections(l);
+                    return (
+                      <div key={l.lessonId} className="rounded-3 border overflow-hidden" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                        <div className="d-flex align-items-center gap-3 p-2 px-3">
+                          {l.isCompleted ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                          <span className="small fw-semibold">{i + 1}. {l.title}</span>
+                        </div>
+                        {secs.length > 0 && (
+                          <div className="ps-4 pb-2 pt-0">
+                            {secs.map((sec) => {
+                              const isDone = sectionProgress[`${l.lessonId}_${sec.num}`] || sectionProgress[`${l.lessonId}_video_${sec.num}`] || sectionProgress[`${l.lessonId}_quiz_${sec.num}`];
+                              return (
+                                <div key={sec.num} className="d-flex align-items-center justify-content-between gap-2 py-1">
+                                  <div className="d-flex align-items-center gap-2">
+                                    {isDone ? <CheckCircle2 size={14} className="text-success flex-shrink-0" /> : <Circle size={14} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                    <span className="small" style={{ color: '#64748b', fontSize: '0.85rem' }}>{sec.title || `Phần ${sec.num}`}</span>
+                                  </div>
+                                  <div className="d-flex gap-1">
+                                    {sec.hasVideo && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.7rem' }}><Video size={10} className="me-1" />Video</span>}
+                                    {sec.hasQuiz && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.7rem' }}><ClipboardCheck size={10} className="me-1" />Quiz</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         <div className="text-center pt-3">
@@ -544,12 +610,6 @@ const LearningView = () => {
                 Video giới thiệu bài học
                 {video.url && <span className="text-muted small fw-normal">[Video]</span>}
               </h6>
-              {showQuiz && !videoWatched && (
-                <div className="alert alert-primary d-flex align-items-center gap-2 rounded-3 border-0 mb-3" style={{ backgroundColor: 'rgba(13,110,253,0.08)' }}>
-                  <Info size={18} />
-                  <span className="small fw-bold">Xem hết video để mở bài tập trắc nghiệm.</span>
-                </div>
-              )}
               <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
                 {video.url ? (
                   <VideoPlayer
@@ -583,7 +643,7 @@ const LearningView = () => {
           {showQuiz && (!video.show || videoWatched) && (
             <div className="mb-4">
               <QuizSection courseId={courseId} lessonId={activeLesson.lessonId} section={activeSection}
-                onComplete={(passed) => { if (passed) markSectionDone(activeLesson.lessonId, `quiz_${activeSection}`); }} />
+                onComplete={(passed) => { if (passed) markSectionDone(activeLesson.lessonId, `quiz_${activeSection}`); }} onToast={toast} />
             </div>
           )}
         </div>
@@ -617,66 +677,121 @@ const LearningView = () => {
 
   return (
     <div className="min-vh-100 d-flex flex-column overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
-      {/* Header - giống trang /course */}
+      {/* Header - Nút quay lại, Mã khóa, Tên khóa (theo hình tham chiếu) */}
       <header 
-        className="bg-white px-4 px-md-5 py-2 d-flex align-items-center justify-content-between sticky-top" 
+        className="bg-white sticky-top" 
         style={{ zIndex: 1000, borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
       >
-        <div className="d-flex align-items-center gap-3">
-          <button 
-            className="btn btn-link p-2 d-inline-flex align-items-center justify-content-center rounded-circle text-decoration-none" 
-            style={{ color: '#64748b', marginLeft: '-0.5rem' }}
-            onClick={() => navigate(`/course/${courseId}`)}
-            title="Quay lại khóa học"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <div className="vr my-2" style={{ opacity: 0.3, borderColor: '#cbd5e1' }} />
-          <h1 className="mb-0 fw-bold text-truncate" style={{ maxWidth: '400px', color: '#0f172a', fontSize: '1.25rem', fontWeight: 700 }}>{data.courseTitle}</h1>
+        <div className="px-4 px-md-5 py-3">
+          <div className="d-flex flex-wrap align-items-flex-start justify-content-between gap-3">
+            <div className="d-flex align-items-flex-start gap-3 min-width-0 flex-grow-1">
+              <button 
+                className="btn btn-link p-2 d-inline-flex align-items-center justify-content-center rounded-circle text-decoration-none flex-shrink-0 mt-1" 
+                style={{ color: '#64748b', marginLeft: '-0.5rem' }}
+                onClick={() => navigate(`/course/${courseId}`)}
+                title="Quay lại khóa học"
+              >
+                <ArrowLeft size={24} />
+              </button>
+              <div className="min-width-0 flex-grow-1" style={{ minWidth: 0 }}>
+                <div className="mb-1" style={{ fontSize: '0.875rem', color: '#64748b', fontWeight: 500 }}>{data.courseCode || '—'}</div>
+                <h1 className="fw-bold mb-0" style={{ color: '#0f172a', fontSize: '1.25rem', lineHeight: 1.35, letterSpacing: '-0.02em', wordBreak: 'break-word' }}>{data.courseTitle}</h1>
+                {activeLesson && !showIntro && (
+                  <div className="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-muted small">Bài {data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId) + 1}:</span>
+                    <span className="fw-semibold small" style={{ color: '#475569', wordBreak: 'break-word' }}>{activeLesson.title}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-2 flex-shrink-0">
+              <button 
+                className="btn btn-light rounded-circle p-2 border" 
+                style={{ borderColor: '#e2e8f0' }}
+                onClick={() => setSidebarOpen(!isSidebarOpen)}
+                title={isSidebarOpen ? 'Thu gọn mục lục' : 'Mở mục lục'}
+              >
+                {isSidebarOpen ? <X size={20} style={{ color: '#475569' }} /> : <Menu size={20} style={{ color: '#475569' }} />}
+              </button>
+            </div>
+          </div>
         </div>
-        <button 
-          className="btn btn-light rounded-circle p-2 border" 
-          style={{ borderColor: '#e2e8f0' }}
-          onClick={() => setSidebarOpen(!isSidebarOpen)}
-        >
-          {isSidebarOpen ? <X size={20} style={{ color: '#475569' }} /> : <Menu size={20} style={{ color: '#475569' }} />}
-        </button>
+        <nav className="nav border-0 px-4 px-md-5 gap-1 pb-2" style={{ borderTop: '1px solid #f1f5f9' }}>
+          {headerTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`nav-link fw-semibold rounded-3 px-3 py-2 border-0 d-inline-flex align-items-center gap-2 ${headerTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}
+                style={{ fontSize: '0.9rem' }}
+                onClick={() => setHeaderTab(tab.id)}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
       <div className="flex-grow-1 d-flex overflow-hidden">
         {/* Sidebar trái - Mục lục */}
         <aside className={`bg-white border-end flex-shrink-0 d-flex flex-column overflow-hidden ${!isSidebarOpen ? 'toc-collapsed' : ''}`} style={{ width: isSidebarOpen ? '320px' : 0, minWidth: isSidebarOpen ? '320px' : 0, borderColor: '#dee2e6', zIndex: 10, transition: 'width 0.25s ease, min-width 0.25s ease' }}>
-          <div className="d-flex align-items-center justify-content-between p-3 border-bottom flex-shrink-0" style={{ borderColor: '#dee2e6' }}>
-            <h6 className="fw-bold mb-0" style={{ color: '#1a1a2e', fontSize: '1rem' }}>Mục lục</h6>
-            <button type="button" className="btn btn-link p-1 text-body-secondary" onClick={() => setSidebarOpen(!isSidebarOpen)} title={isSidebarOpen ? 'Thu gọn' : 'Mở rộng'}>
-              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
+          <div className="p-3 border-bottom flex-shrink-0 d-flex align-items-center gap-2" style={{ borderColor: '#dee2e6' }}>
+            <FileStack size={20} style={{ color: '#0f172a' }} />
+            <h6 className="fw-bold mb-0" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Nội dung chương trình học</h6>
           </div>
           <div className="overflow-auto flex-grow-1 py-2">
-            {/* Giới thiệu học phần */}
-            <div
-              className={`toc-item d-flex align-items-center gap-3 px-3 py-2 mx-2 my-1 rounded ${showIntro ? 'toc-active' : ''}`}
-              style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
-              onClick={() => { setShowIntro(true); }}
-            >
-              <div className="flex-shrink-0">
-                {introVideoWatched ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} className="text-secondary" style={{ color: '#adb5bd' }} />}
+            {/* Giới thiệu khóa học - accordion */}
+            <div className="border-bottom" style={{ borderColor: '#dee2e6' }}>
+              <div
+                className="d-flex align-items-center justify-content-between py-3 px-4 cursor-pointer toc-header"
+                style={{ backgroundColor: showIntro ? '#f8fafc' : '#fff' }}
+                onClick={() => { setExpandedIntro(!expandedIntro); setShowIntro(true); setExpandedLessonId(null); }}
+              >
+                <div className="d-flex align-items-center gap-3">
+                  {(introContentViewed || introVideoWatched) ? <CheckCircle2 size={20} className="text-success flex-shrink-0" /> : <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                  <span className="fw-semibold" style={{ color: showIntro ? '#6366f1' : '#0f172a', fontSize: '1rem' }}>Giới thiệu khóa học</span>
+                </div>
+                {expandedIntro ? <Minus size={20} className="text-secondary flex-shrink-0" /> : <Plus size={20} className="text-secondary flex-shrink-0" />}
               </div>
-              <span className={`flex-grow-1 small ${showIntro ? 'fw-semibold text-primary' : ''}`} style={{ color: showIntro ? '' : '#334155' }}>Giới thiệu học phần</span>
-              <ChevronRight size={18} className="text-secondary flex-shrink-0" />
+              {expandedIntro && (
+                <div className="px-4 pb-3 pt-0" style={{ backgroundColor: '#fff', borderTop: '1px solid #e2e8f0' }}>
+                  <div 
+                    className="d-flex align-items-center gap-3 py-2 border-bottom cursor-pointer"
+                    style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                    onClick={() => setShowIntro(true)}
+                  >
+                    {introContentViewed ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                    <span style={{ color: '#1e293b', fontSize: '0.9rem', fontWeight: 500 }}>Giới thiệu học phần</span>
+                  </div>
+                  {data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl) && (
+                    <div 
+                      className="d-flex align-items-center gap-3 py-2 cursor-pointer"
+                      onClick={() => setShowIntro(true)}
+                    >
+                      {introVideoWatched ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                      <span style={{ color: '#1e293b', fontSize: '0.9rem', fontWeight: 500 }}>Video giới thiệu</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Các bài học */}
-            {data.lessons.map((lesson, idx) => {
+            {/* Các bài học - accordion, đồng bộ với bài học đã tạo, tiền tố Bài X: */}
+            {(data.lessons || []).map((lesson, idx) => {
               const sections = getSections(lesson);
               const isExpanded = expandedLessonId === lesson.lessonId;
               const isActiveLesson = activeLesson?.lessonId === lesson.lessonId && !showIntro;
+              const lessonNum = idx + 1;
+              const lessonTitle = (lesson.title || '').replace(/^Bài\s*\d+\s*:\s*/i, '').trim() || lesson.title || '';
 
               return (
-                <div key={lesson.lessonId}>
+                <div key={lesson.lessonId} className="border-bottom" style={{ borderColor: '#dee2e6' }}>
                   <div
-                    className={`toc-item d-flex align-items-center gap-3 px-3 py-2 mx-2 my-1 rounded ${isActiveLesson ? 'toc-active' : ''}`}
-                    style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
+                    className="d-flex align-items-center justify-content-between py-3 px-4 cursor-pointer toc-header"
+                    style={{ backgroundColor: isActiveLesson || isExpanded ? '#f8fafc' : '#fff' }}
                     onClick={() => {
                       if (expandedLessonId === lesson.lessonId) {
                         setExpandedLessonId(null);
@@ -684,34 +799,36 @@ const LearningView = () => {
                         setExpandedLessonId(lesson.lessonId);
                         handleSelectSection(lesson, sections[0]?.num || 1);
                       }
+                      setShowIntro(false);
                     }}
                   >
-                    <div className="flex-shrink-0">
-                      {lesson.isCompleted ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} className="text-secondary" style={{ color: '#adb5bd' }} />}
+                    <div className="d-flex align-items-center gap-3">
+                      {lesson.isCompleted ? <CheckCircle2 size={20} className="text-success flex-shrink-0" /> : <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                      <span className="fw-semibold" style={{ color: isActiveLesson ? '#6366f1' : '#0f172a', fontSize: '1rem' }}>Bài {lessonNum}: {lessonTitle}</span>
                     </div>
-                    <span className={`flex-grow-1 small ${isActiveLesson ? 'fw-semibold text-primary' : ''}`} style={{ color: isActiveLesson ? '' : '#334155' }}>Bài {idx + 1}: {lesson.title}</span>
-                    <ChevronRight size={18} className="text-secondary flex-shrink-0" />
+                    {isExpanded ? <Minus size={20} className="text-secondary flex-shrink-0" /> : <Plus size={20} className="text-secondary flex-shrink-0" />}
                   </div>
-
-                  {/* Các phần con khi mở rộng */}
                   {isExpanded && (
-                    <div className="ms-3 me-2 mb-1">
+                    <div className="px-4 pb-3 pt-0" style={{ backgroundColor: '#fff', borderTop: '1px solid #e2e8f0' }}>
                       {sections.map(sec => {
                         const isActiveSec = isActiveLesson && activeSection === sec.num;
-                        const isDone = sectionProgress[`${lesson.lessonId}_${sec.num}`];
+                        const isDone = sectionProgress[`${lesson.lessonId}_${sec.num}`] || sectionProgress[`${lesson.lessonId}_video_${sec.num}`] || sectionProgress[`${lesson.lessonId}_quiz_${sec.num}`];
 
                         return (
                           <div
                             key={sec.num}
-                            className={`toc-item d-flex align-items-center gap-2 px-3 py-2 my-1 rounded ${isActiveSec ? 'toc-active' : ''}`}
-                            style={{ cursor: 'pointer', border: '1px solid #e9ecef' }}
-                            onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num); }}
+                            className={`d-flex align-items-center justify-content-between gap-2 py-2 border-bottom cursor-pointer ${isActiveSec ? 'toc-active' : ''}`}
+                            style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                            onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num); setShowIntro(false); }}
                           >
-                            <div className="flex-shrink-0">
-                              {isDone ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-secondary" style={{ color: '#adb5bd' }} />}
+                            <div className="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                              {isDone ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                              <span className={`small text-truncate ${isActiveSec ? 'fw-semibold' : ''}`} style={{ color: isActiveSec ? '#6366f1' : '#1e293b', fontSize: '0.9rem' }}>{(sec.title || '').replace(/^\d+\.\s*/, '').trim() || sec.title || `Phần ${sec.num}`}</span>
                             </div>
-                            <span className={`flex-grow-1 small ${isActiveSec ? 'fw-semibold text-primary' : ''}`} style={{ color: isActiveSec ? '' : '#334155', fontSize: '0.85rem' }}>{sec.title}</span>
-                            <ChevronRight size={16} className="text-secondary flex-shrink-0" />
+                            <div className="d-flex gap-1 flex-shrink-0">
+                              {sec.hasVideo && <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.65rem' }}><Video size={10} /></span>}
+                              {sec.hasQuiz && <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.65rem' }}><ClipboardCheck size={10} /></span>}
+                            </div>
                           </div>
                         );
                       })}
@@ -725,7 +842,47 @@ const LearningView = () => {
 
         {/* Nội dung chính bên phải */}
         <main className="flex-grow-1 overflow-auto p-4 p-md-5" style={{ backgroundColor: '#fafafa' }}>
-          {showIntro ? renderIntro() : renderSectionContent()}
+          {headerTab === 'content' && (showIntro ? renderIntro() : renderSectionContent())}
+          {headerTab === 'progress' && (
+            <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Award size={22} className="text-primary" /> Tiến độ học tập</h5>
+              <div className="progress mb-3" style={{ height: '14px' }}>
+                <div className="progress-bar" style={{ width: `${data.progressPercentage}%`, backgroundColor: data.progressPercentage >= 100 ? '#10b981' : '#6366f1' }} />
+              </div>
+              <p className="mb-4 fw-semibold" style={{ color: '#334155' }}>{Math.round(data.progressPercentage)}% đã hoàn thành</p>
+              <div className="d-flex flex-column gap-2">
+                {(data.lessons || []).map((l, i) => (
+                  <div key={l.lessonId} className="d-flex align-items-center gap-3 p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                    {l.isCompleted ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} style={{ color: '#adb5bd' }} />}
+                    <span className="fw-medium">Bài {i + 1}: {l.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {headerTab === 'dates' && (
+            <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Calendar size={22} className="text-primary" /> Ngày quan trọng</h5>
+              <div className="d-flex flex-column gap-3">
+                <div className="p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                  <span className="text-muted small">Ngày khai giảng</span>
+                  <div className="fw-bold" style={{ color: '#0f172a' }}>{data.startDate ? new Date(data.startDate).toLocaleDateString('vi-VN') : '—'}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {headerTab === 'discussion' && (
+            <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><MessageSquare size={22} className="text-primary" /> Thảo luận</h5>
+              <p className="text-secondary mb-0">Chức năng thảo luận đang được phát triển.</p>
+            </div>
+          )}
+          {headerTab === 'notes' && (
+            <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><StickyNote size={22} className="text-primary" /> Ghi chú</h5>
+              <p className="text-secondary mb-0">Chức năng ghi chú đang được phát triển.</p>
+            </div>
+          )}
         </main>
       </div>
 
@@ -744,8 +901,9 @@ const LearningView = () => {
         .cursor-pointer { cursor: pointer; }
         .scale-in { animation: scaleIn 0.3s ease-out; }
         @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .toc-header:hover { background-color: #f8fafc !important; }
         .toc-item:hover { background-color: #f8fafc !important; }
-        .toc-active { background-color: #e8f4fd !important; border-color: #b6d4fe !important; }
+        .toc-active { background-color: rgba(99,102,241,0.08) !important; }
         .toc-collapsed { overflow: hidden; }
       `}</style>
     </div>

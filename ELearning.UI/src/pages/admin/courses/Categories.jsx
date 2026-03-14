@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 import { Layers, Plus, Edit2, Trash2, Loader2, Save, X, Search, ChevronRight } from 'lucide-react';
 
 const Categories = () => {
   const navigate = useNavigate();
+  const { toast, confirm } = useNotify();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowAddModal] = useState(false);
@@ -42,17 +44,19 @@ const Categories = () => {
       setEditingId(null);
       fetchCategories();
     } catch (err) {
-      alert('Lỗi khi lưu danh mục.');
+      toast('Lỗi khi lưu danh mục.', 'error');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Xóa danh mục này?')) return;
+    const ok = await confirm({ title: 'Xóa danh mục', message: 'Xóa danh mục này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/course/categories/${id}`);
+      toast('Đã xóa danh mục.', 'success');
       fetchCategories();
     } catch (err) {
-      alert('Không thể xóa danh mục đang có khóa học liên quan.');
+      toast('Không thể xóa danh mục đang có khóa học liên quan.', 'error');
     }
   };
 

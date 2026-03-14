@@ -54,7 +54,7 @@ public class EmailService : IEmailService
     public async Task SendEmailAsync(string toEmail, string subject, string htmlBody)
     {
         var email = new MimeMessage();
-        email.From.Add(new MailboxAddress(_config["EmailSettings:SenderName"], _config["EmailSettings:SenderEmail"]));
+        email.From.Add(new MailboxAddress(_config["EmailSettings:SenderName"], _config["EmailSettings:SenderEmail"] ?? "noreply@localhost"));
         email.To.Add(MailboxAddress.Parse(toEmail));
         email.Subject = subject;
 

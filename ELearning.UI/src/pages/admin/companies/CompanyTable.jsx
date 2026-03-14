@@ -1,7 +1,10 @@
 import React from 'react';
 import { Building2, Globe, Users, CreditCard, Image as ImageIcon, Edit2, Trash2, Loader2, Mail, Calendar, Clock, UserPlus } from 'lucide-react';
+import { getUploadUrl } from '../../../api/axios';
 
 const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) => {
+  const [brokenLogos, setBrokenLogos] = React.useState(new Set());
+  const markLogoBroken = (id) => setBrokenLogos((s) => new Set(s).add(id));
   if (loading) {
     return (
       <div className="text-center py-5">
@@ -47,7 +50,16 @@ const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) =
             <tr key={company.id} className="border-bottom-0">
               <td className="px-4 py-3">
                 <div className="bg-white rounded-3 border shadow-sm d-flex align-items-center justify-content-center overflow-hidden" style={{ width: '48px', height: '48px' }}>
-                  {company.logoUrl ? <img src={company.logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Building2 size={20} className="text-primary opacity-50" />}
+                  {company.logoUrl && !brokenLogos.has(company.id) ? (
+                    <img
+                      src={getUploadUrl(company.logoUrl)}
+                      alt="logo"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      onError={() => markLogoBroken(company.id)}
+                    />
+                  ) : (
+                    <Building2 size={20} className="text-primary opacity-50" />
+                  )}
                 </div>
               </td>
               <td className="py-3">

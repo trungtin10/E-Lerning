@@ -35,7 +35,7 @@ public class CourseController : ControllerBase
             return $"{proto}://{forwardedHost}";
         }
 
-        var host = Request.Host.Value;
+        var host = Request.Host.Value ?? string.Empty;
         if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
         return $"{Request.Scheme}://{host}";
     }
@@ -62,7 +62,7 @@ public class CourseController : ControllerBase
     {
         try
         {
-            var course = await _context.Courses.Include(c => c.Lessons).FirstOrDefaultAsync(c => c.Id == id);
+            var course = await _context.Courses.Include(c => c.Lessons).Include(c => c.Category).FirstOrDefaultAsync(c => c.Id == id);
             if (course == null) return NotFound();
             var lessons = course.Lessons.OrderBy(l => l.OrderIndex).ToList();
 
@@ -118,7 +118,7 @@ public class CourseController : ControllerBase
             return Ok(new CourseDetailDto(
                 course.Id, course.CourseCode, course.Title, course.Description,
                 course.ThumbnailUrl != null ? (course.ThumbnailUrl.StartsWith("http") ? course.ThumbnailUrl : course.ThumbnailUrl) : null,
-                course.CategoryId, course.StartDate, course.EndDate, lessonDtos,
+                course.CategoryId, course.Category != null ? course.Category.Name : null, course.StartDate, course.EndDate, lessonDtos,
                 course.ShowIntroVideo,
                 course.IntroVideoUrl != null ? (course.IntroVideoUrl.StartsWith("http") ? course.IntroVideoUrl : course.IntroVideoUrl) : null,
                 course.IntroExternalVideoUrl

@@ -1,5 +1,44 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { NotifyProvider } from './context/NotifyContext';
+
+const BASE_TITLE = 'E-Learning SaaS';
+const pathTitles = {
+  '/login': 'Đăng nhập',
+  '/confirm-email': 'Xác nhận email',
+  '/admin/dashboard': 'Dashboard',
+  '/admin/companies': 'Quản lý công ty',
+  '/admin/users': 'Quản lý người dùng',
+  '/admin/company-users': 'Nhân viên công ty',
+  '/admin/courses': 'Khóa học',
+  '/admin/company-courses': 'Khóa học',
+  '/admin/categories': 'Danh mục',
+  '/admin/settings': 'Cài đặt',
+  '/dashboard': 'Dashboard',
+  '/courses': 'Khám phá khóa học',
+  '/course': 'Chi tiết khóa học',
+  '/learning': 'Học tập',
+  '/my-courses': 'Khóa học của tôi',
+  '/certificates': 'Chứng chỉ',
+  '/settings': 'Cài đặt',
+};
+
+function usePageTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const segs = pathname.split('/').filter(Boolean);
+    let title = BASE_TITLE;
+    for (let i = segs.length; i >= 1; i--) {
+      const path = '/' + segs.slice(0, i).join('/');
+      if (pathTitles[path]) {
+        title = `${pathTitles[path]} - ${BASE_TITLE}`;
+        break;
+      }
+    }
+    document.title = title;
+    return () => { document.title = BASE_TITLE; };
+  }, [pathname]);
+}
 import Login from './pages/auth/Login';
 import ConfirmEmail from './pages/auth/ConfirmEmail';
 import AdminDashboard from './pages/admin/Dashboard';
@@ -16,10 +55,10 @@ import LearningView from './pages/user/LearningView';
 import CourseOverview from './pages/user/CourseOverview';
 import CourseList from './pages/user/CourseList';
 
-function App() {
+function AppRoutes() {
+  usePageTitle();
   return (
-    <Router>
-      <Routes>
+    <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/confirm-email" element={<ConfirmEmail />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
@@ -49,8 +88,17 @@ function App() {
 
         {/* Placeholder */}
         <Route path="/admin/settings" element={<AdminDashboard />} />
-      </Routes>
-    </Router>
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <NotifyProvider>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </NotifyProvider>
   );
 }
 

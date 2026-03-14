@@ -27,6 +27,7 @@ public record CourseDetailDto(
     string? Description,
     string? ThumbnailUrl,
     int CategoryId,
+    string? CategoryName,
     DateTime StartDate,
     DateTime? EndDate,
     List<LessonDto> Lessons,

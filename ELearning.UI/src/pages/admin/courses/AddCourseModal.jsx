@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, BookOpen, Layers, Globe, Loader2, Plus, Hash, Calendar } from 'lucide-react';
 import api from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 
 const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
+  const { toast } = useNotify();
   const [formData, setFormData] = useState({
     courseCode: '',
     title: '',
@@ -49,7 +51,7 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
       setNewCategoryName('');
       setShowQuickAddCategory(false);
     } catch (err) {
-      alert('Lỗi khi thêm danh mục nhanh.');
+      toast('Lỗi khi thêm danh mục nhanh.', 'error');
     }
   };
 
@@ -76,7 +78,7 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
       setFormData({ courseCode: '', title: '', categoryId: '', companyId: '', isPublished: false, startDate: new Date().toISOString().split('T')[0], endDate: '' });
     } catch (err) {
       const errorMsg = err.response?.data || 'Lỗi khi tạo khóa học.';
-      alert('LỖI: ' + (typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)));
+      toast(typeof errorMsg === 'string' ? errorMsg : 'Lỗi khi tạo khóa học.', 'error');
     } finally {
       setSubmitting(false);
     }

@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { X, Image as ImageIcon, Globe, Shield, Loader2, Upload, Mail, Eye, EyeOff } from 'lucide-react';
 import api from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 
 const AddCompanyModal = ({ isOpen, onClose, onSuccess }) => {
+  const { toast } = useNotify();
   const [formData, setFormData] = useState({
     companyName: '',
     contactEmail: '',
@@ -50,12 +52,12 @@ const AddCompanyModal = ({ isOpen, onClose, onSuccess }) => {
       setShowPassword(false);
       onSuccess();
       onClose();
-      alert('Kích hoạt hệ thống thành công!');
+      toast('Kích hoạt hệ thống thành công!', 'success');
     } catch (err) {
       if (err.response?.data?.errors) {
         setErrors(err.response.data.errors);
       } else {
-        alert('LỖI: ' + (err.response?.data || 'Lỗi không xác định.'));
+        toast(err.response?.data || 'Lỗi không xác định.', 'error');
       }
     } finally {
       setSubmitting(false);

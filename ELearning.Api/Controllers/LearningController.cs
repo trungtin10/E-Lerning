@@ -33,7 +33,7 @@ public class LearningController : ControllerBase
             return $"{proto}://{forwardedHost}";
         }
 
-        var host = Request.Host.Value;
+        var host = Request.Host.Value ?? string.Empty;
         if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
         return $"{Request.Scheme}://{host}";
     }
@@ -158,30 +158,48 @@ public class LearningController : ControllerBase
 
         if (enrollment == null) return NotFound("Bạn chưa đăng ký khóa học này.");
 
-        var lessonsProgress = await _context.LessonProgresses
-            .Include(p => p.Lesson)
-            .Where(p => p.EnrollmentId == enrollment.Id)
-            .OrderBy(p => p.Lesson.OrderIndex)
+        // Lấy tất cả bài học của khóa (đồng bộ với course/2), tạo LessonProgress nếu chưa có
+        var allLessons = await _context.Lessons
+            .Where(l => l.CourseId == courseId)
+            .OrderBy(l => l.OrderIndex)
             .ToListAsync();
 
-        var lessonDtos = lessonsProgress.Select(p =>
+        var existingProgress = await _context.LessonProgresses
+            .Where(p => p.EnrollmentId == enrollment.Id)
+            .ToDictionaryAsync(p => p.LessonId);
+
+        foreach (var lesson in allLessons)
         {
+            if (!existingProgress.ContainsKey(lesson.Id))
+            {
+                var lp = new LessonProgress { EnrollmentId = enrollment.Id, LessonId = lesson.Id, IsCompleted = false };
+                _context.LessonProgresses.Add(lp);
+                existingProgress[lesson.Id] = lp;
+            }
+        }
+        await _context.SaveChangesAsync();
+
+        var lessonDtos = allLessons.Select(lesson =>
+        {
+            var p = existingProgress.TryGetValue(lesson.Id, out var prog) ? prog : null;
+            var isCompleted = p?.IsCompleted ?? false;
+            var completedAt = p?.CompletedAt;
             List<LessonSectionDto>? sections = null;
-            if (!string.IsNullOrEmpty(p.Lesson.SectionsJson))
+            if (!string.IsNullOrEmpty(lesson.SectionsJson))
             {
                 try
                 {
                     var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    var list = System.Text.Json.JsonSerializer.Deserialize<List<JsonSection>>(p.Lesson.SectionsJson, jsonOpts);
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<JsonSection>>(lesson.SectionsJson, jsonOpts);
                     sections = list?.Select(s => new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl)).ToList();
                 }
                 catch { }
             }
             if (sections == null)
             {
-                var hasContent = !string.IsNullOrWhiteSpace(p.Lesson.Overview) || !string.IsNullOrWhiteSpace(p.Lesson.Content) || !string.IsNullOrWhiteSpace(p.Lesson.ReviewContent) || !string.IsNullOrWhiteSpace(p.Lesson.EssayQuestion);
-                var hasMedia = p.Lesson.VideoUrl1 != null || p.Lesson.VideoUrl2 != null || p.Lesson.VideoUrl3 != null || p.Lesson.VideoUrl4 != null || p.Lesson.VideoUrl5 != null;
-                var hasQuiz = p.Lesson.ShowQuiz1 || p.Lesson.ShowQuiz2 || p.Lesson.ShowQuiz3 || p.Lesson.ShowQuiz4 || p.Lesson.ShowQuiz5;
+                var hasContent = !string.IsNullOrWhiteSpace(lesson.Overview) || !string.IsNullOrWhiteSpace(lesson.Content) || !string.IsNullOrWhiteSpace(lesson.ReviewContent) || !string.IsNullOrWhiteSpace(lesson.EssayQuestion);
+                var hasMedia = lesson.VideoUrl1 != null || lesson.VideoUrl2 != null || lesson.VideoUrl3 != null || lesson.VideoUrl4 != null || lesson.VideoUrl5 != null;
+                var hasQuiz = lesson.ShowQuiz1 || lesson.ShowQuiz2 || lesson.ShowQuiz3 || lesson.ShowQuiz4 || lesson.ShowQuiz5;
                 if (!hasContent && !hasMedia && !hasQuiz)
                 {
                     sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, null) };
@@ -190,50 +208,50 @@ public class LearningController : ControllerBase
                 {
                     sections = new List<LessonSectionDto>
                     {
-                        new(p.Lesson.Section1Title ?? "1. Giới thiệu bài học", p.Lesson.Overview, p.Lesson.ShowVideo1, p.Lesson.ShowQuiz1, p.Lesson.VideoUrl1),
-                        new(p.Lesson.Section2Title ?? "2. Bài giảng chi tiết", p.Lesson.Content, p.Lesson.ShowVideo2, p.Lesson.ShowQuiz2, p.Lesson.VideoUrl2),
-                        new(p.Lesson.Section3Title ?? "3. Phần ôn tập", p.Lesson.ReviewContent, p.Lesson.ShowVideo3, p.Lesson.ShowQuiz3, p.Lesson.VideoUrl3),
-                        new(p.Lesson.Section4Title ?? "4. Câu hỏi tự luận", p.Lesson.EssayQuestion, p.Lesson.ShowVideo4, p.Lesson.ShowQuiz4, p.Lesson.VideoUrl4),
-                        new(p.Lesson.Section5Title ?? "5. Tổng kết bài học", null, p.Lesson.ShowVideo5, p.Lesson.ShowQuiz5, p.Lesson.VideoUrl5)
+                        new(lesson.Section1Title ?? "1. Giới thiệu bài học", lesson.Overview, lesson.ShowVideo1, lesson.ShowQuiz1, lesson.VideoUrl1),
+                        new(lesson.Section2Title ?? "2. Bài giảng chi tiết", lesson.Content, lesson.ShowVideo2, lesson.ShowQuiz2, lesson.VideoUrl2),
+                        new(lesson.Section3Title ?? "3. Phần ôn tập", lesson.ReviewContent, lesson.ShowVideo3, lesson.ShowQuiz3, lesson.VideoUrl3),
+                        new(lesson.Section4Title ?? "4. Câu hỏi tự luận", lesson.EssayQuestion, lesson.ShowVideo4, lesson.ShowQuiz4, lesson.VideoUrl4),
+                        new(lesson.Section5Title ?? "5. Tổng kết bài học", null, lesson.ShowVideo5, lesson.ShowQuiz5, lesson.VideoUrl5)
                     };
                 }
             }
             return new UserLessonProgressDto(
-            p.LessonId,
-            p.Lesson.Title,
+            lesson.Id,
+            lesson.Title,
             sections,
-            p.Lesson.Overview,
-            p.Lesson.Content,
-            p.Lesson.ReviewContent,
-            p.Lesson.EssayQuestion,
-            p.Lesson.VideoUrl1 != null ? (p.Lesson.VideoUrl1.StartsWith("http") ? p.Lesson.VideoUrl1 : p.Lesson.VideoUrl1) : null,
-            p.Lesson.VideoUrl2 != null ? (p.Lesson.VideoUrl2.StartsWith("http") ? p.Lesson.VideoUrl2 : p.Lesson.VideoUrl2) : null,
-            p.Lesson.VideoUrl3 != null ? (p.Lesson.VideoUrl3.StartsWith("http") ? p.Lesson.VideoUrl3 : p.Lesson.VideoUrl3) : null,
-            p.Lesson.VideoUrl4 != null ? (p.Lesson.VideoUrl4.StartsWith("http") ? p.Lesson.VideoUrl4 : p.Lesson.VideoUrl4) : null,
-            p.Lesson.VideoUrl5 != null ? (p.Lesson.VideoUrl5.StartsWith("http") ? p.Lesson.VideoUrl5 : p.Lesson.VideoUrl5) : null,
-            p.Lesson.ExternalVideoUrl1,
-            p.Lesson.ExternalVideoUrl2,
-            p.Lesson.ExternalVideoUrl3,
-            p.Lesson.ExternalVideoUrl4,
-            p.Lesson.ExternalVideoUrl5,
-            p.Lesson.ShowVideo1,
-            p.Lesson.ShowVideo2,
-            p.Lesson.ShowVideo3,
-            p.Lesson.ShowVideo4,
-            p.Lesson.ShowVideo5,
-            p.Lesson.ShowQuiz1,
-            p.Lesson.ShowQuiz2,
-            p.Lesson.ShowQuiz3,
-            p.Lesson.ShowQuiz4,
-            p.Lesson.ShowQuiz5,
-            p.Lesson.Section1Title ?? "1. Giới thiệu bài học",
-            p.Lesson.Section2Title ?? "2. Bài giảng chi tiết",
-            p.Lesson.Section3Title ?? "3. Phần ôn tập",
-            p.Lesson.Section4Title ?? "4. Câu hỏi tự luận",
-            p.Lesson.Section5Title ?? "5. Phần bổ sung",
-            p.Lesson.LessonType,
-            p.IsCompleted,
-            p.CompletedAt
+            lesson.Overview,
+            lesson.Content,
+            lesson.ReviewContent,
+            lesson.EssayQuestion,
+            lesson.VideoUrl1 != null ? (lesson.VideoUrl1.StartsWith("http") ? lesson.VideoUrl1 : lesson.VideoUrl1) : null,
+            lesson.VideoUrl2 != null ? (lesson.VideoUrl2.StartsWith("http") ? lesson.VideoUrl2 : lesson.VideoUrl2) : null,
+            lesson.VideoUrl3 != null ? (lesson.VideoUrl3.StartsWith("http") ? lesson.VideoUrl3 : lesson.VideoUrl3) : null,
+            lesson.VideoUrl4 != null ? (lesson.VideoUrl4.StartsWith("http") ? lesson.VideoUrl4 : lesson.VideoUrl4) : null,
+            lesson.VideoUrl5 != null ? (lesson.VideoUrl5.StartsWith("http") ? lesson.VideoUrl5 : lesson.VideoUrl5) : null,
+            lesson.ExternalVideoUrl1,
+            lesson.ExternalVideoUrl2,
+            lesson.ExternalVideoUrl3,
+            lesson.ExternalVideoUrl4,
+            lesson.ExternalVideoUrl5,
+            lesson.ShowVideo1,
+            lesson.ShowVideo2,
+            lesson.ShowVideo3,
+            lesson.ShowVideo4,
+            lesson.ShowVideo5,
+            lesson.ShowQuiz1,
+            lesson.ShowQuiz2,
+            lesson.ShowQuiz3,
+            lesson.ShowQuiz4,
+            lesson.ShowQuiz5,
+            lesson.Section1Title ?? "1. Giới thiệu bài học",
+            lesson.Section2Title ?? "2. Bài giảng chi tiết",
+            lesson.Section3Title ?? "3. Phần ôn tập",
+            lesson.Section4Title ?? "4. Câu hỏi tự luận",
+            lesson.Section5Title ?? "5. Phần bổ sung",
+            lesson.LessonType,
+            isCompleted,
+            completedAt
         );
         }).ToList();
 
@@ -242,14 +260,26 @@ public class LearningController : ControllerBase
             ? (course.IntroVideoUrl.StartsWith("http") ? course.IntroVideoUrl : course.IntroVideoUrl)
             : null;
 
+        var completedCount = lessonDtos.Count(l => l.IsCompleted);
+        var totalCount = lessonDtos.Count;
+        var progressPct = totalCount > 0 ? Math.Round((double)completedCount / totalCount * 100, 2) : enrollment.ProgressPercentage;
+        if (totalCount > 0 && Math.Abs(enrollment.ProgressPercentage - progressPct) > 0.01)
+        {
+            enrollment.ProgressPercentage = progressPct;
+            await _context.SaveChangesAsync();
+        }
+
         return Ok(new UserCourseProgressDto(
             courseId,
             enrollment.Course.Title,
-            enrollment.ProgressPercentage,
+            enrollment.Course.CourseCode,
+            enrollment.Course.StartDate,
+            progressPct,
             lessonDtos,
             course.ShowIntroVideo,
             introVideoUrl,
-            course.IntroExternalVideoUrl
+            course.IntroExternalVideoUrl,
+            course.Description
         ));
     }
 }

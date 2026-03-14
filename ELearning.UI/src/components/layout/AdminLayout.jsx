@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Building2, Users, BookOpen,
-  Settings, LogOut, Menu, X, Bell, UserCircle, ChevronDown, User as UserIcon, Lock, Mail
+  Menu, X, LogOut, ChevronDown, User as UserIcon, Lock, Mail
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
@@ -31,6 +32,11 @@ const AdminLayout = ({ children }) => {
 
   const isSuperAdmin = user.roles?.includes('SuperAdmin');
 
+  const getInitials = (name) => {
+    if (!name) return 'AD';
+    return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  };
+
   // Phân quyền Menu dựa trên Role
   const menuItems = isSuperAdmin ? [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Tổng quan hệ thống' },
@@ -38,18 +44,11 @@ const AdminLayout = ({ children }) => {
     { path: '/admin/users', icon: Users, label: 'Người dùng toàn hệ thống' },
     { path: '/admin/courses', icon: BookOpen, label: 'Khóa học' },
     { path: '/admin/categories', icon: BookOpen, label: 'Danh mục khóa học' },
-    { path: '/admin/settings', icon: Settings, label: 'Cài đặt hệ thống' },
   ] : [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Bảng điều khiển' },
     { path: `/admin/company-users/${user.subDomain || 'default'}`, icon: Users, label: 'Quản lý Nhân viên' },
     { path: '/admin/company-courses', icon: BookOpen, label: 'Khóa học' },
-    { path: '/admin/settings', icon: Settings, label: 'Cài đặt công ty' },
   ];
-
-  const getInitials = (name) => {
-    if (!name) return 'AD';
-    return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-  };
 
   return (
     <div className="min-h-screen d-flex" style={{ backgroundColor: '#f8fafc' }}>
@@ -63,34 +62,13 @@ const AdminLayout = ({ children }) => {
         }}
       >
         <div className="p-4 d-flex align-items-center gap-3 border-bottom" style={{ borderColor: '#f1f5f9' }}>
-          <div className="p-2 rounded-2" style={{ backgroundColor: 'rgba(99,102,241,0.12)' }}>
-            <BookOpen size={22} style={{ color: '#6366f1' }} />
+          <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden flex-shrink-0" style={{ width: 40, height: 40 }}>
+            <img src="/h_logo.png" alt="Logo" className="w-100 h-100 object-fit-contain" />
           </div>
           <span className="fw-bold" style={{ fontSize: '1.1rem', color: '#1e293b' }}>E-Learning CMS</span>
         </div>
 
         <div className="p-3">
-          <div 
-            className="d-flex align-items-center gap-3 p-3 rounded-3 mb-4 cursor-pointer"
-            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}
-            onClick={() => setUserMenuOpen(!isUserMenuOpen)}
-          >
-            <div 
-              className="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0 fw-bold"
-              style={{ width: 44, height: 44, backgroundColor: '#6366f1', color: 'white', fontSize: '0.9rem' }}
-            >
-              {getInitials(user.fullName)}
-            </div>
-            <div className="flex-grow-1 min-w-0">
-              <div className="fw-bold text-truncate" style={{ fontSize: '0.9rem', color: '#1e293b' }}>{user.fullName || 'Admin'}</div>
-              <div className="text-truncate small" style={{ fontSize: '0.75rem', color: '#64748b' }}>{user.email || user.account || 'admin@example.com'}</div>
-            </div>
-            <ChevronDown size={18} className="flex-shrink-0" style={{ color: '#94a3b8' }} />
-          </div>
-
-          <small className="text-uppercase fw-semibold mb-2 d-block px-2" style={{ fontSize: '0.65rem', color: '#94a3b8', letterSpacing: '0.05em' }}>
-            {isSuperAdmin ? 'QUẢN TRỊ HỆ THỐNG' : 'QUẢN TRỊ CÔNG TY'}
-          </small>
           <nav className="nav flex-column gap-0">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path || (item.path.includes('courses') && location.pathname.startsWith('/admin/courses'));
@@ -112,15 +90,6 @@ const AdminLayout = ({ children }) => {
           </nav>
         </div>
 
-        <div className="mt-auto p-3 border-top" style={{ borderColor: '#f1f5f9' }}>
-          <button 
-            onClick={handleLogout} 
-            className="btn w-100 d-flex align-items-center justify-content-center gap-2 border-0 rounded-2 py-2 transition-all admin-logout-btn"
-          >
-            <LogOut size={18} />
-            <span className="fw-medium small">Đăng xuất</span>
-          </button>
-        </div>
       </aside>
 
       <main className="flex-grow-1 d-flex flex-column">
@@ -129,7 +98,6 @@ const AdminLayout = ({ children }) => {
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          {/* Logo ở góc trên cùng bên phải */}
           <div className="d-flex align-items-center gap-3">
             <div className="position-relative">
               <div 
@@ -141,15 +109,24 @@ const AdminLayout = ({ children }) => {
                   <div className="fw-bold small mb-0 lh-1">{user.fullName}</div>
                   <div className="text-muted mt-1 lh-1" style={{ fontSize: '0.7rem' }}>{isSuperAdmin ? 'Super Admin' : 'Company Admin'}</div>
                 </div>
-                <div className="bg-white p-1 rounded-circle shadow-sm" style={{ width: '40px', height: '40px' }}>
-                  <img src="/h_logo.png" alt="Logo" className="w-100 h-100 object-fit-contain" />
+                <div 
+                  className="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0 overflow-hidden bg-white p-1"
+                  style={{ width: 40, height: 40 }}
+                >
+                  {!logoError ? (
+                    <img src="/h_logo.png" alt="Logo" className="w-100 h-100 object-fit-contain" onError={() => setLogoError(true)} />
+                  ) : (
+                    <div className="d-flex align-items-center justify-content-center w-100 h-100 rounded-2 fw-bold" style={{ backgroundColor: '#6366f1', color: 'white', fontSize: '0.9rem' }}>
+                      {getInitials(user.fullName)}
+                    </div>
+                  )}
                 </div>
                 <ChevronDown size={16} className="text-muted ms-1" />
               </div>
 
               {isUserMenuOpen && (
                 <>
-                  <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 999 }} onClick={() => setUserMenuOpen(false)}></div>
+                  <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 999 }} onClick={() => setUserMenuOpen(false)} />
                   <div className="position-absolute end-0 mt-3 bg-white rounded-4 shadow-lg border overflow-hidden" style={{ minWidth: '240px', zIndex: 1000 }}>
                     <div className="p-3 border-bottom bg-light">
                       <div className="fw-bold text-dark">{user.fullName}</div>
@@ -157,7 +134,6 @@ const AdminLayout = ({ children }) => {
                         <Mail size={14} className="text-primary" /> <span className="text-truncate">{user.email || user.account || 'admin@gmail.com'}</span>
                       </div>
                     </div>
-                    
                     <div className="py-2">
                       <Link to="/admin/profile" className="dropdown-item px-3 py-2 d-flex align-items-center gap-3 text-secondary transition-all" onClick={() => setUserMenuOpen(false)}>
                         <UserIcon size={18} /> <span className="fw-medium small">Hồ sơ cá nhân</span>
@@ -166,7 +142,6 @@ const AdminLayout = ({ children }) => {
                         <Lock size={18} /> <span className="fw-medium small">Đổi mật khẩu</span>
                       </Link>
                     </div>
-
                     <div className="border-top p-2">
                       <button 
                         onClick={handleLogout} 
@@ -192,8 +167,6 @@ const AdminLayout = ({ children }) => {
         .admin-nav-active:hover { background-color: rgba(99,102,241,0.18) !important; color: #6366f1 !important; }
         .admin-nav-item { color: #475569 !important; }
         .admin-nav-item:hover { background-color: #f1f5f9 !important; color: #1e293b !important; }
-        .admin-logout-btn { background-color: transparent; color: #64748b; }
-        .admin-logout-btn:hover { background-color: #fee2e2 !important; color: #dc2626 !important; }
         .dropdown-item:hover { background-color: #f8f9fa; color: #6366f1 !important; }
         .btn-white:hover.text-danger { background-color: #fee2e2; }
         .w-250 { width: 280px; }

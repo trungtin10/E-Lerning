@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Image as ImageIcon, Globe, Loader2, Upload, Mail } from 'lucide-react';
-import api from '../../../api/axios';
+import api, { getUploadUrl } from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 
 const EditCompanyModal = ({ isOpen, onClose, onSuccess, company }) => {
+  const { toast } = useNotify();
   const [formData, setFormData] = useState({
     companyName: '',
     contactEmail: '',
@@ -22,7 +24,7 @@ const EditCompanyModal = ({ isOpen, onClose, onSuccess, company }) => {
         subDomain: company.subDomain || '',
         servicePlan: company.servicePlan || 'Basic'
       });
-      setPreviewUrl(company.logoUrl);
+      setPreviewUrl(company.logoUrl ? getUploadUrl(company.logoUrl) : null);
       setLogoFile(null);
     }
   }, [company]);
@@ -40,7 +42,7 @@ const EditCompanyModal = ({ isOpen, onClose, onSuccess, company }) => {
 
     // Ràng buộc không để trống
     if (!formData.companyName || !formData.subDomain) {
-      alert('Vui lòng điền đầy đủ Tên công ty và Domain.');
+      toast('Vui lòng điền đầy đủ Tên công ty và Domain.', 'warning');
       return;
     }
 
@@ -61,9 +63,9 @@ const EditCompanyModal = ({ isOpen, onClose, onSuccess, company }) => {
       });
       onSuccess();
       onClose();
-      alert('Cập nhật thông tin công ty thành công!');
+      toast('Cập nhật thông tin công ty thành công!', 'success');
     } catch (err) {
-      alert('LỖI: ' + (err.response?.data || 'Lỗi không xác định.'));
+      toast(err.response?.data || 'Lỗi không xác định.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -88,7 +90,12 @@ const EditCompanyModal = ({ isOpen, onClose, onSuccess, company }) => {
                   onClick={() => fileInputRef.current.click()}
                 >
                   {previewUrl ? (
-                    <img src={previewUrl} alt="preview" className="w-100 h-100 object-fit-cover" />
+                    <img
+                      src={previewUrl}
+                      alt="preview"
+                      className="w-100 h-100 object-fit-cover"
+                      onError={() => setPreviewUrl(null)}
+                    />
                   ) : (
                     <ImageIcon size={24} className="text-muted" />
                   )}

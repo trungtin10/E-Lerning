@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNotify } from '../../../context/NotifyContext';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
 import { Search, Plus } from 'lucide-react';
@@ -8,6 +9,7 @@ import EditCompanyModal from './EditCompanyModal';
 import AssignAdminModal from './AssignAdminModal';
 
 const Companies = () => {
+  const { toast, confirm } = useNotify();
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,15 +36,15 @@ const Companies = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa công ty này? Toàn bộ dữ liệu và tài khoản liên quan sẽ bị xóa vĩnh viễn.')) return;
+    const ok = await confirm({ title: 'Xóa công ty', message: 'Bạn có chắc chắn muốn xóa công ty này? Toàn bộ dữ liệu và tài khoản liên quan sẽ bị xóa vĩnh viễn.', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/superadmin/companies/${id}`);
+      toast('Đã xóa công ty thành công.', 'success');
       fetchCompanies();
-      alert('Đã xóa công ty thành công.');
     } catch (err) {
-      // HIỂN THỊ LỖI CHI TIẾT
       const errorMsg = err.response?.data || 'Lỗi không xác định khi xóa.';
-      alert('LỖI XÓA: ' + (typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)));
+      toast(typeof errorMsg === 'string' ? errorMsg : 'Lỗi khi xóa công ty.', 'error');
     }
   };
 

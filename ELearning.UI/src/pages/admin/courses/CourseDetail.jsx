@@ -5,7 +5,7 @@ import api from '../../../api/axios';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import TiptapEditor from '../../../components/common/TiptapEditor';
 import VideoPlayer from '../../../components/common/VideoPlayer';
-import Toast from '../../../components/common/Toast';
+import { useNotify } from '../../../context/NotifyContext';
 import QuizSectionInline from '../../../components/admin/QuizSectionInline';
 import {
   Plus, Video, FileText, Loader2, ArrowLeft, Trash2, Minus,
@@ -38,9 +38,8 @@ const CourseDetail = () => {
 
   const [isAdding, setIsAdding] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
-  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-
-  const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+  const { toast, confirm } = useNotify();
+  const showToast = toast;
 
   useEffect(() => {
     fetchCourseDetail();
@@ -167,7 +166,8 @@ const CourseDetail = () => {
   };
 
   const handleDeleteVideo = async (fileKey, num) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa video này?')) return;
+    const ok = await confirm({ title: 'Xóa video', message: 'Bạn có chắc chắn muốn xóa video này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       if (fileKey === 'intro') {
         await api.delete(`/course/${id}/video`);
@@ -202,9 +202,10 @@ const CourseDetail = () => {
     }));
   };
 
-  const removeSection = (index) => {
+  const removeSection = async (index) => {
     if (editData.sections.length <= 1) return;
-    if (!window.confirm('Xóa phần này?')) return;
+    const ok = await confirm({ title: 'Xóa phần', message: 'Xóa phần này?', confirmText: 'Xóa' });
+    if (!ok) return;
     setEditData(prev => ({
       ...prev,
       sections: prev.sections.filter((_, i) => i !== index)
@@ -322,7 +323,8 @@ const CourseDetail = () => {
 
   const handleDeleteLesson = async (e, lessonId) => {
     e.stopPropagation();
-    if (!window.confirm('Xóa bài học này?')) return;
+    const ok = await confirm({ title: 'Xóa bài học', message: 'Xóa bài học này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/course/lessons/${lessonId}`);
       if (activeItem.type === 'ls' && activeItem.data.id === lessonId) setActiveItem({ type: 'intro' });
@@ -345,11 +347,6 @@ const CourseDetail = () => {
 
   return (
     <AdminLayout>
-      {toast.show && (
-        <div className="position-fixed top-0 end-0 p-4" style={{ zIndex: 9999 }}>
-          <Toast message={toast.message} type={toast.type} onClose={() => setToast(prev => ({ ...prev, show: false }))} />
-        </div>
-      )}
       <div className="mb-4 d-flex align-items-center justify-content-between">
         <div className="d-flex align-items-center gap-3">
           <button className="btn btn-light rounded-circle p-2 shadow-sm" onClick={() => navigate(location.state?.from || '/admin/courses')}><ArrowLeft size={20} /></button>

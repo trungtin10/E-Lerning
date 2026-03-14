@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, BookOpen, Layers, Globe, Loader2, Hash, Calendar, Building2 } from 'lucide-react';
 import api from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 
 const EditCourseModal = ({ isOpen, onClose, onSuccess, course }) => {
+  const { toast } = useNotify();
   const [formData, setFormData] = useState({
     courseCode: '',
     title: '',
@@ -74,7 +76,7 @@ const EditCourseModal = ({ isOpen, onClose, onSuccess, course }) => {
       onClose();
     } catch (err) {
       const errorMsg = err.response?.data || 'Lỗi khi cập nhật khóa học.';
-      alert('LỖI: ' + (typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)));
+      toast(typeof errorMsg === 'string' ? errorMsg : 'Lỗi khi cập nhật khóa học.', 'error');
     } finally {
       setSubmitting(false);
     }

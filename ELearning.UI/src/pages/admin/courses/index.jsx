@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
 import { Search, Plus, Filter, X } from 'lucide-react';
+import { useNotify } from '../../../context/NotifyContext';
 import CourseTable from './CourseTable';
 import AddCourseModal from './AddCourseModal';
 import EditCourseModal from './EditCourseModal';
@@ -47,12 +48,14 @@ const Courses = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa khóa học này?')) return;
+    const ok = await confirm({ title: 'Xóa khóa học', message: 'Bạn có chắc chắn muốn xóa khóa học này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/course/${id}`);
+      toast('Đã xóa khóa học thành công.', 'success');
       fetchCourses();
     } catch (err) {
-      alert('Lỗi khi xóa khóa học.');
+      toast('Lỗi khi xóa khóa học.', 'error');
     }
   };
 

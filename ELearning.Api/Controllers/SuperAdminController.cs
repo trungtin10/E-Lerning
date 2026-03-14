@@ -55,7 +55,7 @@ public class SuperAdminController : ControllerBase
             return $"{proto}://{forwardedHost}";
         }
 
-        var host = Request.Host.Value;
+        var host = Request.Host.Value ?? string.Empty;
         if (host.Contains("localhost:5211"))
         {
             return $"{Request.Scheme}://{host.Replace("5211", "5173")}";

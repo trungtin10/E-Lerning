@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
+import { useNotify } from '../../../context/NotifyContext';
 import {
   Plus, Trash2, Save, ArrowLeft, HelpCircle, X,
   CheckCircle2, Circle, Loader2, AlertCircle, Settings
@@ -10,6 +11,7 @@ import {
 const QuizBuilder = () => {
   const { id } = useParams(); // CourseId
   const navigate = useNavigate();
+  const { toast, confirm } = useNotify();
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +52,7 @@ const QuizBuilder = () => {
     } catch (err) {
       console.error("Lỗi khi tải bài kiểm tra:", err);
       const errorMsg = err.response?.data;
-      alert("LỖI: " + (typeof errorMsg === 'string' ? errorMsg : "Không thể kết nối đến máy chủ."));
+      toast((typeof errorMsg === 'string' ? errorMsg : "Không thể kết nối đến máy chủ."), 'error');
     } finally {
       setLoading(false);
     }
@@ -94,12 +96,26 @@ const QuizBuilder = () => {
     } catch (err) { alert('Lỗi khi lưu câu hỏi.'); } finally { setSubmitting(false); }
   };
 
+  const handleEditQuestion = (q) => {
+    setEditingQuestion(q);
+    setQuestionData({
+      content: q.content,
+      questionType: q.questionType ?? 'SingleChoice',
+      answers: (q.answers || []).length > 0
+        ? q.answers.map(a => ({ content: a.content, isCorrect: a.isCorrect }))
+        : [{ content: '', isCorrect: true }, { content: '', isCorrect: false }, { content: '', isCorrect: false }, { content: '', isCorrect: false }]
+    });
+    setShowForm(true);
+  };
+
   const handleDeleteQuestion = async (qId) => {
-    if (!window.confirm('Xóa câu hỏi này?')) return;
+    const ok = await confirm({ title: 'Xóa câu hỏi', message: 'Xóa câu hỏi này?', confirmText: 'Xóa' });
+    if (!ok) return;
     try {
       await api.delete(`/quiz/questions/${qId}`);
+      toast('Đã xóa câu hỏi.', 'success');
       fetchQuiz();
-    } catch (err) { alert('Lỗi khi xóa.'); }
+    } catch (err) { toast('Lỗi khi xóa.', 'error'); }
   };
 
   const handleSaveQuiz = async () => {
@@ -107,9 +123,9 @@ const QuizBuilder = () => {
     setSubmitting(true);
     try {
       await api.put(`/quiz/update/${quiz.id}`, { passingScore: passingScore, timeLimitMinutes: timeLimitMinutes || null });
-      alert('Đã lưu bài trắc nghiệm!');
+      toast('Đã lưu bài trắc nghiệm!', 'success');
       fetchQuiz();
-    } catch (err) { alert('Lỗi khi lưu.'); } finally { setSubmitting(false); }
+    } catch (err) { toast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
   };
 
   if (loading) return <AdminLayout><div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={48} /></div></AdminLayout>;
@@ -155,7 +171,8 @@ const QuizBuilder = () => {
                 <div className="d-flex justify-content-between align-items-start mb-3">
                   <div className="fw-bold text-dark">Câu {index + 1}: {q.content}</div>
                   <div className="d-flex gap-2">
-                    <button className="btn btn-light btn-sm p-2 rounded-3 text-danger border" onClick={() => handleDeleteQuestion(q.id)}><Trash2 size={16} /></button>
+                    <button className="btn btn-light btn-sm p-2 rounded-3 border" onClick={() => handleEditQuestion(q)} title="Chỉnh sửa câu hỏi"><Settings size={16} /></button>
+                    <button className="btn btn-light btn-sm p-2 rounded-3 text-danger border" onClick={() => handleDeleteQuestion(q.id)} title="Xóa câu hỏi"><Trash2 size={16} /></button>
                   </div>
                 </div>
                 <div className="row g-2">
