@@ -22,6 +22,7 @@ public class SuperAdminController : ControllerBase
     private readonly IEmailService _emailService;
 
     private readonly IConfiguration _config;
+    private readonly IAuditService _audit;
 
     public SuperAdminController(
         ApplicationDbContext context,
@@ -29,7 +30,8 @@ public class SuperAdminController : ControllerBase
         RoleManager<IdentityRole> roleManager,
         IWebHostEnvironment env,
         IEmailService emailService,
-        IConfiguration config)
+        IConfiguration config,
+        IAuditService audit)
     {
         _context = context;
         _userManager = userManager;
@@ -37,6 +39,7 @@ public class SuperAdminController : ControllerBase
         _env = env;
         _emailService = emailService;
         _config = config;
+        _audit = audit;
     }
 
     // Lấy domain động, ưu tiên AppDomain trong config để hỗ trợ ngrok ổn định
@@ -193,8 +196,77 @@ public class SuperAdminController : ControllerBase
         var totalUsers = await _userManager.Users.CountAsync();
         var totalCourses = await _context.Courses.CountAsync();
         var pendingActivations = await _userManager.Users.Where(u => !u.EmailConfirmed).CountAsync();
-        var recentCompanies = await _context.Companies.Where(c => c.SubDomain != "admin").OrderByDescending(c => c.CreatedAt).Take(5).Select(c => new RecentActivityDto(c.CompanyName, $"Đã đăng ký gói {c.ServicePlan}", c.CreatedAt, "Company")).ToListAsync();
+        var recentCompanies = await _context.Companies.Where(c => c.SubDomain != "admin").OrderByDescending(c => c.CreatedAt).Take(5).Select(c => new RecentActivityDto(c.CompanyName, $"Đã đăng ký gói {c.ServicePlan ?? "Basic"}", c.CreatedAt, "Company")).ToListAsync();
         return Ok(new DashboardStatsDto(totalCompanies, activeCompanies, totalUsers, totalCourses, pendingActivations, recentCompanies));
+    }
+
+    [HttpGet("dashboard-analytics")]
+    public async Task<ActionResult<DashboardAnalyticsDto>> GetDashboardAnalytics([FromQuery] int months = 6)
+    {
+        try
+        {
+            var startDate = DateTime.UtcNow.AddMonths(-months);
+            var userGrowthData = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.CreatedAt >= startDate)
+                .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+                .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                .ToListAsync();
+            var userGrowth = userGrowthData.Select(x => new GrowthPointDto($"{x.Year}-{x.Month:D2}", x.Count)).ToList();
+
+            var companyGrowthData = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin" && c.CreatedAt >= startDate)
+                .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+                .OrderBy(x => x.Year).ThenBy(x => x.Month)
+                .ToListAsync();
+            var companyGrowth = companyGrowthData.Select(x => new GrowthPointDto($"{x.Year}-{x.Month:D2}", x.Count)).ToList();
+
+            // Dùng subquery thay vì c.Users.Count để tránh lỗi EF Core translation
+            var userCountsByCompany = await _context.Users
+                .AsNoTracking()
+                .Where(u => u.CompanyId != null)
+                .GroupBy(u => u.CompanyId!.Value)
+                .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+                .ToListAsync();
+            var companiesForTop = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin")
+                .Select(c => new { c.Id, c.CompanyName })
+                .ToListAsync();
+            var topByUsers = companiesForTop
+                .Select(c => new { c.Id, c.CompanyName, Count = userCountsByCompany.FirstOrDefault(x => x.CompanyId == c.Id)?.Count ?? 0 })
+                .OrderByDescending(x => x.Count)
+                .Take(10)
+                .ToList();
+
+            var topByStorage = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin")
+                .OrderByDescending(c => c.StorageUsedBytes)
+                .Take(10)
+                .Select(c => new TopCompanyDto(c.Id, c.CompanyName, (int)(c.StorageUsedBytes / 1024 / 1024)))
+                .ToListAsync();
+
+            var storageList = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin")
+                .Select(c => new CompanyStorageDto(c.Id, c.CompanyName, c.StorageUsedBytes, c.Plan != null ? c.Plan.StorageLimitGB : 10))
+                .OrderByDescending(c => c.StorageUsedBytes)
+                .Take(20)
+                .ToListAsync();
+
+            return Ok(new DashboardAnalyticsDto(userGrowth, companyGrowth,
+                topByUsers.Select(x => new TopCompanyDto(x.Id, x.CompanyName, x.Count)).ToList(),
+                topByStorage,
+                storageList));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Dashboard analytics failed", message = ex.Message });
+        }
     }
 
     [HttpPost("register-tenant")]
@@ -243,6 +315,7 @@ public class SuperAdminController : ControllerBase
                 return BadRequest("Email không tồn tại hoặc không gửi được thư kích hoạt. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
             }
 
+            await _audit.LogAsync("Create", "Company", company.Id.ToString(), null, $"{company.CompanyName} ({company.SubDomain})", "Đăng ký tenant mới");
             return Ok(new { Message = "Thành công!" });
         }
         catch (Exception ex) { return StatusCode(500, $"Lỗi hệ thống: {ex.Message}"); }
@@ -278,6 +351,7 @@ public class SuperAdminController : ControllerBase
                 return BadRequest("Email không tồn tại hoặc không gửi được thư kích hoạt. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
             }
 
+            await _audit.LogAsync("Create", "User", user.Id, null, $"{user.FullName} ({user.UserName})", $"Gán Admin cho công ty {company.CompanyName}");
             return Ok(new { Message = "Đã gửi email kích hoạt!" });
         }
         catch (Exception ex) { return StatusCode(500, $"Lỗi hệ thống: {ex.Message}"); }
@@ -335,6 +409,7 @@ public class SuperAdminController : ControllerBase
                 company.LogoUrl = $"/uploads/{fileName}";
             }
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Update", "Company", id.ToString(), null, $"{company.CompanyName} ({company.SubDomain})");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -352,7 +427,7 @@ public class SuperAdminController : ControllerBase
         {
             return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Lỗi khi xóa người dùng.");
         }
-        
+        await _audit.LogAsync("Delete", "User", userId, user.UserName, null, $"Xóa user {user.FullName} ({user.UserName})");
         return Ok();
     }
 
@@ -368,8 +443,11 @@ public class SuperAdminController : ControllerBase
             foreach (var user in company.Users.ToList()) { await _userManager.DeleteAsync(user); }
             _context.Categories.RemoveRange(company.Categories);
             _context.Departments.RemoveRange(company.Departments);
+            var companyName = company.CompanyName;
+            var subDomain = company.SubDomain;
             _context.Companies.Remove(company);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Delete", "Company", id.ToString(), $"{companyName} ({subDomain})", null, $"Xóa công ty {companyName}");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }

@@ -2,12 +2,17 @@ namespace ELearning.Api.DTOs;
 
 public record LoginDto(string Account, string Password);
 
+public record ForgotPasswordDto(string Email);
+
+public record ResetPasswordDto(string UserId, string Token, string NewPassword);
+
 public record AuthResponseDto(
     string Token,
     string FullName,
     string Account,
     List<string> Roles,
-    int? CompanyId
+    int? CompanyId,
+    string? CompanyLogoUrl = null
 );
 
 public record RegisterDto(

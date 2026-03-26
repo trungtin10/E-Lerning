@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
+import { useLanguage } from '../../context/LanguageContext';
 import { useNotify } from '../../context/NotifyContext';
 import {
   CheckCircle2, Circle, PlayCircle, FileText,
@@ -26,7 +27,8 @@ const ProgressCircle = ({ percentage, size = 36 }) => {
   );
 };
 
-const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
+const QuizSection = ({ courseId, lessonId, section, onComplete, onQuizSubmitted, onToast }) => {
+  const { t } = useLanguage();
   const [quiz, setQuiz] = useState(null);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -50,17 +52,28 @@ const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
     }
     setSubmitting(true);
     try {
-      let correct = 0;
-      quiz.questions.forEach(q => {
-        const ans = q.answers.find(a => a.isCorrect);
-        if (ans && selectedAnswers[q.id] === ans.id) correct++;
+      const selectedAnswersList = Object.entries(selectedAnswers).map(([questionId, answerId]) => ({
+        questionId: parseInt(questionId, 10),
+        answerId
+      }));
+      const res = await api.post('/quiz/submit', {
+        quizId: quiz.id,
+        selectedAnswers: selectedAnswersList
       });
-      const score = Math.round((correct / quiz.questions.length) * 100);
-      const passed = score >= (quiz.passingScore || 80);
-      setResult({ score, isPassed: passed, correctCount: correct, total: quiz.questions.length });
-      if (onComplete) onComplete(passed);
-    } catch { onToast?.('Lỗi khi nộp bài.', 'error'); }
-    finally { setSubmitting(false); }
+      const { score, isPassed, correctAnswers, totalQuestions } = res.data;
+      setResult({
+        score,
+        isPassed,
+        correctCount: correctAnswers,
+        total: totalQuestions
+      });
+      if (onComplete) onComplete(isPassed);
+      if (onQuizSubmitted) onQuizSubmitted({ quizId: quiz.id, score, isPassed, correctAnswers, totalQuestions });
+    } catch (err) {
+      onToast?.(err.response?.data?.error ?? 'Lỗi khi nộp bài.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!quiz || !quiz.questions || quiz.questions.length === 0) return null;
@@ -70,10 +83,10 @@ const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
       <div className={`p-4 rounded-4 border ${result.isPassed ? 'bg-success bg-opacity-10 border-success' : 'bg-danger bg-opacity-10 border-danger'}`}>
         <div className="text-center">
           <div className={`display-4 fw-bold mb-2 ${result.isPassed ? 'text-success' : 'text-danger'}`}>{result.score}%</div>
-          <h5 className="fw-bold">{result.isPassed ? 'Chúc mừng! Bạn đã đạt.' : 'Rất tiếc! Bạn cần cố gắng hơn.'}</h5>
-          <p className="mb-3 text-secondary">Số câu đúng: {result.correctCount}/{result.total}</p>
+          <h5 className="fw-bold">{result.isPassed ? t('quizPassed') : t('quizFailed')}</h5>
+          <p className="mb-3 text-secondary">{t('correctCount')}: {result.correctCount}/{result.total}</p>
           {!result.isPassed && (
-            <button className="btn btn-outline-danger btn-sm rounded-pill px-4" onClick={() => { setResult(null); setSelectedAnswers({}); }}>Làm lại</button>
+            <button className="btn btn-outline-danger btn-sm rounded-pill px-4" onClick={() => { setResult(null); setSelectedAnswers({}); }}>{t('retry')}</button>
           )}
         </div>
       </div>
@@ -84,7 +97,7 @@ const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
     <div>
       <div className="d-flex align-items-center gap-2 mb-4">
         <HelpCircle className="text-primary" size={24} />
-        <h5 className="fw-bold mb-0">Bài tập trắc nghiệm</h5>
+        <h5 className="fw-bold mb-0">{t('quiz')}</h5>
       </div>
       <div className="d-flex flex-column gap-4">
         {quiz.questions.map((q, idx) => (
@@ -111,7 +124,7 @@ const QuizSection = ({ courseId, lessonId, section, onComplete, onToast }) => {
       </div>
       <div className="mt-5 text-center">
         <button className="btn btn-primary px-5 py-2 rounded-pill fw-bold shadow-lg" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? <Loader2 className="animate-spin me-2" size={18} /> : <FileText className="me-2" size={18} />} Nộp bài
+          {submitting ? <Loader2 className="animate-spin me-2" size={18} /> : <FileText className="me-2" size={18} />} {t('submitQuiz')}
         </button>
       </div>
     </div>
@@ -131,6 +144,10 @@ const LearningView = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useNotify();
+  const sessionStartRef = useRef(null);
+  const activeMsRef = useRef(0);
+  const lastTickRef = useRef(null);
+  const lastActivityRef = useRef(null);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -145,14 +162,28 @@ const LearningView = () => {
   const [sectionProgress, setSectionProgress] = useState({});
   const [initialised, setInitialised] = useState(false);
   const [headerTab, setHeaderTab] = useState('content');
+  const [sectionViewMode, setSectionViewMode] = useState('content'); // 'content' | 'video' | 'quiz'
   const introFromUrlRef = useRef(false);
 
+  const { lang, t } = useLanguage();
+
+  const trackEvent = useCallback((eventType, entityType, entityId, metadata) => {
+    if (!courseId) return;
+    api.post('/learning/track-event', {
+      courseId: parseInt(courseId, 10),
+      eventType,
+      entityType: entityType || null,
+      entityId: entityId != null ? String(entityId) : null,
+      metadata: metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)).slice(0, 500) : null
+    }).catch(() => {});
+  }, [courseId]);
+
   const headerTabs = [
-    { id: 'content', label: 'Nội dung', icon: BookOpen },
-    { id: 'progress', label: 'Tiến độ', icon: Award },
-    { id: 'dates', label: 'Ngày quan trọng', icon: Calendar },
-    { id: 'discussion', label: 'Thảo luận', icon: MessageSquare },
-    { id: 'notes', label: 'Ghi chú', icon: StickyNote }
+    { id: 'content', labelKey: 'tabContent', icon: BookOpen },
+    { id: 'progress', labelKey: 'tabProgress', icon: Award },
+    { id: 'dates', labelKey: 'tabDates', icon: Calendar },
+    { id: 'discussion', labelKey: 'tabDiscussion', icon: MessageSquare },
+    { id: 'notes', labelKey: 'tabNotes', icon: StickyNote }
   ];
 
   useEffect(() => {
@@ -160,6 +191,104 @@ const LearningView = () => {
     if (saved) {
       try { setSectionProgress(JSON.parse(saved)); } catch { /* ignore */ }
     }
+  }, [courseId]);
+
+  // Track thời gian học thực tế (active time): chỉ cộng khi tab visible và có hoạt động gần đây.
+  useEffect(() => {
+    if (!courseId) return;
+    const now = Date.now();
+    sessionStartRef.current = now;
+    lastTickRef.current = now;
+    lastActivityRef.current = now;
+    activeMsRef.current = 0;
+
+    const IDLE_THRESHOLD_MS = 2 * 60 * 1000; // 2 phút không tương tác thì không tính thời gian học
+
+    const markActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const sendSession = (minutes) => {
+      if (minutes < 1) return;
+      const token = localStorage.getItem('token');
+      const base = api.defaults.baseURL || '/api';
+      const url = base.startsWith('http') ? `${base.replace(/\/$/, '')}/learning/record-session` : `${window.location.origin}/api/learning/record-session`;
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ courseId: parseInt(courseId, 10), minutes }),
+        keepalive: true
+      }).catch(() => {});
+    };
+
+    const flushActiveTime = () => {
+      const t = Date.now();
+      const minutes = Math.floor(activeMsRef.current / 60000);
+      if (minutes >= 1) {
+        sendSession(minutes);
+        activeMsRef.current = activeMsRef.current - (minutes * 60000);
+      }
+      lastTickRef.current = t;
+    };
+
+    const tick = () => {
+      const t = Date.now();
+      const lastTick = lastTickRef.current ?? t;
+      const delta = Math.max(0, t - lastTick);
+      lastTickRef.current = t;
+
+      if (document.visibilityState !== 'visible') return;
+      const lastActivity = lastActivityRef.current ?? t;
+      const idleFor = t - lastActivity;
+      if (idleFor <= IDLE_THRESHOLD_MS) {
+        activeMsRef.current += delta;
+      }
+
+      const minutes = Math.floor(activeMsRef.current / 60000);
+      if (minutes >= 5) {
+        sendSession(minutes);
+        activeMsRef.current = activeMsRef.current - (minutes * 60000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        tick();
+        flushActiveTime();
+      } else {
+        markActivity();
+        lastTickRef.current = Date.now();
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      tick();
+      flushActiveTime();
+    };
+
+    const interval = setInterval(tick, 30000);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('mousemove', markActivity, { passive: true });
+    window.addEventListener('mousedown', markActivity, { passive: true });
+    window.addEventListener('keydown', markActivity);
+    window.addEventListener('scroll', markActivity, { passive: true });
+    window.addEventListener('touchstart', markActivity, { passive: true });
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('mousemove', markActivity);
+      window.removeEventListener('mousedown', markActivity);
+      window.removeEventListener('keydown', markActivity);
+      window.removeEventListener('scroll', markActivity);
+      window.removeEventListener('touchstart', markActivity);
+
+      tick();
+      flushActiveTime();
+    };
   }, [courseId]);
 
   const saveSP = useCallback((next) => {
@@ -215,6 +344,7 @@ const LearningView = () => {
     introFromUrlRef.current = false;
     fetchProgress().then(d => {
       if (!d) return;
+      trackEvent('PageEnter', 'Course', String(courseId), null);
       const introP = searchParams.get('intro');
       const lessonP = searchParams.get('lesson');
       const sectionP = searchParams.get('section');
@@ -228,14 +358,25 @@ const LearningView = () => {
           setActiveLesson(lesson);
           setExpandedLessonId(lesson.lessonId);
           setActiveSection(sectionP ? parseInt(sectionP) : 1);
+          trackEvent('LessonViewed', 'Lesson', String(lesson.lessonId), JSON.stringify({ lessonTitle: lesson.title }));
+          if (sectionP) trackEvent('SectionViewed', 'Section', `${lesson.lessonId}_${sectionP}`, JSON.stringify({ lessonTitle: lesson.title, sectionNum: parseInt(sectionP) }));
         }
       } else {
-        const first = d.lessons.find(l => !l.isCompleted) || d.lessons[0];
-        if (first) {
-          setActiveLesson(first);
-          setExpandedLessonId(first.lessonId);
-          const secs = getSections(first);
-          setActiveSection(secs.length > 0 ? secs[0].num : 1);
+        const hasIntro = d.description || (d.showIntroVideo && (d.introVideoUrl || d.introExternalVideoUrl));
+        if (hasIntro) {
+          introFromUrlRef.current = true;
+          setShowIntro(true);
+        } else {
+          const first = d.lessons.find(l => !l.isCompleted) || d.lessons[0];
+          if (first) {
+            setActiveLesson(first);
+            setExpandedLessonId(first.lessonId);
+            const secs = getSections(first);
+            const secNum = secs.length > 0 ? secs[0].num : 1;
+            setActiveSection(secNum);
+            trackEvent('LessonViewed', 'Lesson', String(first.lessonId), JSON.stringify({ lessonTitle: first.title }));
+            trackEvent('SectionViewed', 'Section', `${first.lessonId}_${secNum}`, JSON.stringify({ lessonTitle: first.title, sectionNum: secNum }));
+          }
         }
       }
       setInitialised(true);
@@ -258,7 +399,10 @@ const LearningView = () => {
   const getVideo = (lesson, num) => {
     if (lesson.sections && lesson.sections[num - 1]) {
       const s = lesson.sections[num - 1];
-      return { url: s.videoUrl, ext: null, show: s.showVideo };
+      const urls = (s.videoUrls ?? s.VideoUrls) ?? [];
+      const single = (s.videoUrl ?? s.VideoUrl) || '';
+      const urlList = (Array.isArray(urls) && urls.length > 0) ? urls : (single ? [single] : []);
+      return { urls: urlList, ext: null, show: s.showVideo ?? s.ShowVideo };
     }
     const map = {
       1: { url: lesson.videoUrl1, ext: lesson.externalVideoUrl1, show: lesson.showVideo1 },
@@ -267,7 +411,8 @@ const LearningView = () => {
       4: { url: lesson.videoUrl4, ext: lesson.externalVideoUrl4, show: lesson.showVideo4 },
       5: { url: lesson.videoUrl5, ext: lesson.externalVideoUrl5, show: lesson.showVideo5 },
     };
-    return map[num] || { url: null, ext: null, show: false };
+    const m = map[num] || { url: null, ext: null, show: false };
+    return { urls: m.url ? [m.url] : [], ext: m.ext, show: m.show };
   };
   const getQuiz = (lesson, num) => {
     if (lesson.sections && lesson.sections[num - 1]) return lesson.sections[num - 1].showQuiz;
@@ -280,6 +425,9 @@ const LearningView = () => {
       return;
     }
     setExpandedLessonId(lesson.lessonId);
+    if (lesson?.lessonId) {
+      trackEvent('LessonViewed', 'Lesson', String(lesson.lessonId), JSON.stringify({ lessonTitle: lesson.title }));
+    }
   };
 
   const toggleBookmark = () => {
@@ -294,16 +442,21 @@ const LearningView = () => {
   };
 
   const isBookmarked = () => {
-    const key = showIntro ? 'intro' : (activeLesson ? `${activeLesson.lessonId}_${activeSection}` : null);
+    const suffix = sectionViewMode !== 'content' ? `_${sectionViewMode}` : '';
+    const key = showIntro ? 'intro' : (activeLesson ? `${activeLesson.lessonId}_${activeSection}${suffix}` : null);
     return key ? bookmarked.has(key) : false;
   };
 
-  const handleSelectSection = (lesson, sectionNum) => {
+  const handleSelectSection = (lesson, sectionNum, viewMode = 'content') => {
     introFromUrlRef.current = false;
     setActiveLesson(lesson);
     setActiveSection(sectionNum);
+    setSectionViewMode(viewMode);
     setShowIntro(false);
     setFinishedVideos(new Set());
+    if (lesson?.lessonId) {
+      trackEvent('SectionViewed', 'Section', `${lesson.lessonId}_${sectionNum}`, JSON.stringify({ lessonTitle: lesson.title, sectionNum }));
+    }
     const savedVids = localStorage.getItem(`sp_${courseId}`);
     if (savedVids) {
       try {
@@ -325,16 +478,37 @@ const LearningView = () => {
 
   const goNext = async () => {
     if (!activeLesson || !data) return;
-    markSectionDone(activeLesson.lessonId, activeSection);
     const sections = getSections(activeLesson);
-    const idx = sections.findIndex(s => s.num === activeSection);
+    const sec = sections.find(s => s.num === activeSection);
 
+    if (sectionViewMode === 'content') {
+      if (sec?.hasVideo) {
+        setSectionViewMode('video');
+        markSectionDone(activeLesson.lessonId, activeSection);
+        return;
+      }
+      if (sec?.hasQuiz) {
+        setSectionViewMode('quiz');
+        markSectionDone(activeLesson.lessonId, activeSection);
+        return;
+      }
+    } else if (sectionViewMode === 'video') {
+      if (sec?.hasQuiz) {
+        setSectionViewMode('quiz');
+        markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
+        return;
+      }
+    }
+    markSectionDone(activeLesson.lessonId, sectionViewMode === 'video' ? `video_${activeSection}` : sectionViewMode === 'quiz' ? `quiz_${activeSection}` : activeSection);
+    const idx = sections.findIndex(s => s.num === activeSection);
     if (idx < sections.length - 1) {
       setActiveSection(sections[idx + 1].num);
+      setSectionViewMode('content');
     } else {
       try {
         if (!activeLesson.isCompleted) {
           await api.post('/learning/complete-lesson', { lessonId: activeLesson.lessonId });
+          trackEvent('LessonCompleted', 'Lesson', String(activeLesson.lessonId), JSON.stringify({ lessonTitle: activeLesson.title }));
         }
       } catch { /* ignore */ }
       const li = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId);
@@ -344,6 +518,7 @@ const LearningView = () => {
         setExpandedLessonId(next.lessonId);
         const ns = getSections(next);
         setActiveSection(ns.length > 0 ? ns[0].num : 1);
+        setSectionViewMode('content');
         setFinishedVideos(new Set());
       }
       fetchProgress().then(d => {
@@ -358,10 +533,27 @@ const LearningView = () => {
   const goPrev = () => {
     if (!activeLesson || !data) return;
     const sections = getSections(activeLesson);
-    const idx = sections.findIndex(s => s.num === activeSection);
+    const sec = sections.find(s => s.num === activeSection);
 
+    if (sectionViewMode === 'quiz') {
+      if (sec?.hasVideo) {
+        setSectionViewMode('video');
+        return;
+      }
+      setSectionViewMode('content');
+      return;
+    }
+    if (sectionViewMode === 'video') {
+      setSectionViewMode('content');
+      return;
+    }
+    const idx = sections.findIndex(s => s.num === activeSection);
     if (idx > 0) {
-      setActiveSection(sections[idx - 1].num);
+      const prevSec = sections[idx - 1];
+      setActiveSection(prevSec.num);
+      if (prevSec.hasQuiz) setSectionViewMode('quiz');
+      else if (prevSec.hasVideo) setSectionViewMode('video');
+      else setSectionViewMode('content');
     } else {
       const li = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId);
       if (li > 0) {
@@ -369,14 +561,55 @@ const LearningView = () => {
         setActiveLesson(prev);
         setExpandedLessonId(prev.lessonId);
         const ps = getSections(prev);
-        setActiveSection(ps.length > 0 ? ps[ps.length - 1].num : 1);
+        const lastSec = ps.length > 0 ? ps[ps.length - 1] : null;
+        setActiveSection(lastSec ? lastSec.num : 1);
+        if (lastSec?.hasQuiz) setSectionViewMode('quiz');
+        else if (lastSec?.hasVideo) setSectionViewMode('video');
+        else setSectionViewMode('content');
         setFinishedVideos(new Set());
+      } else {
+        const hasIntro = data.description || (data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl));
+        if (hasIntro) {
+          setShowIntro(true);
+        }
       }
     }
   };
 
   const introVideoWatched = sectionProgress['0_video_intro'];
   const introContentViewed = sectionProgress['intro_content'];
+
+  /* Tính tiến độ dựa trên tổng số mục (content + video + quiz) và phân chia % đều */
+  const computedProgress = React.useMemo(() => {
+    if (!data?.lessons) return data?.progressPercentage ?? 0;
+    let total = 0;
+    let completed = 0;
+    if (data.description || data.showIntroVideo) {
+      total += 1;
+      if (sectionProgress['intro_content']) completed += 1;
+    }
+    if (data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl)) {
+      total += 1;
+      if (sectionProgress['0_video_intro']) completed += 1;
+    }
+    (data.lessons || []).forEach((l) => {
+      const secs = getSections(l);
+      secs.forEach((sec) => {
+        total += 1;
+        if (sectionProgress[`${l.lessonId}_${sec.num}`]) completed += 1;
+        if (sec.hasVideo) {
+          total += 1;
+          if (sectionProgress[`${l.lessonId}_video_${sec.num}`]) completed += 1;
+        }
+        if (sec.hasQuiz) {
+          total += 1;
+          if (sectionProgress[`${l.lessonId}_quiz_${sec.num}`]) completed += 1;
+        }
+      });
+    });
+    if (total === 0) return data.progressPercentage ?? 0;
+    return Math.round((completed / total) * 1000) / 10;
+  }, [data, sectionProgress, getSections]);
 
   useEffect(() => {
     if (showIntro) {
@@ -393,10 +626,10 @@ const LearningView = () => {
     <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
       <div className="d-flex align-items-start justify-content-between gap-4 p-4 pb-3 border-bottom" style={{ borderColor: '#e9ecef' }}>
         <div className="flex-grow-1">
-          <h2 className="fw-bold mb-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>Giới thiệu học phần</h2>
+          <h2 className="fw-bold mb-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>{t('sectionIntro')}</h2>
           <button type="button" className="btn btn-link p-0 text-body-secondary d-inline-flex align-items-center gap-2 small" onClick={toggleBookmark}>
             <Bookmark size={16} fill={isBookmarked() ? 'currentColor' : 'none'} />
-            Đánh dấu trang này
+            {t('bookmark')}
           </button>
         </div>
       </div>
@@ -406,7 +639,7 @@ const LearningView = () => {
           <div className="lesson-content mb-4" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: data.description }} />
         ) : (
           <p className="text-secondary mb-4" style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
-            Chào mừng bạn đến với khóa học! Hãy xem tổng quan nội dung bên dưới.
+            {t('welcomeCourse')}
           </p>
         )}
 
@@ -414,14 +647,16 @@ const LearningView = () => {
           <div className="mb-4">
             <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
               <Video size={18} className="text-primary" />
-              Video giới thiệu khóa học
-              {introVideoWatched && <span className="badge bg-success rounded-pill ms-2 small">Đã xem ✓</span>}
+              {t('introVideo')}
+              {introVideoWatched && <span className="badge bg-success rounded-pill ms-2 small">{t('watched')} ✓</span>}
             </h6>
             <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
               {data.introVideoUrl ? (
                 <VideoPlayer
                   key={data.introVideoUrl}
                   src={data.introVideoUrl}
+                  onPlay={() => { lastActivityRef.current = Date.now(); }}
+                  onTimeUpdate={() => { lastActivityRef.current = Date.now(); }}
                   onEnded={() => {
                     setSectionProgress(prev => {
                       if (prev['0_video_intro']) return prev;
@@ -456,30 +691,44 @@ const LearningView = () => {
         <div className="mb-4">
           <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
             <BookOpen size={18} className="text-primary" />
-            Tổng quan khóa học
+            {t('courseOverview')}
           </h6>
           {(() => {
             const totalSections = data.lessons.reduce((acc, l) => acc + getSections(l).length, 0) + (data.description ? 1 : 0) + (data.showIntroVideo && (data.introVideoUrl || data.introExternalVideoUrl) ? 1 : 0);
             const completedLessons = data.lessons.filter(l => l.isCompleted).length;
             return (
               <>
-                <div className="row g-3 mb-4">
+                <div className="row g-3 mb-3">
                   <div className="col-4">
                     <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
                       <div className="fw-bold fs-5 text-primary">{data.lessons.length}</div>
-                      <div className="text-muted small">Bài học</div>
+                      <div className="text-muted small">{t('lessonCount')}</div>
                     </div>
                   </div>
                   <div className="col-4">
                     <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
                       <div className="fw-bold fs-5 text-success">{completedLessons}</div>
-                      <div className="text-muted small">Bài đã hoàn thành</div>
+                      <div className="text-muted small">{t('lessonsCompleted')}</div>
                     </div>
                   </div>
                   <div className="col-4">
                     <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
                       <div className="fw-bold fs-5" style={{ color: '#6366f1' }}>{totalSections}</div>
-                      <div className="text-muted small">Phần nội dung</div>
+                      <div className="text-muted small">{t('contentParts')}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="row g-3 mb-4">
+                  <div className="col-6">
+                    <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                      <div className="fw-bold small text-muted">{t('startDate')}</div>
+                      <div className="fw-bold" style={{ color: '#0f172a' }}>{data.startDate ? new Date(data.startDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
+                    </div>
+                  </div>
+                  <div className="col-6">
+                    <div className="text-center p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                      <div className="fw-bold small text-muted">{t('endDate')}</div>
+                      <div className="fw-bold" style={{ color: '#0f172a' }}>{data.endDate ? new Date(data.endDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
                     </div>
                   </div>
                 </div>
@@ -495,18 +744,36 @@ const LearningView = () => {
                         {secs.length > 0 && (
                           <div className="ps-4 pb-2 pt-0">
                             {secs.map((sec) => {
-                              const isDone = sectionProgress[`${l.lessonId}_${sec.num}`] || sectionProgress[`${l.lessonId}_video_${sec.num}`] || sectionProgress[`${l.lessonId}_quiz_${sec.num}`];
+                              const isContentDone = sectionProgress[`${l.lessonId}_${sec.num}`];
+                              const isVideoDone = sectionProgress[`${l.lessonId}_video_${sec.num}`];
+                              const isQuizDone = sectionProgress[`${l.lessonId}_quiz_${sec.num}`];
                               return (
-                                <div key={sec.num} className="d-flex align-items-center justify-content-between gap-2 py-1">
-                                  <div className="d-flex align-items-center gap-2">
-                                    {isDone ? <CheckCircle2 size={14} className="text-success flex-shrink-0" /> : <Circle size={14} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
-                                    <span className="small" style={{ color: '#64748b', fontSize: '0.85rem' }}>{sec.title || `Phần ${sec.num}`}</span>
+                                <React.Fragment key={sec.num}>
+                                  <div className="d-flex align-items-center justify-content-between gap-2 py-1">
+                                    <div className="d-flex align-items-center gap-2">
+                                      {isContentDone ? <CheckCircle2 size={14} className="text-success flex-shrink-0" /> : <Circle size={14} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                      <span className="small" style={{ color: '#64748b', fontSize: '0.85rem' }}>{sec.title || `Phần ${sec.num}`}</span>
+                                    </div>
                                   </div>
-                                  <div className="d-flex gap-1">
-                                    {sec.hasVideo && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.7rem' }}><Video size={10} className="me-1" />Video</span>}
-                                    {sec.hasQuiz && <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.7rem' }}><ClipboardCheck size={10} className="me-1" />Quiz</span>}
-                                  </div>
-                                </div>
+                                  {sec.hasVideo && (
+                                    <div className="d-flex align-items-center justify-content-between gap-2 py-1">
+                                      <div className="d-flex align-items-center gap-2">
+                                        {isVideoDone ? <CheckCircle2 size={14} className="text-success flex-shrink-0" /> : <Circle size={14} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                        <span className="small" style={{ color: '#64748b', fontSize: '0.85rem' }}>{t('video')}</span>
+                                      </div>
+                                      <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.7rem' }}><Video size={10} className="me-1" />Video</span>
+                                    </div>
+                                  )}
+                                  {sec.hasQuiz && (
+                                    <div className="d-flex align-items-center justify-content-between gap-2 py-1">
+                                      <div className="d-flex align-items-center gap-2">
+                                        {isQuizDone ? <CheckCircle2 size={14} className="text-success flex-shrink-0" /> : <Circle size={14} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                        <span className="small" style={{ color: '#64748b', fontSize: '0.85rem' }}>{t('quiz')}</span>
+                                      </div>
+                                      <span className="badge rounded-pill small" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.7rem' }}><ClipboardCheck size={10} className="me-1" />Quiz</span>
+                                    </div>
+                                  )}
+                                </React.Fragment>
                               );
                             })}
                           </div>
@@ -533,7 +800,7 @@ const LearningView = () => {
                 setActiveSection(secs.length > 0 ? secs[0].num : 1);
               }
             }}>
-            Bắt đầu học <ChevronRight size={20} />
+            {t('startLearning')} <ChevronRight size={20} />
           </button>
         </div>
       </div>
@@ -543,7 +810,7 @@ const LearningView = () => {
   const renderSectionContent = () => {
     if (!activeLesson) return (
       <div className="h-100 d-flex align-items-center justify-content-center text-muted">
-        Chọn bài học từ mục lục bên trái
+        {t('selectLesson')}
       </div>
     );
 
@@ -554,6 +821,45 @@ const LearningView = () => {
     const lessonIdx = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId);
     const videoWatched = finishedVideos.has(activeSection);
 
+    /* Trang riêng bài tập trắc nghiệm khi click từ sidebar */
+    if (sectionViewMode === 'quiz' && showQuiz) {
+      return (
+        <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
+          <div className="d-flex align-items-start justify-content-between gap-4 p-4 pb-3 border-bottom" style={{ borderColor: '#e9ecef' }}>
+            <div className="flex-grow-1">
+              <h2 className="fw-bold mb-2 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>
+                <ClipboardCheck size={24} className="text-success" />
+                {t('quiz')}
+              </h2>
+              <p className="text-muted small mb-0">{sectionTitle}</p>
+            </div>
+            <div className="d-flex align-items-center gap-1 flex-shrink-0">
+              <button type="button" className="btn btn-outline-secondary btn-sm rounded-circle p-2" onClick={goPrev} title="Quay lại nội dung">
+                <ChevronLeft size={20} />
+              </button>
+              <button type="button" className="btn btn-outline-secondary btn-sm rounded-circle p-2" onClick={goNext} title="Bài tiếp">
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          </div>
+          <div className="p-4 p-md-5">
+            <QuizSection courseId={courseId} lessonId={activeLesson.lessonId} section={activeSection}
+              onComplete={(passed) => { if (passed) markSectionDone(activeLesson.lessonId, `quiz_${activeSection}`); }}
+              onQuizSubmitted={(data) => trackEvent('QuizSubmitted', 'Quiz', String(data.quizId), JSON.stringify({ score: data.score, isPassed: data.isPassed, correctAnswers: data.correctAnswers, totalQuestions: data.totalQuestions }))}
+              onToast={toast} />
+          </div>
+          <div className="d-flex justify-content-between align-items-center p-4 border-top" style={{ borderColor: '#e9ecef' }}>
+            <button className="btn btn-outline-secondary px-4 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goPrev}>
+              <ChevronLeft size={20} /> {t('backToContent')}
+            </button>
+            <button className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goNext}>
+              {t('next')} <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="mx-auto bg-white rounded-3 border shadow-sm overflow-hidden" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
         {/* Header + Nav arrows + Bookmark */}
@@ -562,7 +868,7 @@ const LearningView = () => {
             <h2 className="fw-bold mb-2" style={{ color: '#1a1a2e', fontSize: '1.5rem' }}>{sectionTitle}</h2>
             <button type="button" className="btn btn-link p-0 text-body-secondary d-inline-flex align-items-center gap-2 small" onClick={toggleBookmark}>
               <Bookmark size={16} fill={isBookmarked() ? 'currentColor' : 'none'} />
-              Đánh dấu trang này
+              {t('bookmark')}
             </button>
           </div>
           <div className="d-flex align-items-center gap-1 flex-shrink-0">
@@ -576,12 +882,12 @@ const LearningView = () => {
         </div>
 
         <div className="p-4 p-md-5">
-          {/* Mục tiêu bài học - overview (phần giới thiệu) khi có */}
-          {activeLesson.overview && activeSection === 1 && (
+          {/* Mục tiêu bài học - chỉ hiện khi khác với nội dung (tránh lặp) */}
+          {activeLesson.overview && activeSection === 1 && content !== activeLesson.overview && (
             <div className="mb-4">
               <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
                 <FileText size={18} className="text-primary" />
-                Mục tiêu bài học
+                {t('lessonObjectives')}
               </h6>
               <div className="lesson-content" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: activeLesson.overview }} />
             </div>
@@ -592,7 +898,7 @@ const LearningView = () => {
             <div className="mb-4">
               <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
                 <BookOpen size={18} className="text-primary" />
-                Nội dung bài học
+                {t('lessonContent')}
               </h6>
               <div className="lesson-content" style={{ color: '#4a5568', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: content }} />
             </div>
@@ -602,48 +908,45 @@ const LearningView = () => {
             </p>
           )}
 
-          {/* Video */}
-          {video.show && (video.url || video.ext) && (
+          {/* Video nhúng trực tiếp trên trang */}
+          {video.show && ((video.urls?.length > 0) || video.ext) && (
             <div className="mb-4">
               <h6 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#1a1a2e', fontSize: '1rem' }}>
                 <Video size={18} className="text-primary" />
-                Video giới thiệu bài học
-                {video.url && <span className="text-muted small fw-normal">[Video]</span>}
+                {t('videoLecture')}
               </h6>
-              <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
-                {video.url ? (
-                  <VideoPlayer
-                    key={video.url}
-                    src={video.url}
-                    onEnded={() => {
-                      setFinishedVideos(p => new Set([...p, activeSection]));
-                      markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
-                    }}
-                  />
-                ) : (
-                  <div className="position-relative w-100 h-100">
+              <div className="d-flex flex-column gap-4">
+                {(video.urls || []).map((url, vi) => (
+                  <div key={url} className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark">
+                    <VideoPlayer
+                      src={url}
+                      onPlay={() => { lastActivityRef.current = Date.now(); }}
+                      onTimeUpdate={() => { lastActivityRef.current = Date.now(); }}
+                      onEnded={() => {
+                        setFinishedVideos(p => new Set([...p, activeSection]));
+                        markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
+                        trackEvent('VideoCompleted', 'Section', `${activeLesson.lessonId}_${activeSection}`, JSON.stringify({ lessonTitle: activeLesson.title, sectionNum: activeSection }));
+                      }}
+                    />
+                  </div>
+                ))}
+                {video.ext && (
+                  <div className="ratio ratio-16x9 rounded-3 overflow-hidden bg-dark position-relative">
                     <iframe className="w-100 h-100 border-0" src={video.ext} title="Video" allowFullScreen />
                     {!videoWatched && (
                       <button className="btn btn-primary btn-sm position-absolute bottom-0 end-0 m-3 shadow rounded-pill px-3 py-2 fw-bold"
                         onClick={() => {
                           setFinishedVideos(p => new Set([...p, activeSection]));
                           markSectionDone(activeLesson.lessonId, `video_${activeSection}`);
+                          trackEvent('VideoCompleted', 'Section', `${activeLesson.lessonId}_${activeSection}`, JSON.stringify({ lessonTitle: activeLesson.title, sectionNum: activeSection, skipped: true }));
                         }}>
-                        Đã xem xong video <ChevronRight size={14} />
+                        {t('videoWatched')} <ChevronRight size={14} />
                       </button>
                     )}
                   </div>
                 )}
               </div>
-              {videoWatched && <span className="badge bg-success rounded-pill mt-2 small">Đã xem ✓</span>}
-            </div>
-          )}
-
-          {/* Quiz */}
-          {showQuiz && (!video.show || videoWatched) && (
-            <div className="mb-4">
-              <QuizSection courseId={courseId} lessonId={activeLesson.lessonId} section={activeSection}
-                onComplete={(passed) => { if (passed) markSectionDone(activeLesson.lessonId, `quiz_${activeSection}`); }} onToast={toast} />
+              {videoWatched && <span className="badge bg-success rounded-pill mt-2 small">{t('watched')} ✓</span>}
             </div>
           )}
         </div>
@@ -651,10 +954,10 @@ const LearningView = () => {
         {/* Nav buttons dưới */}
         <div className="d-flex justify-content-between align-items-center p-4 border-top" style={{ borderColor: '#e9ecef' }}>
           <button className="btn btn-outline-secondary px-4 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goPrev}>
-            <ChevronLeft size={20} /> Trước
+            <ChevronLeft size={20} /> {t('prev')}
           </button>
           <button className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2" onClick={goNext}>
-            Tiếp theo <ChevronRight size={20} />
+            {t('next')} <ChevronRight size={20} />
           </button>
         </div>
       </div>
@@ -664,7 +967,7 @@ const LearningView = () => {
   if (loading) return (
     <div className="vh-100 d-flex flex-column align-items-center justify-content-center bg-white">
       <Loader2 className="animate-spin text-primary mb-3" size={48} />
-      <h5 className="fw-bold text-secondary">Đang chuẩn bị nội dung học tập...</h5>
+      <h5 className="fw-bold text-secondary">{t('preparingContent')}</h5>
     </div>
   );
 
@@ -728,7 +1031,7 @@ const LearningView = () => {
                 onClick={() => setHeaderTab(tab.id)}
               >
                 <Icon size={16} />
-                {tab.label}
+                {t(tab.labelKey)}
               </button>
             );
           })}
@@ -772,7 +1075,7 @@ const LearningView = () => {
                       onClick={() => setShowIntro(true)}
                     >
                       {introVideoWatched ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
-                      <span style={{ color: '#1e293b', fontSize: '0.9rem', fontWeight: 500 }}>Video giới thiệu</span>
+                      <span style={{ color: '#1e293b', fontSize: '0.9rem', fontWeight: 500 }}>{t('introVideoShort')}</span>
                     </div>
                   )}
                 </div>
@@ -811,25 +1114,59 @@ const LearningView = () => {
                   {isExpanded && (
                     <div className="px-4 pb-3 pt-0" style={{ backgroundColor: '#fff', borderTop: '1px solid #e2e8f0' }}>
                       {sections.map(sec => {
-                        const isActiveSec = isActiveLesson && activeSection === sec.num;
-                        const isDone = sectionProgress[`${lesson.lessonId}_${sec.num}`] || sectionProgress[`${lesson.lessonId}_video_${sec.num}`] || sectionProgress[`${lesson.lessonId}_quiz_${sec.num}`];
+                        const isActiveContent = isActiveLesson && activeSection === sec.num && sectionViewMode === 'content';
+                        const isActiveVideo = isActiveLesson && activeSection === sec.num && sectionViewMode === 'video';
+                        const isActiveQuiz = isActiveLesson && activeSection === sec.num && sectionViewMode === 'quiz';
+                        const isContentDone = sectionProgress[`${lesson.lessonId}_${sec.num}`];
+                        const isVideoDone = sectionProgress[`${lesson.lessonId}_video_${sec.num}`];
+                        const isQuizDone = sectionProgress[`${lesson.lessonId}_quiz_${sec.num}`];
 
                         return (
-                          <div
-                            key={sec.num}
-                            className={`d-flex align-items-center justify-content-between gap-2 py-2 border-bottom cursor-pointer ${isActiveSec ? 'toc-active' : ''}`}
-                            style={{ borderColor: 'rgba(0,0,0,0.06)' }}
-                            onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num); setShowIntro(false); }}
-                          >
-                            <div className="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
-                              {isDone ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
-                              <span className={`small text-truncate ${isActiveSec ? 'fw-semibold' : ''}`} style={{ color: isActiveSec ? '#6366f1' : '#1e293b', fontSize: '0.9rem' }}>{(sec.title || '').replace(/^\d+\.\s*/, '').trim() || sec.title || `Phần ${sec.num}`}</span>
+                          <React.Fragment key={sec.num}>
+                            {/* Dòng nội dung (chỉ text, không video) */}
+                            <div
+                              className={`d-flex align-items-center justify-content-between gap-2 py-2 border-bottom cursor-pointer ${isActiveContent ? 'toc-active' : ''}`}
+                              style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                              onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num, 'content'); setShowIntro(false); }}
+                            >
+                              <div className="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                                {isContentDone ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                <span className={`small text-truncate ${isActiveContent ? 'fw-semibold' : ''}`} style={{ color: isActiveContent ? '#6366f1' : '#1e293b', fontSize: '0.9rem' }}>{(sec.title || '').replace(/^\d+\.\s*/, '').trim() || sec.title || `Phần ${sec.num}`}</span>
+                              </div>
                             </div>
-                            <div className="d-flex gap-1 flex-shrink-0">
-                              {sec.hasVideo && <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.65rem' }}><Video size={10} /></span>}
-                              {sec.hasQuiz && <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.65rem' }}><ClipboardCheck size={10} /></span>}
-                            </div>
-                          </div>
+                            {/* Dòng riêng Video - mở trang riêng khi click */}
+                            {sec.hasVideo && (
+                              <div
+                                className={`d-flex align-items-center justify-content-between gap-2 py-2 border-bottom cursor-pointer ${isActiveVideo ? 'toc-active' : ''}`}
+                                style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                                onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num, 'video'); setShowIntro(false); }}
+                              >
+                                <div className="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                                  {isVideoDone ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                  <span className={`small text-truncate ${isActiveVideo ? 'fw-semibold' : ''}`} style={{ color: isActiveVideo ? '#6366f1' : '#1e293b', fontSize: '0.9rem' }}>{t('video')}</span>
+                                </div>
+                                <div className="d-flex gap-1 flex-shrink-0">
+                                  <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(13,110,253,0.12)', color: '#0d6efd', fontSize: '0.65rem' }}><Video size={10} /></span>
+                                </div>
+                              </div>
+                            )}
+                            {/* Dòng riêng bài tập trắc nghiệm - mở trang riêng khi click */}
+                            {sec.hasQuiz && (
+                              <div
+                                className={`d-flex align-items-center justify-content-between gap-2 py-2 border-bottom cursor-pointer ${isActiveQuiz ? 'toc-active' : ''}`}
+                                style={{ borderColor: 'rgba(0,0,0,0.06)' }}
+                                onClick={(e) => { e.stopPropagation(); handleSelectSection(lesson, sec.num, 'quiz'); setShowIntro(false); }}
+                              >
+                                <div className="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+                                  {isQuizDone ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <Circle size={18} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
+                                  <span className={`small text-truncate ${isActiveQuiz ? 'fw-semibold' : ''}`} style={{ color: isActiveQuiz ? '#6366f1' : '#1e293b', fontSize: '0.9rem' }}>{t('quiz')}</span>
+                                </div>
+                                <div className="d-flex gap-1 flex-shrink-0">
+                                  <span className="badge rounded-pill" style={{ backgroundColor: 'rgba(25,135,84,0.12)', color: '#198754', fontSize: '0.65rem' }}><ClipboardCheck size={10} /></span>
+                                </div>
+                              </div>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </div>
@@ -845,16 +1182,16 @@ const LearningView = () => {
           {headerTab === 'content' && (showIntro ? renderIntro() : renderSectionContent())}
           {headerTab === 'progress' && (
             <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
-              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Award size={22} className="text-primary" /> Tiến độ học tập</h5>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Award size={22} className="text-primary" /> {t('progressTitle')}</h5>
               <div className="progress mb-3" style={{ height: '14px' }}>
-                <div className="progress-bar" style={{ width: `${data.progressPercentage}%`, backgroundColor: data.progressPercentage >= 100 ? '#10b981' : '#6366f1' }} />
+                <div className="progress-bar" style={{ width: `${computedProgress}%`, backgroundColor: computedProgress >= 100 ? '#10b981' : '#6366f1' }} />
               </div>
-              <p className="mb-4 fw-semibold" style={{ color: '#334155' }}>{Math.round(data.progressPercentage)}% đã hoàn thành</p>
+              <p className="mb-4 fw-semibold" style={{ color: '#334155' }}>{Math.round(computedProgress)}% {t('completedPercent')}</p>
               <div className="d-flex flex-column gap-2">
                 {(data.lessons || []).map((l, i) => (
                   <div key={l.lessonId} className="d-flex align-items-center gap-3 p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
                     {l.isCompleted ? <CheckCircle2 size={20} className="text-success" /> : <Circle size={20} style={{ color: '#adb5bd' }} />}
-                    <span className="fw-medium">Bài {i + 1}: {l.title}</span>
+                    <span className="fw-medium">{t('lesson')} {i + 1}: {l.title}</span>
                   </div>
                 ))}
               </div>
@@ -862,11 +1199,15 @@ const LearningView = () => {
           )}
           {headerTab === 'dates' && (
             <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
-              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Calendar size={22} className="text-primary" /> Ngày quan trọng</h5>
+              <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><Calendar size={22} className="text-primary" /> {t('importantDates')}</h5>
               <div className="d-flex flex-column gap-3">
                 <div className="p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
-                  <span className="text-muted small">Ngày khai giảng</span>
-                  <div className="fw-bold" style={{ color: '#0f172a' }}>{data.startDate ? new Date(data.startDate).toLocaleDateString('vi-VN') : '—'}</div>
+                  <span className="text-muted small">{t('startDate')}</span>
+                  <div className="fw-bold" style={{ color: '#0f172a' }}>{data.startDate ? new Date(data.startDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
+                </div>
+                <div className="p-3 rounded-3 border" style={{ backgroundColor: '#f8fafc', borderColor: '#e9ecef' }}>
+                  <span className="text-muted small">{t('endDate')}</span>
+                  <div className="fw-bold" style={{ color: '#0f172a' }}>{data.endDate ? new Date(data.endDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
                 </div>
               </div>
             </div>
@@ -874,13 +1215,13 @@ const LearningView = () => {
           {headerTab === 'discussion' && (
             <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
               <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><MessageSquare size={22} className="text-primary" /> Thảo luận</h5>
-              <p className="text-secondary mb-0">Chức năng thảo luận đang được phát triển.</p>
+              <p className="text-secondary mb-0">{t('discussionDev')}</p>
             </div>
           )}
           {headerTab === 'notes' && (
             <div className="mx-auto bg-white rounded-3 border shadow-sm p-5" style={{ maxWidth: '900px', borderColor: '#e9ecef' }}>
               <h5 className="fw-bold mb-4 d-flex align-items-center gap-2" style={{ color: '#1a1a2e' }}><StickyNote size={22} className="text-primary" /> Ghi chú</h5>
-              <p className="text-secondary mb-0">Chức năng ghi chú đang được phát triển.</p>
+              <p className="text-secondary mb-0">{t('notesDev')}</p>
             </div>
           )}
         </main>

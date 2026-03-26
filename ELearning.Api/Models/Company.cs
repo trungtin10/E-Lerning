@@ -20,10 +20,14 @@ public class Company
     [MaxLength(50)]
     public string? ContactPhone { get; set; }
     public int? MaxUsers { get; set; }
+    public int? ServicePlanId { get; set; }
+    public DateTime? PlanExpiresAt { get; set; }
+    public long StorageUsedBytes { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; // Thêm Ngày cập nhật
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    public virtual ServicePlan? Plan { get; set; }
     public virtual ICollection<Department> Departments { get; set; } = new List<Department>();
     public virtual ICollection<ApplicationUser> Users { get; set; } = new List<ApplicationUser>();
     public virtual ICollection<Category> Categories { get; set; } = new List<Category>();

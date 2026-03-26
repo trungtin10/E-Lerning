@@ -50,6 +50,20 @@ public record RecentActivityDto(
     string Type // 'Company', 'User', 'Course'
 );
 
+public record DashboardAnalyticsDto(
+    List<GrowthPointDto> UserGrowthByMonth,
+    List<GrowthPointDto> CompanyGrowthByMonth,
+    List<TopCompanyDto> TopCompaniesByUsers,
+    List<TopCompanyDto> TopCompaniesByStorage,
+    List<CompanyStorageDto> StorageByCompany
+);
+
+public record GrowthPointDto(string Month, int Count);
+
+public record TopCompanyDto(int CompanyId, string CompanyName, int Value);
+
+public record CompanyStorageDto(int CompanyId, string CompanyName, long StorageUsedBytes, int StorageLimitGB);
+
 public class CreateUserBySuperAdminDto
 {
     public string Account { get; set; } = null!;

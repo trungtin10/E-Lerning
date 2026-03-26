@@ -9,6 +9,10 @@ public class CourseEnrollment
     public string UserId { get; set; } = string.Empty;
     public int CourseId { get; set; }
     public DateTime EnrolledAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Thời điểm học viên bắt đầu học (lần đầu truy cập trang học)</summary>
+    public DateTime? FirstLearningStartedAt { get; set; }
+    /// <summary>Tổng thời gian học thực tế (phút) - chỉ tính khi học viên đang ở trang học, dừng khi thoát ra</summary>
+    public int TotalLearningTimeMinutes { get; set; } = 0;
     public double ProgressPercentage { get; set; } = 0;
     [Required, MaxLength(50)]
     public string Status { get; set; } = "InProgress";
@@ -36,11 +40,25 @@ public class QuizAttempt
     [Required]
     public string UserId { get; set; } = string.Empty;
     public int Score { get; set; }
+    public int CorrectAnswers { get; set; }
+    public int TotalQuestions { get; set; }
     public bool IsPassed { get; set; }
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime CompletedAt { get; set; } = DateTime.UtcNow;
     public virtual Quiz Quiz { get; set; } = null!;
     public virtual ApplicationUser User { get; set; } = null!;
+    public virtual ICollection<QuizAttemptAnswer> SelectedAnswers { get; set; } = new List<QuizAttemptAnswer>();
+}
+
+public class QuizAttemptAnswer
+{
+    public int Id { get; set; }
+    public int QuizAttemptId { get; set; }
+    public int QuestionId { get; set; }
+    public int SelectedAnswerId { get; set; }
+    public virtual QuizAttempt QuizAttempt { get; set; } = null!;
+    public virtual Question Question { get; set; } = null!;
+    public virtual Answer SelectedAnswer { get; set; } = null!;
 }
 
 public class Certificate

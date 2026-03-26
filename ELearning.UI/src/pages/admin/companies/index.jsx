@@ -70,8 +70,19 @@ const Companies = () => {
           <h2 className="fw-bold tracking-tight mb-1">Quản lý Công ty</h2>
           <p className="text-muted small">Danh sách các đối tác và cấu hình hệ thống riêng biệt.</p>
         </div>
-        <button className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 rounded-3 shadow-sm fw-bold" onClick={() => setShowAddModal(true)}>
-          <Plus size={20} /> Thêm Công ty
+        <button
+          className="btn d-flex align-items-center gap-2 px-4 py-2 fw-bold border"
+          style={{
+            background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+            borderColor: '#1a5276',
+            color: '#fff',
+            borderRadius: 2,
+            textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+          }}
+          onClick={() => setShowAddModal(true)}
+        >
+          <Plus size={20} /> Tạo mới
         </button>
       </div>
 

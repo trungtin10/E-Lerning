@@ -32,8 +32,8 @@ const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) =
   };
 
   return (
-    <div className="table-responsive">
-      <table className="table table-hover align-middle mb-0">
+    <div className="table-responsive admin-table-framed-wrapper">
+      <table className="table table-hover align-middle mb-0 admin-table-framed">
         <thead className="bg-light border-bottom">
           <tr>
             <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase" style={{ width: '80px' }}>Logo</th>

@@ -36,7 +36,7 @@ public record CourseDetailDto(
     string? IntroExternalVideoUrl = null
 );
 
-public record LessonSectionDto(string Title, string? Content, bool ShowVideo, bool ShowQuiz, string? VideoUrl);
+public record LessonSectionDto(string Title, string? Content, bool ShowVideo, bool ShowQuiz, string? VideoUrl, List<string>? VideoUrls = null);
 
 public class JsonSection
 {
@@ -45,6 +45,7 @@ public class JsonSection
     public bool ShowVideo { get; set; }
     public bool ShowQuiz { get; set; }
     public string? VideoUrl { get; set; }
+    public List<string>? VideoUrls { get; set; }
 }
 
 public record LessonDto(

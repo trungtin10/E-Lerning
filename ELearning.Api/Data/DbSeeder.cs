@@ -59,7 +59,20 @@ public static class DbSeeder
                 await userManager.AddToRoleAsync(user, "SuperAdmin");
         }
 
-        // 3. Danh mục chuyên ngành (Chỉ thêm nếu trống)
+        // 3. Gói dịch vụ mặc định (Chỉ thêm nếu trống)
+        if (!await context.ServicePlans.AnyAsync())
+        {
+            var plans = new List<ServicePlan>
+            {
+                new ServicePlan { Name = "Basic", Description = "Gói cơ bản cho doanh nghiệp nhỏ", MaxUsers = 50, StorageLimitGB = 10, PriceMonthly = 500000, PriceYearly = 5000000, SortOrder = 1 },
+                new ServicePlan { Name = "Pro", Description = "Gói chuyên nghiệp", MaxUsers = 200, StorageLimitGB = 50, PriceMonthly = 1500000, PriceYearly = 15000000, SortOrder = 2 },
+                new ServicePlan { Name = "Enterprise", Description = "Gói doanh nghiệp lớn", MaxUsers = 1000, StorageLimitGB = 500, PriceMonthly = 5000000, PriceYearly = 50000000, SortOrder = 3 }
+            };
+            context.ServicePlans.AddRange(plans);
+            await context.SaveChangesAsync();
+        }
+
+        // 4. Danh mục chuyên ngành (Chỉ thêm nếu trống)
         if (!await context.Categories.AnyAsync())
         {
             var categories = new List<Category>
@@ -69,6 +82,22 @@ public static class DbSeeder
                 new Category { Name = "Marketing", Description = "Truyền thông, Quảng cáo" }
             };
             context.Categories.AddRange(categories);
+            await context.SaveChangesAsync();
+        }
+
+        // 5. Bản ghi mẫu nhật ký hoạt động (nếu bảng trống - để kiểm tra hiển thị)
+        if (!await context.AuditLogs.AnyAsync())
+        {
+            context.AuditLogs.Add(new AuditLog
+            {
+                UserId = user?.Id,
+                UserName = "Hệ thống",
+                Action = "Create",
+                EntityType = "System",
+                EntityId = "0",
+                Details = "Khởi tạo nhật ký hoạt động",
+                CreatedAt = DateTime.UtcNow
+            });
             await context.SaveChangesAsync();
         }
     }

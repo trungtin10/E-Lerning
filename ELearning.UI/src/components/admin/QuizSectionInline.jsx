@@ -135,8 +135,19 @@ const QuizSectionInline = ({ courseId, section, lessonId, onToast }) => {
           <button className="btn btn-success btn-sm fw-bold rounded-pill d-flex align-items-center gap-1" onClick={handleSaveQuiz} disabled={submitting}>
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lưu bài trắc nghiệm
           </button>
-          <button className="btn btn-primary btn-sm fw-bold rounded-pill d-flex align-items-center gap-1" onClick={() => { setEditingQuestion(null); setShowForm(true); }}>
-            <Plus size={14} /> Thêm câu hỏi
+          <button
+            className="btn btn-sm fw-bold d-flex align-items-center gap-1 border"
+            style={{
+              background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+              borderColor: '#1a5276',
+              color: '#fff',
+              borderRadius: 2,
+              textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+            }}
+            onClick={() => { setEditingQuestion(null); setShowForm(true); }}
+          >
+            <Plus size={14} /> Tạo mới
           </button>
         </div>
         </>

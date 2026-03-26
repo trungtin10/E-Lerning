@@ -24,7 +24,7 @@ const CourseDetail = () => {
 
   const [activeItem, setActiveItem] = useState({ type: 'intro' });
   const defaultSections = () => [
-    { title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrl: '' }
+    { title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrls: [] }
   ];
   const [editData, setEditData] = useState({
     title: '', scheduledDate: '', description: '',
@@ -61,32 +61,37 @@ const CourseDetail = () => {
   }, [course?.id, searchParams.get('tab'), searchParams.get('lesson')]);
 
   useEffect(() => {
-    if (activeItem.type === 'ls' && course) {
-      const currentLesson = course.lessons.find(l => l.id === activeItem.data.id);
+    if (activeItem.type === 'ls' && course && activeItem.data) {
+      const currentLesson = course.lessons?.find(l => l.id === activeItem.data.id);
       if (currentLesson) {
         let sections;
         const apiSections = currentLesson.sections || currentLesson.Sections;
         if (apiSections && Array.isArray(apiSections) && apiSections.length > 0) {
-          sections = apiSections.map(s => ({
-            title: (s.title ?? s.Title) || '',
-            content: (s.content ?? s.Content) ?? '',
-            showVideo: Boolean(s.showVideo ?? s.ShowVideo),
-            showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
-            videoUrl: (s.videoUrl ?? s.VideoUrl) || ''
-          }));
+          sections = apiSections.map(s => {
+            const urls = (s.videoUrls ?? s.VideoUrls) ?? [];
+            const single = (s.videoUrl ?? s.VideoUrl) || '';
+            const videoUrls = Array.isArray(urls) && urls.length > 0 ? urls : (single ? [single] : []);
+            return {
+              title: (s.title ?? s.Title) || '',
+              content: (s.content ?? s.Content) ?? '',
+              showVideo: Boolean(s.showVideo ?? s.ShowVideo),
+              showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
+              videoUrls
+            };
+          });
         } else {
           const hasContent = !!(currentLesson.overview?.trim() || currentLesson.content?.trim() || currentLesson.reviewContent?.trim() || currentLesson.essayQuestion?.trim());
           const hasMedia = !!(currentLesson.videoUrl1 || currentLesson.videoUrl2 || currentLesson.videoUrl3 || currentLesson.videoUrl4 || currentLesson.videoUrl5);
           const hasQuiz = !!(currentLesson.showQuiz1 || currentLesson.showQuiz2 || currentLesson.showQuiz3 || currentLesson.showQuiz4 || currentLesson.showQuiz5);
           if (!hasContent && !hasMedia && !hasQuiz) {
-            sections = [{ title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrl: '' }];
+            sections = [{ title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrls: [] }];
           } else {
             sections = [
-              { title: currentLesson.section1Title || '1. Giới thiệu bài học', content: currentLesson.overview || '', showVideo: Boolean(currentLesson.showVideo1), showQuiz: Boolean(currentLesson.showQuiz1), videoUrl: currentLesson.videoUrl1 || '' },
-              { title: currentLesson.section2Title || '2. Bài giảng chi tiết', content: currentLesson.content || '', showVideo: Boolean(currentLesson.showVideo2), showQuiz: Boolean(currentLesson.showQuiz2), videoUrl: currentLesson.videoUrl2 || '' },
-              { title: currentLesson.section3Title || '3. Phần ôn tập', content: currentLesson.reviewContent || '', showVideo: Boolean(currentLesson.showVideo3), showQuiz: Boolean(currentLesson.showQuiz3), videoUrl: currentLesson.videoUrl3 || '' },
-              { title: currentLesson.section4Title || '4. Câu hỏi tự luận', content: currentLesson.essayQuestion || '', showVideo: Boolean(currentLesson.showVideo4), showQuiz: Boolean(currentLesson.showQuiz4), videoUrl: currentLesson.videoUrl4 || '' },
-              { title: currentLesson.section5Title || '5. Tổng kết bài học', content: '', showVideo: Boolean(currentLesson.showVideo5), showQuiz: Boolean(currentLesson.showQuiz5), videoUrl: currentLesson.videoUrl5 || '' }
+              { title: currentLesson.section1Title || '1. Giới thiệu bài học', content: currentLesson.overview || '', showVideo: Boolean(currentLesson.showVideo1), showQuiz: Boolean(currentLesson.showQuiz1), videoUrls: currentLesson.videoUrl1 ? [currentLesson.videoUrl1] : [] },
+              { title: currentLesson.section2Title || '2. Bài giảng chi tiết', content: currentLesson.content || '', showVideo: Boolean(currentLesson.showVideo2), showQuiz: Boolean(currentLesson.showQuiz2), videoUrls: currentLesson.videoUrl2 ? [currentLesson.videoUrl2] : [] },
+              { title: currentLesson.section3Title || '3. Phần ôn tập', content: currentLesson.reviewContent || '', showVideo: Boolean(currentLesson.showVideo3), showQuiz: Boolean(currentLesson.showQuiz3), videoUrls: currentLesson.videoUrl3 ? [currentLesson.videoUrl3] : [] },
+              { title: currentLesson.section4Title || '4. Câu hỏi tự luận', content: currentLesson.essayQuestion || '', showVideo: Boolean(currentLesson.showVideo4), showQuiz: Boolean(currentLesson.showQuiz4), videoUrls: currentLesson.videoUrl4 ? [currentLesson.videoUrl4] : [] },
+              { title: currentLesson.section5Title || '5. Tổng kết bài học', content: '', showVideo: Boolean(currentLesson.showVideo5), showQuiz: Boolean(currentLesson.showQuiz5), videoUrls: currentLesson.videoUrl5 ? [currentLesson.videoUrl5] : [] }
             ];
           }
         }
@@ -142,46 +147,87 @@ const CourseDetail = () => {
     if (!activeItem.data?.id) return;
     setSubmitting(true);
     const data = new FormData();
+    const sectionsForApi = editData.sections.map(s => ({
+      title: s.title,
+      content: s.content,
+      showVideo: s.showVideo,
+      showQuiz: s.showQuiz,
+      videoUrls: s.videoUrls || [],
+      videoUrl: (s.videoUrls && s.videoUrls[0]) || null
+    }));
     data.append('Title', editData.title);
     data.append('ScheduledDate', editData.scheduledDate || '');
-    data.append('SectionsJson', JSON.stringify(editData.sections));
+    data.append('SectionsJson', JSON.stringify(sectionsForApi));
 
     editData.sections.forEach((_, i) => {
-      if (videoFiles[i]) data.append(`VideoFile${i}`, videoFiles[i]);
+      const files = Array.isArray(videoFiles[i]) ? videoFiles[i] : (videoFiles[i] ? [videoFiles[i]] : []);
+      files.forEach((f, fi) => f && data.append(`VideoFile_${i}_${fi}`, f));
     });
 
     try {
-      await api.put(`/course/lessons/${activeItem.data.id}`, data);
-      if (saveType !== 'content') await fetchCourseDetail();
+      const res = await api.put(`/course/lessons/${activeItem.data.id}`, data);
+      if (res.data?.sections) {
+        setEditData(prev => ({ ...prev, sections: res.data.sections }));
+        setVideoFiles(prev => {
+          const next = { ...prev };
+          editData.sections.forEach((_, i) => delete next[i]);
+          return next;
+        });
+        setLocalPreviews(prev => {
+          const next = { ...prev };
+          editData.sections.forEach((_, i) => delete next[i]);
+          return next;
+        });
+      } else if (saveType !== 'content') {
+        await fetchCourseDetail();
+      }
       const msg = saveType === 'content' ? 'Đã lưu nội dung!' : saveType === 'video' ? 'Đã lưu video!' : 'Đã lưu!';
       showToast(msg);
     } catch (err) { showToast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
   };
 
-  const onFileChange = (fileKey, file) => {
-    if (file) {
-        setVideoFiles(prev => ({...prev, [fileKey]: file}));
-        setLocalPreviews(prev => ({...prev, [fileKey]: URL.createObjectURL(file)}));
+  const onFileChange = (sectionIndex, files) => {
+    if (files && files.length > 0) {
+      const fileList = Array.from(files);
+      setVideoFiles(prev => ({ ...prev, [sectionIndex]: [...(prev[sectionIndex] || []), ...fileList] }));
+      setLocalPreviews(prev => ({
+        ...prev,
+        [sectionIndex]: [...(prev[sectionIndex] || []), ...fileList.map(f => URL.createObjectURL(f))]
+      }));
     }
   };
 
-  const handleDeleteVideo = async (fileKey, num) => {
+  const handleDeleteVideo = async (sectionIndex, sectionNum, videoIndex, isLocalPreview) => {
     const ok = await confirm({ title: 'Xóa video', message: 'Bạn có chắc chắn muốn xóa video này?', confirmText: 'Xóa' });
     if (!ok) return;
     try {
-      if (fileKey === 'intro') {
+      if (sectionIndex === 'intro') {
         await api.delete(`/course/${id}/video`);
         setEditData(prev => ({ ...prev, introVideoUrl: '' }));
+        setLocalPreviews(prev => ({ ...prev, intro: '' }));
+        setVideoFiles(prev => ({ ...prev, intro: null }));
+      } else if (isLocalPreview) {
+        setVideoFiles(prev => {
+          const arr = [...(prev[sectionIndex] || [])];
+          arr.splice(videoIndex, 1);
+          const next = { ...prev };
+          if (arr.length) next[sectionIndex] = arr; else delete next[sectionIndex];
+          return next;
+        });
+        setLocalPreviews(prev => {
+          const arr = [...(prev[sectionIndex] || [])];
+          if (arr[videoIndex]) URL.revokeObjectURL(arr[videoIndex]);
+          arr.splice(videoIndex, 1);
+          const next = { ...prev };
+          if (arr.length) next[sectionIndex] = arr; else delete next[sectionIndex];
+          return next;
+        });
       } else {
-        await api.delete(`/course/lessons/${activeItem.data.id}/video/${num}`);
-        setEditData(prev => ({
-          ...prev,
-          sections: prev.sections.map((s, i) => i === num - 1 ? { ...s, videoUrl: '' } : s)
-        }));
+        await api.delete(`/course/lessons/${activeItem.data.id}/video/${sectionNum}`, { params: { videoIndex } });
+        await fetchCourseDetail();
       }
-      setLocalPreviews(prev => ({ ...prev, [fileKey]: '' }));
-      setVideoFiles(prev => ({ ...prev, [fileKey]: null }));
       showToast('Đã xóa video.');
+      if (!isLocalPreview) await fetchCourseDetail();
     } catch (err) {
       showToast('Lỗi khi xóa video.', 'error');
     }
@@ -198,7 +244,7 @@ const CourseDetail = () => {
     const n = editData.sections.length + 1;
     setEditData(prev => ({
       ...prev,
-      sections: [...prev.sections, { title: `${n}. Phần mới`, content: '', showVideo: false, showQuiz: false, videoUrl: '' }]
+      sections: [...prev.sections, { title: `${n}. Phần mới`, content: '', showVideo: false, showQuiz: false, videoUrls: [] }]
     }));
   };
 
@@ -277,25 +323,42 @@ const CourseDetail = () => {
           <div className="d-flex justify-content-center mb-4">
             <label className="btn btn-white py-4 px-5 rounded-3 border-2 border-dashed fw-bold shadow-sm d-block hover-bg-primary-subtle transition-all cursor-pointer">
               <Upload size={24} className="text-primary mb-2 d-block mx-auto" />
-              <span className="text-dark small d-block">Chọn tệp video</span>
-              <input type="file" className="d-none" accept="video/*" onChange={e => onFileChange(index, e.target.files[0])} />
+              <span className="text-dark small d-block">Chọn tệp video (có thể chọn nhiều)</span>
+              <input type="file" className="d-none" accept="video/*" multiple onChange={e => onFileChange(index, e.target.files)} />
             </label>
           </div>
 
-          {(section.videoUrl || localPreviews[index]) && (
+          {((section.videoUrls && section.videoUrls.length > 0) || (localPreviews[index] && localPreviews[index].length > 0)) && (
             <div className="mt-2 pt-3 border-top">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                    <span className="small text-muted fw-bold">Xem chi tiết:</span>
-                    {(localPreviews[index] || section.videoUrl) && (
-                        <button className="btn btn-outline-danger btn-xs rounded-pill px-3" onClick={() => handleDeleteVideo(index, index + 1)}>
-                            <Trash2 size={12} className="me-1" /> Xóa Video
-                        </button>
-                    )}
-                </div>
-                <div className="ratio ratio-16x9 rounded-3 overflow-hidden border bg-black shadow-lg position-relative">
-                    {localPreviews[index] ? ( <video controls src={localPreviews[index]} key={localPreviews[index]}></video> )
-                    : ( <VideoPlayer src={section.videoUrl} key={section.videoUrl} /> )}
-                </div>
+              <span className="small text-muted fw-bold d-block mb-3">Danh sách video:</span>
+              <div className="d-flex flex-column gap-4">
+                {(section.videoUrls || []).map((url, vi) => (
+                  <div key={`saved-${vi}`} className="position-relative">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small text-muted">Video {vi + 1}</span>
+                      <button className="btn btn-outline-danger btn-sm rounded-pill px-3" onClick={() => handleDeleteVideo(index, num, vi, false)}>
+                        <Trash2 size={12} className="me-1" /> Xóa
+                      </button>
+                    </div>
+                    <div className="ratio ratio-16x9 rounded-3 overflow-hidden border bg-black shadow-lg">
+                      <VideoPlayer src={url} key={url} />
+                    </div>
+                  </div>
+                ))}
+                {(localPreviews[index] || []).map((preview, vi) => (
+                  <div key={`preview-${vi}`} className="position-relative">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <span className="small text-muted">Video mới (chưa lưu)</span>
+                      <button className="btn btn-outline-danger btn-sm rounded-pill px-3" onClick={() => handleDeleteVideo(index, num, vi, true)}>
+                        <Trash2 size={12} className="me-1" /> Xóa
+                      </button>
+                    </div>
+                    <div className="ratio ratio-16x9 rounded-3 overflow-hidden border bg-black shadow-lg">
+                      <video controls src={preview} key={preview} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -327,7 +390,7 @@ const CourseDetail = () => {
     if (!ok) return;
     try {
       await api.delete(`/course/lessons/${lessonId}`);
-      if (activeItem.type === 'ls' && activeItem.data.id === lessonId) setActiveItem({ type: 'intro' });
+      if (activeItem.type === 'ls' && activeItem.data?.id === lessonId) setActiveItem({ type: 'intro' });
       await fetchCourseDetail();
       showToast('Đã xóa bài học.');
     } catch (err) {
@@ -344,6 +407,18 @@ const CourseDetail = () => {
   };
 
   if (loading) return <AdminLayout><div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={48} /></div></AdminLayout>;
+
+  if (!course) {
+    return (
+      <AdminLayout>
+        <div className="text-center py-5">
+          <AlertCircle size={48} className="text-warning mb-3" />
+          <p className="text-muted mb-3">{error || 'Không tìm thấy khóa học.'}</p>
+          <button className="btn btn-primary rounded-3" onClick={() => navigate('/admin/courses')}>Quay lại danh sách</button>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -371,18 +446,29 @@ const CourseDetail = () => {
             </div>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="fw-bold text-secondary mb-0 text-uppercase tracking-widest" style={{ fontSize: '0.6rem' }}>Danh sách bài giảng</h6>
-              <button className="btn btn-primary btn-sm rounded-circle p-1" onClick={() => setIsAdding(true)}><Plus size={14} /></button>
+              <button
+                className="btn btn-sm p-1 border"
+                style={{
+                  background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+                  borderColor: '#1a5276',
+                  color: '#fff',
+                  borderRadius: 2,
+                  textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+                }}
+                onClick={() => setIsAdding(true)}
+              ><Plus size={14} /></button>
             </div>
-            <Reorder.Group axis="y" values={course.lessons} onReorder={handleReorder} className="list-unstyled p-0 m-0">
-              {course.lessons.map((lesson, idx) => (
+            <Reorder.Group axis="y" values={course.lessons || []} onReorder={handleReorder} className="list-unstyled p-0 m-0">
+              {(course.lessons || []).map((lesson, idx) => (
                 <Reorder.Item key={lesson.id} value={lesson} className="d-flex align-items-center gap-2 mb-2 group">
                   <div className="cursor-grab text-muted opacity-50"><GripVertical size={16} /></div>
                   <div
-                    className={`flex-grow-1 d-flex align-items-center gap-3 py-3 px-3 rounded-3 cursor-pointer transition-all position-relative ${activeItem.type === 'ls' && activeItem.data.id === lesson.id ? 'bg-primary text-white shadow-sm' : 'hover-bg-light border'}`}
+                    className={`flex-grow-1 d-flex align-items-center gap-3 py-3 px-3 rounded-3 cursor-pointer transition-all position-relative ${activeItem.type === 'ls' && activeItem.data?.id === lesson.id ? 'bg-primary text-white shadow-sm' : 'hover-bg-light border'}`}
                     onClick={() => { setActiveItem({ type: 'ls', data: lesson }); setSearchParams({ tab: 'lesson', lesson: String(lesson.id) }, { replace: true }); }}
                   >
                     <div className="fw-bold small flex-grow-1">{idx + 1}. {lesson.title}</div>
-                    <button className={`btn btn-link p-0 border-0 ${activeItem.type === 'ls' && activeItem.data.id === lesson.id ? 'text-white-50' : 'text-danger opacity-0 group-hover:opacity-100'}`} onClick={(e) => handleDeleteLesson(e, lesson.id)}><Trash2 size={16} /></button>
+                    <button className={`btn btn-link p-0 border-0 ${activeItem.type === 'ls' && activeItem.data?.id === lesson.id ? 'text-white-50' : 'text-danger opacity-0 group-hover:opacity-100'}`} onClick={(e) => handleDeleteLesson(e, lesson.id)}><Trash2 size={16} /></button>
                   </div>
                 </Reorder.Item>
               ))}
@@ -447,7 +533,7 @@ const CourseDetail = () => {
                                     <div className="d-flex justify-content-between align-items-center mb-2">
                                         <span className="small text-muted fw-bold">Xem chi tiết:</span>
                                         {(localPreviews.intro || editData.introVideoUrl) && (
-                                            <button className="btn btn-outline-danger btn-xs rounded-pill px-3" onClick={() => handleDeleteVideo('intro', 'introVideoUrl', 0)}>
+                                            <button className="btn btn-outline-danger btn-xs rounded-pill px-3" onClick={() => handleDeleteVideo('intro', 0, 0, false)}>
                                                 <Trash2 size={12} className="me-1" /> Xóa Video
                                             </button>
                                         )}
@@ -481,8 +567,20 @@ const CourseDetail = () => {
 
                 {editData.sections?.map((section, index) => renderSection(index, section, index + 1))}
                 <div className="mb-4 d-flex justify-content-center">
-                  <button type="button" className="btn btn-outline-primary btn-lg px-5 py-3 rounded-pill d-flex align-items-center gap-2 fw-bold" onClick={addSection}>
-                    <Plus size={22} /> Thêm phần
+                  <button
+                    type="button"
+                    className="btn btn-lg px-5 py-3 d-flex align-items-center gap-2 fw-bold border"
+                    style={{
+                      background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+                      borderColor: '#1a5276',
+                      color: '#fff',
+                      borderRadius: 2,
+                      textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+                    }}
+                    onClick={addSection}
+                  >
+                    <Plus size={22} /> Tạo mới
                   </button>
                 </div>
               </div>

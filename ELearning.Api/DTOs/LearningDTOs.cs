@@ -8,6 +8,7 @@ public record UserCourseProgressDto(
     string CourseTitle,
     string? CourseCode,
     DateTime? StartDate,
+    DateTime? EndDate,
     double ProgressPercentage,
     List<UserLessonProgressDto> Lessons,
     bool ShowIntroVideo = false,
@@ -64,6 +65,14 @@ public class EnrollmentRequestDto
     public int CourseId { get; set; }
 }
 
+public class RecordLearningSessionDto
+{
+    public int CourseId { get; set; }
+    public int Minutes { get; set; }
+}
+
+public record LearningTimeSummaryDto(string UserName, int TotalLearningTimeMinutes);
+
 public record MyEnrolledCourseDto(
     int Id,
     string? CourseCode,
@@ -74,5 +83,6 @@ public record MyEnrolledCourseDto(
     DateTime? EndDate,
     double ProgressPercentage,
     string Status,
-    DateTime EnrolledAt
+    DateTime? EnrolledAt,
+    bool IsEnrolled = true
 );

@@ -161,8 +161,19 @@ const CompanyUsers = () => {
             </p>
           </div>
         </div>
-        <button className="btn btn-primary fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2 px-4 py-2" onClick={() => setShowAddModal(true)}>
-          <UserPlus size={20} /> Thêm nhân viên
+        <button
+          className="btn fw-bold d-flex align-items-center gap-2 px-4 py-2 border"
+          style={{
+            background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+            borderColor: '#1a5276',
+            color: '#fff',
+            borderRadius: 2,
+            textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+          }}
+          onClick={() => setShowAddModal(true)}
+        >
+          <UserPlus size={20} /> Tạo mới
         </button>
       </div>
 
@@ -187,8 +198,8 @@ const CompanyUsers = () => {
       </div>
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div className="table-responsive">
-          <table className="table table-hover align-middle mb-0">
+        <div className="table-responsive admin-table-framed-wrapper">
+          <table className="table table-hover align-middle mb-0 admin-table-framed">
             <thead className="bg-light border-bottom">
               <tr>
                 <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase">Họ và tên</th>

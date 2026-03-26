@@ -1,5 +1,6 @@
 using ELearning.Api.Data;
 using ELearning.Api.Models;
+using ELearning.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,11 +15,13 @@ public class CertificateController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IWebHostEnvironment _env;
+    private readonly IAuditService _audit;
 
-    public CertificateController(ApplicationDbContext context, IWebHostEnvironment env)
+    public CertificateController(ApplicationDbContext context, IWebHostEnvironment env, IAuditService audit)
     {
         _context = context;
         _env = env;
+        _audit = audit;
     }
 
     // 1. CẤP CHỨNG CHỈ TỰ ĐỘNG
@@ -56,7 +59,7 @@ public class CertificateController : ControllerBase
 
         _context.Certificates.Add(certificate);
         await _context.SaveChangesAsync();
-
+        await _audit.LogAsync("Generate", "Certificate", certificate.Id.ToString(), null, enrollment.Course?.Title ?? courseId.ToString(), "Cấp chứng chỉ khóa học");
         return Ok(new { Message = "Cấp chứng chỉ thành công!", Url = filePath });
     }
 

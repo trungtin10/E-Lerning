@@ -1,6 +1,7 @@
 using ELearning.Api.Data;
 using ELearning.Api.DTOs;
 using ELearning.Api.Models;
+using ELearning.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +16,13 @@ public class LearningController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IConfiguration _config;
+    private readonly IAuditService _audit;
 
-    public LearningController(ApplicationDbContext context, IConfiguration config)
+    public LearningController(ApplicationDbContext context, IConfiguration config, IAuditService audit)
     {
         _context = context;
         _config = config;
+        _audit = audit;
     }
 
     private string GetBaseUrl()
@@ -76,6 +79,8 @@ public class LearningController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        var course = await _context.Courses.FindAsync(dto.CourseId);
+        await _audit.LogAsync("Enroll", "CourseEnrollment", enrollment.Id.ToString(), null, course?.Title ?? dto.CourseId.ToString(), "Đăng ký khóa học");
         return Ok(new { Message = "Đăng ký thành công!", EnrollmentId = enrollment.Id });
     }
 
@@ -116,7 +121,99 @@ public class LearningController : ControllerBase
             }
         }
 
+        var lesson = await _context.Lessons.FindAsync(dto.LessonId);
+        await _audit.LogAsync("Complete", "LessonProgress", dto.LessonId.ToString(), null, lesson?.Title ?? "", "Hoàn thành bài học");
         return Ok(new { Message = "Đã hoàn thành bài học!" });
+    }
+
+    /// <summary>Ghi nhận hành vi học viên (xem bài, xem video, làm quiz...)</summary>
+    [HttpPost("track-event")]
+    public async Task<IActionResult> TrackBehaviorEvent([FromBody] TrackBehaviorEventDto dto)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var courseId = dto.CourseId;
+        if (courseId <= 0) return BadRequest("CourseId required");
+
+        var enrollment = await _context.CourseEnrollments
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.CourseId == courseId);
+        if (enrollment == null) return NotFound("Bạn chưa đăng ký khóa học này.");
+
+        var evt = new LearnerBehaviorEvent
+        {
+            UserId = userId,
+            CourseId = courseId,
+            EnrollmentId = enrollment.Id,
+            EventType = dto.EventType,
+            EntityType = dto.EntityType,
+            EntityId = dto.EntityId,
+            Metadata = dto.Metadata?.Length > 500 ? dto.Metadata[..500] : dto.Metadata
+        };
+        _context.LearnerBehaviorEvents.Add(evt);
+        await _context.SaveChangesAsync();
+        return Ok(new { Id = evt.Id });
+    }
+
+    /// <summary>Ghi nhận thời gian học thực tế khi học viên thoát khỏi trang học</summary>
+    [HttpPost("record-session")]
+    public async Task<IActionResult> RecordLearningSession([FromBody] RecordLearningSessionDto dto)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return Unauthorized();
+
+        var enrollment = await _context.CourseEnrollments
+            .FirstOrDefaultAsync(e => e.UserId == userId && e.CourseId == dto.CourseId);
+        if (enrollment == null) return NotFound("Bạn chưa đăng ký khóa học này.");
+
+        if (dto.Minutes > 0)
+        {
+            enrollment.TotalLearningTimeMinutes += dto.Minutes;
+            await _context.SaveChangesAsync();
+        }
+        return Ok(new { Message = "Đã lưu thời gian học.", TotalMinutes = enrollment.TotalLearningTimeMinutes });
+    }
+
+    /// <summary>Danh sách tổng thời gian học của học viên trong khóa (cho Admin) - chỉ hiện user thuộc công ty của khóa học</summary>
+    [HttpGet("learning-times/{courseId}")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+    public async Task<ActionResult<List<LearningTimeSummaryDto>>> GetCourseLearningTimes(int courseId)
+    {
+        var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == courseId);
+        if (course == null) return NotFound();
+
+        var query = _context.CourseEnrollments
+            .Include(e => e.User)
+            .Where(e => e.CourseId == courseId);
+
+        if (course.CompanyId.HasValue && course.CompanyId.Value > 0)
+        {
+            query = query.Where(e => e.User != null && e.User.CompanyId == course.CompanyId.Value);
+        }
+
+        var enrollments = await query
+            .OrderByDescending(e => e.TotalLearningTimeMinutes)
+            .ToListAsync();
+
+        var result = enrollments.Select(e => new LearningTimeSummaryDto(
+            e.User?.FullName ?? e.User?.UserName ?? "N/A",
+            e.TotalLearningTimeMinutes
+        )).ToList();
+        return Ok(result);
+    }
+
+    private async Task<int?> GetUserCompanyIdAsync()
+    {
+        var claim = User.FindFirst("CompanyId")?.Value
+            ?? User.FindFirst(c => string.Equals(c.Type, "CompanyId", StringComparison.OrdinalIgnoreCase))?.Value;
+        if (int.TryParse(claim, out int cid)) return cid;
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            return user?.CompanyId;
+        }
+        return null;
     }
 
     [HttpGet("my-courses")]
@@ -131,6 +228,7 @@ public class LearningController : ControllerBase
             .OrderByDescending(e => e.EnrolledAt)
             .ToListAsync();
 
+        var enrolledIds = enrollments.Select(e => e.CourseId).ToHashSet();
         var result = enrollments.Select(e => new MyEnrolledCourseDto(
             e.Course.Id,
             e.Course.CourseCode,
@@ -141,8 +239,37 @@ public class LearningController : ControllerBase
             e.Course.EndDate,
             e.ProgressPercentage,
             e.Status,
-            e.EnrolledAt
+            e.EnrolledAt,
+            true
         )).ToList();
+
+        // Thêm khóa học thuộc công ty user (chưa đăng ký) - đồng bộ hiển thị
+        var companyId = await GetUserCompanyIdAsync();
+        if (companyId.HasValue && companyId.Value > 0)
+        {
+            var companyCourses = await _context.Courses
+                .Include(c => c.Category)
+                .Where(c => c.CompanyId == companyId && c.IsPublished && !enrolledIds.Contains(c.Id))
+                .OrderByDescending(c => c.CreatedAt)
+                .ToListAsync();
+
+            foreach (var c in companyCourses)
+            {
+                result.Add(new MyEnrolledCourseDto(
+                    c.Id,
+                    c.CourseCode,
+                    c.Title,
+                    c.ThumbnailUrl,
+                    c.Category?.Name,
+                    c.StartDate,
+                    c.EndDate,
+                    0,
+                    "Available",
+                    null,
+                    false
+                ));
+            }
+        }
 
         return Ok(result);
     }
@@ -151,12 +278,42 @@ public class LearningController : ControllerBase
     public async Task<ActionResult<UserCourseProgressDto>> GetProgress(int courseId)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var enrollment = await _context.CourseEnrollments
             .Include(e => e.Course)
             .FirstOrDefaultAsync(e => e.UserId == userId && e.CourseId == courseId);
 
+        // Auto-enroll: khóa học thuộc công ty của user thì vào học ngay (không cần bấm đăng ký)
+        if (enrollment == null)
+        {
+            var companyId = await GetUserCompanyIdAsync();
+            if (companyId.HasValue && companyId.Value > 0)
+            {
+                var courseEntity = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == courseId);
+                if (courseEntity != null && courseEntity.IsPublished && courseEntity.CompanyId == companyId.Value)
+                {
+                    enrollment = new CourseEnrollment
+                    {
+                        CourseId = courseId,
+                        UserId = userId,
+                        EnrolledAt = DateTime.UtcNow,
+                        Status = "InProgress",
+                        ProgressPercentage = 0
+                    };
+                    _context.CourseEnrollments.Add(enrollment);
+                    await _context.SaveChangesAsync();
+                }
+            }
+        }
         if (enrollment == null) return NotFound("Bạn chưa đăng ký khóa học này.");
+
+        // Ghi nhận thời điểm bắt đầu học (lần đầu truy cập trang học)
+        if (!enrollment.FirstLearningStartedAt.HasValue)
+        {
+            enrollment.FirstLearningStartedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
 
         // Lấy tất cả bài học của khóa (đồng bộ với course/2), tạo LessonProgress nếu chưa có
         var allLessons = await _context.Lessons
@@ -191,7 +348,13 @@ public class LearningController : ControllerBase
                 {
                     var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                     var list = System.Text.Json.JsonSerializer.Deserialize<List<JsonSection>>(lesson.SectionsJson, jsonOpts);
-                    sections = list?.Select(s => new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl)).ToList();
+                    sections = list?.Select(s =>
+                    {
+                        var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0)
+                            ? s.VideoUrls
+                            : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
+                        return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl, urls);
+                    }).ToList();
                 }
                 catch { }
             }
@@ -274,6 +437,7 @@ public class LearningController : ControllerBase
             enrollment.Course.Title,
             enrollment.Course.CourseCode,
             enrollment.Course.StartDate,
+            enrollment.Course.EndDate,
             progressPct,
             lessonDtos,
             course.ShowIntroVideo,

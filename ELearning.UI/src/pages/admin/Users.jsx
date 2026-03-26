@@ -53,8 +53,8 @@ const Users = () => {
 
       {/* Bảng danh sách đơn vị */}
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div className="table-responsive">
-          <table className="table table-hover align-middle mb-0">
+        <div className="table-responsive admin-table-framed-wrapper">
+          <table className="table table-hover align-middle mb-0 admin-table-framed">
             <thead className="bg-light border-bottom">
               <tr>
                 <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase">Đơn vị & Quản trị viên</th>

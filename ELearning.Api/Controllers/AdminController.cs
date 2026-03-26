@@ -1,6 +1,7 @@
 using ELearning.Api.Data;
 using ELearning.Api.DTOs;
 using ELearning.Api.Models;
+using ELearning.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -17,12 +18,14 @@ public class AdminController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly IAuditService _audit;
 
-    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
+    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IAuditService audit)
     {
         _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
+        _audit = audit;
     }
 
     private int GetAdminCompanyId()
@@ -71,6 +74,7 @@ public class AdminController : ControllerBase
         // Gán Role (Student hoặc Instructor)
         await _userManager.AddToRoleAsync(user, dto.Role);
 
+        await _audit.LogAsync("Create", "User", user.Id, null, $"{user.FullName} ({user.UserName})", $"Tạo nhân viên {dto.Role}");
         return Ok(new { Message = "Tạo nhân viên thành công!" });
     }
 
@@ -80,7 +84,10 @@ public class AdminController : ControllerBase
         int companyId = GetAdminCompanyId();
         var user = await _userManager.FindByIdAsync(id);
         if (user == null || user.CompanyId != companyId) return NotFound();
+        var userName = user.UserName;
+        var fullName = user.FullName;
         await _userManager.DeleteAsync(user);
+        await _audit.LogAsync("Delete", "User", id, userName, null, $"Xóa nhân viên {fullName}");
         return Ok();
     }
 }

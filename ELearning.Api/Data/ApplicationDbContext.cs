@@ -9,6 +9,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<Company> Companies { get; set; } = null!;
+    public DbSet<ServicePlan> ServicePlans { get; set; } = null!;
+    public DbSet<Transaction> Transactions { get; set; } = null!;
+    public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+    public DbSet<SupportTicket> SupportTickets { get; set; } = null!;
+    public DbSet<Announcement> Announcements { get; set; } = null!;
+    public DbSet<AnnouncementUserState> AnnouncementUserStates { get; set; } = null!;
+    public DbSet<UserNotification> UserNotifications { get; set; } = null!;
     public DbSet<Department> Departments { get; set; } = null!;
     public DbSet<Category> Categories { get; set; } = null!;
     public DbSet<Course> Courses { get; set; } = null!;
@@ -19,7 +26,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<CourseEnrollment> CourseEnrollments { get; set; } = null!;
     public DbSet<LessonProgress> LessonProgresses { get; set; } = null!;
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
+    public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
     public DbSet<Certificate> Certificates { get; set; } = null!;
+    public DbSet<LearnerBehaviorEvent> LearnerBehaviorEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -91,12 +100,86 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
+        builder.Entity<QuizAttemptAnswer>(entity =>
+        {
+            entity.HasOne(qa => qa.QuizAttempt)
+                .WithMany(a => a.SelectedAnswers)
+                .HasForeignKey(qa => qa.QuizAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<Certificate>(entity =>
         {
             entity.HasOne(c => c.Course)
                 .WithMany()
                 .HasForeignKey(c => c.CourseId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<Company>(entity =>
+        {
+            entity.HasOne(c => c.Plan)
+                .WithMany(p => p.Companies)
+                .HasForeignKey(c => c.ServicePlanId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ServicePlan>(entity =>
+        {
+            entity.Property(e => e.PriceMonthly).HasPrecision(18, 2);
+            entity.Property(e => e.PriceYearly).HasPrecision(18, 2);
+        });
+
+        builder.Entity<Transaction>(entity =>
+        {
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.HasOne(t => t.Company)
+                .WithMany()
+                .HasForeignKey(t => t.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(t => t.ServicePlan)
+                .WithMany()
+                .HasForeignKey(t => t.ServicePlanId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<SupportTicket>(entity =>
+        {
+            entity.HasOne(t => t.Company)
+                .WithMany()
+                .HasForeignKey(t => t.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<LearnerBehaviorEvent>(entity =>
+        {
+            entity.HasIndex(e => new { e.UserId, e.CourseId, e.CreatedAt });
+            entity.HasOne(e => e.Enrollment)
+                .WithMany()
+                .HasForeignKey(e => e.EnrollmentId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<AnnouncementUserState>(entity =>
+        {
+            entity.HasIndex(x => new { x.AnnouncementId, x.UserId }).IsUnique();
+            entity.HasOne(x => x.Announcement)
+                .WithMany()
+                .HasForeignKey(x => x.AnnouncementId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserNotification>(entity =>
+        {
+            entity.HasIndex(n => new { n.UserId, n.IsRead, n.CreatedAt });
+            entity.HasOne(n => n.User)
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

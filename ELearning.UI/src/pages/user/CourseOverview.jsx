@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import UserLayout from '../../components/layout/UserLayout';
 import api from '../../api/axios';
 import { useNotify } from '../../context/NotifyContext';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   BookOpen, PlayCircle, CheckCircle2, ArrowLeft, Loader2, Circle,
   Calendar, Layers, Hash, Video, Info, RefreshCw, HelpCircle, Minus, Plus, ClipboardCheck, FileStack
@@ -11,6 +12,7 @@ const CourseOverview = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useNotify();
+  const { lang, t } = useLanguage();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -122,21 +124,17 @@ const CourseOverview = () => {
   };
 
   const handleGoToLearning = () => {
-    if (progressPercentage === 0) {
-      navigate(`/learning/${id}?intro=1`);
-    } else {
-      navigate(`/learning/${id}`);
-    }
+    navigate(`/learning/${id}?intro=1`);
   };
 
   if (loading) return <div className="vh-100 d-flex align-items-center justify-content-center bg-white"><Loader2 className="animate-spin text-primary" size={48} /></div>;
 
   const tabs = [
-    { id: 'course', label: 'Khóa Học' },
-    { id: 'progress', label: 'Tiến độ' },
-    { id: 'dates', label: 'Ngày quan trọng' },
-    { id: 'discussion', label: 'Thảo luận' },
-    { id: 'notes', label: 'Ghi chú' }
+    { id: 'course', labelKey: 'tabCourse' },
+    { id: 'progress', labelKey: 'tabProgress' },
+    { id: 'dates', labelKey: 'tabDates' },
+    { id: 'discussion', labelKey: 'tabDiscussion' },
+    { id: 'notes', labelKey: 'tabNotes' }
   ];
 
   return (
@@ -159,7 +157,7 @@ const CourseOverview = () => {
                 <div className="p-2 rounded-3" style={{ backgroundColor: 'rgba(13,110,253,0.1)' }}><BookOpen size={22} /></div>
                 <div>
                   <div className="fw-bold fs-5" style={{ color: '#0f172a', fontWeight: 600 }}>{course.lessons?.length || 0}</div>
-                  <div className="small" style={{ color: '#64748b', fontWeight: 500 }}>Bài học chính</div>
+                  <div className="small" style={{ color: '#64748b', fontWeight: 500 }}>{t('mainLessons')}</div>
                 </div>
               </div>
             </div>
@@ -167,8 +165,17 @@ const CourseOverview = () => {
               <div className="d-flex align-items-center gap-3 p-3 bg-white rounded-3 shadow-sm border">
                 <div className="p-2 rounded-3" style={{ backgroundColor: 'rgba(25,135,84,0.1)' }}><Calendar size={22} /></div>
                 <div>
-                  <div className="fw-bold small" style={{ color: '#0f172a', fontWeight: 600 }}>{course.startDate ? new Date(course.startDate).toLocaleDateString('vi-VN') : '—'}</div>
-                  <div className="small" style={{ color: '#64748b', fontWeight: 500 }}>Ngày khai giảng</div>
+                  <div className="fw-bold small" style={{ color: '#0f172a', fontWeight: 600 }}>{course.startDate ? new Date(course.startDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
+                  <div className="small" style={{ color: '#64748b', fontWeight: 500 }}>{t('startDate')}</div>
+                </div>
+              </div>
+            </div>
+            <div className="col-auto">
+              <div className="d-flex align-items-center gap-3 p-3 bg-white rounded-3 shadow-sm border">
+                <div className="p-2 rounded-3" style={{ backgroundColor: 'rgba(220,53,69,0.1)' }}><Calendar size={22} /></div>
+                <div>
+                  <div className="fw-bold small" style={{ color: '#0f172a', fontWeight: 600 }}>{course.endDate ? new Date(course.endDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}</div>
+                  <div className="small" style={{ color: '#64748b', fontWeight: 500 }}>{t('endDate')}</div>
                 </div>
               </div>
             </div>
@@ -184,7 +191,7 @@ const CourseOverview = () => {
               className={`nav-link fw-semibold rounded-3 px-4 py-2 border-0 ${activeTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'} `}
               onClick={() => setActiveTab(tab.id)}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </nav>
@@ -197,9 +204,9 @@ const CourseOverview = () => {
             {/* Banner Tiếp tục khi đã đăng ký */}
             {isEnrolled && (
               <div className="d-flex align-items-center justify-content-between p-4 mb-4 rounded-3 border bg-white shadow-sm">
-                <span className="fw-medium" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Tiếp tục nơi bạn đã dừng lại</span>
+                <span className="fw-medium" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>{t('continueWhereLeft')}</span>
                 <button className="btn btn-danger rounded-3 fw-semibold px-4 py-2" onClick={handleGoToLearning}>
-                  Tiếp tục khóa học
+                  {t('continueCourse')}
                 </button>
               </div>
             )}
@@ -210,22 +217,22 @@ const CourseOverview = () => {
                   <Hash size={14} className="me-1" /> {course.courseCode}
                 </span>
                 <span className="badge bg-dark px-3 py-2 rounded-pill fw-semibold small shadow-sm">
-                  <Layers size={14} className="me-1" /> {course.categoryName || 'Chuyên ngành'}
+                  <Layers size={14} className="me-1" /> {course.categoryName || t('categoryDefault')}
                 </span>
               </div>
               <div
                 className="course-description-content border-start border-4 ps-4 py-3 px-3 rounded-end bg-white shadow-sm"
                 style={{ lineHeight: 1.85, fontSize: '1rem', color: '#2d3748', fontWeight: 450 }}
-                dangerouslySetInnerHTML={{ __html: course.description || 'Chưa có mô tả cho khóa học này.' }}
+                dangerouslySetInnerHTML={{ __html: course.description || t('noDescription') }}
               />
             </div>
 
             <div className="d-flex align-items-center justify-content-between mb-3">
               <h4 className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ color: '#0f172a', fontSize: '1.25rem', fontWeight: 600 }}>
-                <FileStack size={22} /> Nội dung chương trình học
+                <FileStack size={22} /> {t('curriculumContent')}
               </h4>
               <button type="button" className="btn btn-outline-secondary btn-sm rounded-3" onClick={expandAll}>
-                {isAllExpanded ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
+                {isAllExpanded ? t('collapseAll') : t('expandAll')}
               </button>
             </div>
 
@@ -234,8 +241,8 @@ const CourseOverview = () => {
                 const hasIntroContent = (course.description && String(course.description).trim());
                 const hasIntroVideo = course.showIntroVideo && (course.introVideoUrl || course.introExternalVideoUrl);
                 const introItems = [];
-                if (hasIntroContent) introItems.push({ title: 'Giới thiệu học phần', done: false });
-                if (hasIntroVideo) introItems.push({ title: 'Video giới thiệu', done: false });
+                if (hasIntroContent) introItems.push({ title: t('sectionIntro'), done: false });
+                if (hasIntroVideo) introItems.push({ title: t('introVideoShort'), done: false });
                 return introItems.length > 0 ? (
                   <div className="border-bottom" style={{ borderColor: '#dee2e6' }}>
                     <div
@@ -245,7 +252,7 @@ const CourseOverview = () => {
                     >
                       <div className="d-flex align-items-center gap-3">
                         <Circle size={20} className="text-secondary flex-shrink-0" style={{ color: '#adb5bd' }} />
-                        <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Giới thiệu khóa học</span>
+                        <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>{t('courseIntro')}</span>
                       </div>
                       {expandedSections.has('intro') ? <Minus size={20} className="text-secondary" /> : <Plus size={20} className="text-secondary" />}
                     </div>
@@ -273,7 +280,7 @@ const CourseOverview = () => {
               {displayLessons.length === 0 && !hasIntro ? (
                   <div className="p-5 text-center">
                     <BookOpen size={40} className="mb-2 opacity-50" />
-                    <p className="mb-0" style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 500 }}>Chưa có bài học nào. Nội dung sẽ được cập nhật khi giảng viên thêm bài học.</p>
+                    <p className="mb-0" style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 500 }}>{t('noLessonsYet')}</p>
                   </div>
                 ) : displayLessons.map((lesson, index) => {
                   const isExpanded = expandedSections.has(lesson.id);
@@ -289,7 +296,7 @@ const CourseOverview = () => {
                       >
                         <div className="d-flex align-items-center gap-3">
                           {lessonDone ? <CheckCircle2 size={20} className="text-success flex-shrink-0" /> : <Circle size={20} className="flex-shrink-0" style={{ color: '#adb5bd' }} />}
-                          <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Bài {index + 1}: {lessonTitle}</span>
+                          <span className="fw-semibold" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>{t('lesson')} {index + 1}: {lessonTitle}</span>
                         </div>
                         {isExpanded ? <Minus size={20} className="text-secondary" /> : <Plus size={20} className="text-secondary" />}
                       </div>
@@ -316,7 +323,7 @@ const CourseOverview = () => {
                               </div>
                               );
                             }) : (
-                              <div className="py-2 text-muted small">Chưa có phần nội dung</div>
+                              <div className="py-2 text-muted small">{t('noContentYet')}</div>
                             )}
                           </div>
                         </div>
@@ -330,50 +337,50 @@ const CourseOverview = () => {
             )}
             {activeTab === 'dates' && (
               <div className="bg-white rounded-4 border shadow-sm p-5 mb-5">
-                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>Ngày quan trọng</h5>
-                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>Chức năng đang được phát triển.</p>
+                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>{t('importantDates')}</h5>
+                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>{t('featureDev')}</p>
               </div>
             )}
             {activeTab === 'progress' && (
               <div className="bg-white rounded-4 border shadow-sm p-5 mb-5">
-                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>Tiến độ học tập</h5>
+                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>{t('progressTitle')}</h5>
                 <div className="progress" style={{ height: '12px' }}>
                   <div className="progress-bar bg-success" style={{ width: `${progressPercentage}%` }} />
                 </div>
-                <p className="mt-2 mb-0" style={{ fontSize: '0.95rem', color: '#334155', fontWeight: 500 }}>{Math.round(progressPercentage)}% đã hoàn thành</p>
+                <p className="mt-2 mb-0" style={{ fontSize: '0.95rem', color: '#334155', fontWeight: 500 }}>{Math.round(progressPercentage)}% {t('completedPercent')}</p>
               </div>
             )}
             {activeTab === 'discussion' && (
               <div className="bg-white rounded-4 border shadow-sm p-5 mb-5">
-                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>Thảo luận</h5>
-                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>Chức năng thảo luận đang được phát triển.</p>
+                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>{t('tabDiscussion')}</h5>
+                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>{t('discussionDev')}</p>
               </div>
             )}
             {activeTab === 'notes' && (
               <div className="bg-white rounded-4 border shadow-sm p-5 mb-5">
-                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>Ghi chú</h5>
-                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>Chức năng ghi chú đang được phát triển.</p>
+                <h5 className="fw-bold mb-4" style={{ color: '#0f172a', fontSize: '1.1rem', fontWeight: 600 }}>{t('tabNotes')}</h5>
+                <p className="mb-0" style={{ fontSize: '0.95rem', color: '#475569', fontWeight: 500 }}>{t('notesDev')}</p>
               </div>
             )}
           </div>
 
-          {/* Cột phải */}
+          {/* Cột phải - Card đăng ký / vào khóa học */}
           <div className="col-lg-4">
-            <div className="card border-0 shadow-sm rounded-4 overflow-hidden sticky-top bg-white" style={{ top: '24px' }}>
-              <div className="rounded-top-4 overflow-hidden position-relative video-preview-wrapper" style={{ aspectRatio: '16/9' }}>
+            <div className="card border-0 sticky-top overflow-hidden course-enroll-card" style={{ top: '24px', borderRadius: '16px', boxShadow: '0 4px 24px rgba(26,82,118,0.12)' }}>
+              <div className="position-relative overflow-hidden" style={{ aspectRatio: '16/10', minHeight: 140 }}>
                 {course.thumbnailUrl ? (
                   <>
                     <img src={course.thumbnailUrl} alt={course.title} className="w-100 h-100" style={{ objectFit: 'cover' }} />
                     <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center video-play-overlay">
-                      <div className="rounded-circle bg-white d-flex align-items-center justify-content-center shadow" style={{ width: '56px', height: '56px' }}>
-                        <PlayCircle size={28} className="text-primary" style={{ marginLeft: '4px' }} />
+                      <div className="rounded-circle bg-white d-flex align-items-center justify-content-center shadow-lg" style={{ width: 52, height: 52 }}>
+                        <PlayCircle size={26} className="text-primary" style={{ marginLeft: '3px' }} />
                       </div>
                     </div>
                   </>
                 ) : (
-                  <div className="w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: 'linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%)' }}>
-                    <div className="rounded-circle d-flex align-items-center justify-content-center shadow-sm" style={{ width: '72px', height: '72px', backgroundColor: 'rgba(13,110,253,0.12)' }}>
-                      <PlayCircle size={36} className="text-primary" style={{ marginLeft: '4px', opacity: 0.9 }} />
+                  <div className="w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: 'linear-gradient(160deg, #7ec8e3 0%, #3498db 50%, #1a5276 100%)' }}>
+                    <div className="rounded-circle bg-white bg-opacity-20 d-flex align-items-center justify-content-center" style={{ width: 56, height: 56 }}>
+                      <PlayCircle size={28} className="text-white" style={{ marginLeft: '3px' }} />
                     </div>
                   </div>
                 )}
@@ -381,29 +388,29 @@ const CourseOverview = () => {
 
               <div className="p-4">
                 {isEnrolled ? (
-                  <button className="btn btn-success w-100 py-3 rounded-3 fw-bold shadow-sm mb-4 btn-lg transition-all hover-scale d-flex align-items-center justify-content-center gap-2" onClick={handleGoToLearning}>
-                    Vào khoá học
+                  <button className="btn w-100 py-3 rounded-3 fw-bold border-0 mb-4 d-flex align-items-center justify-content-center gap-2 course-enroll-btn" style={{ background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)', color: '#fff', fontSize: '1.05rem', boxShadow: '0 4px 14px rgba(39,174,96,0.35)' }} onClick={handleGoToLearning}>
+                    {t('enterCourse')}
                   </button>
                 ) : (
-                  <button className="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm mb-4 btn-lg transition-all hover-scale d-flex align-items-center justify-content-center gap-2" onClick={handleEnroll}>
-                    Đăng ký học
+                  <button className="btn w-100 py-3 rounded-3 fw-bold border-0 mb-4 d-flex align-items-center justify-content-center gap-2 course-enroll-btn" style={{ background: 'linear-gradient(135deg, #1a5276 0%, #3498db 100%)', color: '#fff', fontSize: '1.05rem', boxShadow: '0 4px 14px rgba(26,82,118,0.35)' }} onClick={handleEnroll}>
+                    {t('enrollCourse')}
                   </button>
                 )}
 
-                <div className="border-top pt-3 mt-2">
-                  <h6 className="fw-bold mb-3" style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 600 }}>Bạn sẽ nhận được</h6>
+                <div className="pt-3" style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <h6 className="fw-bold mb-3" style={{ color: '#1a5276', fontSize: '1rem', letterSpacing: '-0.01em' }}>{t('youWillGet')}</h6>
                   <ul className="list-unstyled d-flex flex-column gap-2 mb-0">
-                    <li className="d-flex align-items-start gap-2" style={{ fontSize: '0.9rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
-                      <CheckCircle2 size={18} className="text-success flex-shrink-0 mt-1" />
-                      <span>Video bài giảng & tài liệu đầy đủ</span>
+                    <li className="d-flex align-items-center gap-3 py-2 px-3 rounded-3" style={{ backgroundColor: 'rgba(26,82,118,0.04)', fontSize: '0.9rem', color: '#334155', fontWeight: 500 }}>
+                      <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 28, height: 28, backgroundColor: 'rgba(39,174,96,0.15)' }}><CheckCircle2 size={16} className="text-success" /></div>
+                      <span>{t('benefitVideos')}</span>
                     </li>
-                    <li className="d-flex align-items-start gap-2" style={{ fontSize: '0.9rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
-                      <CheckCircle2 size={18} className="text-success flex-shrink-0 mt-1" />
-                      <span>Bài tập trắc nghiệm & tự luận</span>
+                    <li className="d-flex align-items-center gap-3 py-2 px-3 rounded-3" style={{ backgroundColor: 'rgba(26,82,118,0.04)', fontSize: '0.9rem', color: '#334155', fontWeight: 500 }}>
+                      <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 28, height: 28, backgroundColor: 'rgba(39,174,96,0.15)' }}><CheckCircle2 size={16} className="text-success" /></div>
+                      <span>{t('benefitQuiz')}</span>
                     </li>
-                    <li className="d-flex align-items-start gap-2" style={{ fontSize: '0.9rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
-                      <CheckCircle2 size={18} className="text-success flex-shrink-0 mt-1" />
-                      <span>Chứng chỉ điện tử khi hoàn thành</span>
+                    <li className="d-flex align-items-center gap-3 py-2 px-3 rounded-3" style={{ backgroundColor: 'rgba(26,82,118,0.04)', fontSize: '0.9rem', color: '#334155', fontWeight: 500 }}>
+                      <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 28, height: 28, backgroundColor: 'rgba(39,174,96,0.15)' }}><CheckCircle2 size={16} className="text-success" /></div>
+                      <span>{t('benefitCert')}</span>
                     </li>
                   </ul>
                 </div>
@@ -424,6 +431,10 @@ const CourseOverview = () => {
         .course-description-content h1, .course-description-content h2, .course-description-content h3 { margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; color: #0f172a; }
         .course-description-content ul, .course-description-content ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
         .hover-scale:hover { transform: translateY(-2px); }
+        .course-enroll-card { transition: box-shadow 0.3s ease, transform 0.3s ease; }
+        .course-enroll-card:hover { box-shadow: 0 8px 32px rgba(26,82,118,0.18) !important; }
+        .course-enroll-btn { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .course-enroll-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(26,82,118,0.4) !important; color: #fff !important; }
       `}</style>
     </UserLayout>
   );

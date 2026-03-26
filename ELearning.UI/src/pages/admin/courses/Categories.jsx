@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
 import { useNotify } from '../../../context/NotifyContext';
-import { Layers, Plus, Edit2, Trash2, Loader2, Save, X, Search, ChevronRight } from 'lucide-react';
+import { Layers, Plus, Edit2, Trash2, Loader2, Save, Search, ChevronRight, ChevronLeft } from 'lucide-react';
+
+const PAGE_SIZE = 10;
 
 const Categories = () => {
   const navigate = useNavigate();
@@ -14,10 +16,22 @@ const Categories = () => {
   const [formData, setFormData] = useState({ name: '', description: '' });
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  const filteredCategories = categories.filter(cat =>
+    cat.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const totalPages = Math.ceil(filteredCategories.length / PAGE_SIZE) || 1;
+  const paginatedCategories = filteredCategories.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    const total = Math.ceil(filteredCategories.length / PAGE_SIZE) || 1;
+    setPage(p => (p > total && total > 0) ? 1 : p);
+  }, [filteredCategories.length]);
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -60,10 +74,6 @@ const Categories = () => {
     }
   };
 
-  const filteredCategories = categories.filter(cat =>
-    cat.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <AdminLayout>
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -71,8 +81,19 @@ const Categories = () => {
           <h2 className="fw-bold tracking-tight mb-1">Danh mục Khóa học</h2>
           <p className="text-muted small">Nhấn vào tên danh mục để xem các khóa học thuộc chuyên ngành đó.</p>
         </div>
-        <button className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 rounded-3 shadow-sm fw-bold" onClick={() => setShowAddModal(true)}>
-          <Plus size={20} /> Thêm danh mục
+        <button
+          className="btn d-flex align-items-center gap-2 px-4 py-2 fw-bold border"
+          style={{
+            background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
+            borderColor: '#1a5276',
+            color: '#fff',
+            borderRadius: 2,
+            textShadow: '0 1px 1px rgba(255,255,255,0.4)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+          }}
+          onClick={() => setShowAddModal(true)}
+        >
+          <Plus size={20} /> Tạo mới
         </button>
       </div>
 
@@ -80,14 +101,14 @@ const Categories = () => {
         <div className="card-body p-3">
           <div className="input-group bg-light border-0 rounded-3 px-2">
             <span className="input-group-text bg-transparent border-0 text-muted"><Search size={18} /></span>
-            <input type="text" className="form-control bg-transparent border-0 py-2" placeholder="Tìm kiếm danh mục..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <input type="text" className="form-control bg-transparent border-0 py-2" placeholder="Tìm kiếm danh mục..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} />
           </div>
         </div>
       </div>
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div className="table-responsive">
-          <table className="table table-hover align-middle mb-0">
+        <div className="table-responsive admin-table-framed-wrapper">
+          <table className="table table-hover align-middle mb-0 admin-table-framed">
             <thead className="bg-light border-bottom">
               <tr>
                 <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase" style={{ width: '60px' }}>#</th>
@@ -100,9 +121,9 @@ const Categories = () => {
               {loading ? (
                 <tr><td colSpan="4" className="text-center py-5"><Loader2 className="animate-spin text-primary" size={32} /></td></tr>
               ) : (
-                filteredCategories.map((cat, index) => (
+                paginatedCategories.map((cat, index) => (
                   <tr key={cat.id}>
-                    <td className="px-4 py-3 text-muted small">{index + 1}</td>
+                    <td className="px-4 py-3 text-muted small">{(page - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="py-3">
                       <div
                         className="d-flex align-items-center gap-2 cursor-pointer group"
@@ -128,6 +149,28 @@ const Categories = () => {
             </tbody>
           </table>
         </div>
+        {filteredCategories.length > 0 && (
+          <div className="d-flex align-items-center justify-content-between px-4 py-3 border-top bg-light">
+            <span className="small text-muted">Tổng {filteredCategories.length} danh mục • Trang {page}/{totalPages}</span>
+            <div className="d-flex gap-2 align-items-center">
+              <button
+                className="btn btn-sm btn-outline-secondary rounded-3"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="small fw-medium">Trang {page} / {totalPages}</span>
+              <button
+                className="btn btn-sm btn-outline-secondary rounded-3"
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showModal && (

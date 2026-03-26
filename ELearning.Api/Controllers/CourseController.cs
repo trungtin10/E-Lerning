@@ -2,6 +2,7 @@ using System.Text.Json;
 using ELearning.Api.Data;
 using ELearning.Api.DTOs;
 using ELearning.Api.Models;
+using ELearning.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,12 +17,30 @@ public class CourseController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
+    private readonly IAuditService _audit;
+    private readonly ILogger<CourseController> _logger;
 
-    public CourseController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config)
+    public CourseController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config, IAuditService audit, ILogger<CourseController> logger)
     {
         _context = context;
         _env = env;
         _config = config;
+        _audit = audit;
+        _logger = logger;
+    }
+
+    private async Task<int?> GetUserCompanyIdAsync()
+    {
+        var claim = User.FindFirst("CompanyId")?.Value
+            ?? User.FindFirst(c => string.Equals(c.Type, "CompanyId", StringComparison.OrdinalIgnoreCase))?.Value;
+        if (int.TryParse(claim, out int cid)) return cid;
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            return user?.CompanyId;
+        }
+        return null;
     }
 
     private string GetBaseUrl()
@@ -48,8 +67,11 @@ public class CourseController : ControllerBase
             var query = _context.Courses.Include(c => c.Category).Include(c => c.Company).AsQueryable();
             if (!User.IsInRole("SuperAdmin"))
             {
-                var companyIdClaim = User.FindFirst("CompanyId")?.Value;
-                if (int.TryParse(companyIdClaim, out int companyId)) query = query.Where(c => c.CompanyId == companyId);
+                var companyId = await GetUserCompanyIdAsync() ?? 0;
+                if (companyId > 0)
+                    query = query.Where(c => c.CompanyId == companyId || c.CompanyId == null);
+                else
+                    query = query.Where(c => c.CompanyId == null);
             }
             var baseUrl = GetBaseUrl();
             return await query.OrderByDescending(c => c.CreatedAt).Select(c => new CourseSummaryDto(c.Id, c.CourseCode, c.Title, c.ThumbnailUrl != null ? (c.ThumbnailUrl.StartsWith("http") ? c.ThumbnailUrl : baseUrl + c.ThumbnailUrl) : null, c.CategoryId, c.Category != null ? c.Category.Name : "Chưa phân loại", c.CompanyId, c.Company != null ? c.Company.CompanyName : "Hệ thống tổng", null, c.IsPublished, c.CreatedAt, c.StartDate, c.EndDate)).ToListAsync();
@@ -75,7 +97,13 @@ public class CourseController : ControllerBase
                     {
                         var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                         var list = JsonSerializer.Deserialize<List<JsonSection>>(l.SectionsJson, jsonOpts);
-                        sections = list?.Select(s => new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl)).ToList();
+                        sections = list?.Select(s =>
+                        {
+                            var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0)
+                                ? s.VideoUrls
+                                : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
+                            return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl, urls);
+                        }).ToList();
                     }
                     catch { }
                 }
@@ -101,7 +129,7 @@ public class CourseController : ControllerBase
                     }
                 }
                 return new LessonDto(
-                    l.Id, l.Title, l.Overview, l.Content, null, l.ReviewContent, l.EssayQuestion, l.ScheduledDate, l.LessonType, l.DurationInMinutes, l.OrderIndex,
+                    l.Id, l.Title, l.Overview, l.Content, null, l.ReviewContent, l.EssayQuestion, l.ScheduledDate, l.LessonType ?? "Video", l.DurationInMinutes, l.OrderIndex,
                     sections,
                     l.Section1Title, l.Section2Title, l.Section3Title, l.Section4Title, l.Section5Title,
                     l.VideoUrl1 != null ? (l.VideoUrl1.StartsWith("http") ? l.VideoUrl1 : l.VideoUrl1) : null,
@@ -124,7 +152,11 @@ public class CourseController : ControllerBase
                 course.IntroExternalVideoUrl
             ));
         }
-        catch (Exception ex) { return StatusCode(500, ex.Message); }
+        catch (Exception ex)
+        {
+            var msg = ex.InnerException?.Message ?? ex.Message;
+            return StatusCode(500, new { error = msg, detail = ex.ToString() });
+        }
     }
 
     private async Task<string?> SaveVideoFile(IFormFile? file)
@@ -151,7 +183,8 @@ public class CourseController : ControllerBase
             course.Description = form.Description ?? course.Description;
             course.IsPublished = form.IsPublished;
             course.CategoryId = form.CategoryId ?? course.CategoryId;
-            course.CompanyId = form.CompanyId.HasValue && form.CompanyId.Value > 0 ? form.CompanyId : null;
+            if (User.IsInRole("SuperAdmin"))
+                course.CompanyId = form.CompanyId.HasValue && form.CompanyId.Value > 0 ? form.CompanyId : null;
             course.StartDate = form.StartDate ?? course.StartDate;
             course.EndDate = form.EndDate;
             course.ShowIntroVideo = form.ShowIntroVideo;
@@ -159,6 +192,7 @@ public class CourseController : ControllerBase
             var introVid = await SaveVideoFile(form.IntroVideoFile);
             if (introVid != null) course.IntroVideoUrl = introVid;
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Update", "Course", id.ToString(), null, course.Title, "Cập nhật khóa học");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -182,25 +216,42 @@ public class CourseController : ControllerBase
                 var sections = JsonSerializer.Deserialize<List<JsonSection>>(form.SectionsJson, jsonOpts);
                 if (sections != null && sections.Count > 0)
                 {
-                    var videoFiles = new[] { form.VideoFile0, form.VideoFile1, form.VideoFile2, form.VideoFile3, form.VideoFile4, form.VideoFile5, form.VideoFile6, form.VideoFile7, form.VideoFile8, form.VideoFile9, form.VideoFile10, form.VideoFile11, form.VideoFile12, form.VideoFile13, form.VideoFile14, form.VideoFile15, form.VideoFile16, form.VideoFile17, form.VideoFile18, form.VideoFile19 };
-                    for (int i = 0; i < Math.Min(sections.Count, videoFiles.Length); i++)
+                    var formFiles = Request.Form.Files;
+                    if (formFiles.Count == 0)
                     {
-                        if (videoFiles[i] != null)
+                        var requestForm = await Request.ReadFormAsync();
+                        formFiles = requestForm.Files;
+                    }
+                    foreach (var file in formFiles)
+                    {
+                        var name = file.Name ?? "";
+                        if (name.StartsWith("VideoFile_") && name.Length > 10)
                         {
-                            var url = await SaveVideoFile(videoFiles[i]);
-                            if (url != null) sections[i].VideoUrl = url;
+                            var parts = name.Split('_');
+                            if (parts.Length >= 3 && int.TryParse(parts[1], out int sectionIndex) && sectionIndex >= 0 && sectionIndex < sections.Count)
+                            {
+                                sections[sectionIndex].VideoUrls ??= new List<string>();
+                                var url = await SaveVideoFile(file);
+                                if (url != null) sections[sectionIndex].VideoUrls!.Add(url);
+                            }
                         }
                     }
+                    for (int i = 0; i < sections.Count; i++)
+                    {
+                        var sec = sections[i];
+                        if (sec?.VideoUrls != null && sec.VideoUrls.Count > 0)
+                            sec.VideoUrl = sec.VideoUrls[0];
+                    }
                     lesson.SectionsJson = JsonSerializer.Serialize(sections);
-                    lesson.Overview = sections.Count > 0 ? sections[0].Content : null;
+                    lesson.Overview = sections.Count > 0 ? sections[0]?.Content : null;
                     lesson.Content = sections.Count > 1 ? sections[1].Content : null;
                     lesson.ReviewContent = sections.Count > 2 ? sections[2].Content : null;
                     lesson.EssayQuestion = sections.Count > 3 ? sections[3].Content : null;
-                    lesson.Section1Title = sections.Count > 0 ? sections[0].Title : null;
-                    lesson.Section2Title = sections.Count > 1 ? sections[1].Title : null;
-                    lesson.Section3Title = sections.Count > 2 ? sections[2].Title : null;
-                    lesson.Section4Title = sections.Count > 3 ? sections[3].Title : null;
-                    lesson.Section5Title = sections.Count > 4 ? sections[4].Title : null;
+                    lesson.Section1Title = sections.Count > 0 ? sections[0]?.Title : null;
+                    lesson.Section2Title = sections.Count > 1 ? sections[1]?.Title : null;
+                    lesson.Section3Title = sections.Count > 2 ? sections[2]?.Title : null;
+                    lesson.Section4Title = sections.Count > 3 ? sections[3]?.Title : null;
+                    lesson.Section5Title = sections.Count > 4 ? sections[4]?.Title : null;
                     lesson.ShowVideo1 = sections.Count > 0 && sections[0].ShowVideo;
                     lesson.ShowVideo2 = sections.Count > 1 && sections[1].ShowVideo;
                     lesson.ShowVideo3 = sections.Count > 2 && sections[2].ShowVideo;
@@ -211,12 +262,19 @@ public class CourseController : ControllerBase
                     lesson.ShowQuiz3 = sections.Count > 2 && sections[2].ShowQuiz;
                     lesson.ShowQuiz4 = sections.Count > 3 && sections[3].ShowQuiz;
                     lesson.ShowQuiz5 = sections.Count > 4 && sections[4].ShowQuiz;
-                    lesson.VideoUrl1 = sections.Count > 0 ? sections[0].VideoUrl : null;
-                    lesson.VideoUrl2 = sections.Count > 1 ? sections[1].VideoUrl : null;
-                    lesson.VideoUrl3 = sections.Count > 2 ? sections[2].VideoUrl : null;
-                    lesson.VideoUrl4 = sections.Count > 3 ? sections[3].VideoUrl : null;
-                    lesson.VideoUrl5 = sections.Count > 4 ? sections[4].VideoUrl : null;
+                    lesson.VideoUrl1 = sections.Count > 0 ? (sections[0].VideoUrls?.FirstOrDefault() ?? sections[0].VideoUrl) : null;
+                    lesson.VideoUrl2 = sections.Count > 1 ? (sections[1].VideoUrls?.FirstOrDefault() ?? sections[1].VideoUrl) : null;
+                    lesson.VideoUrl3 = sections.Count > 2 ? (sections[2].VideoUrls?.FirstOrDefault() ?? sections[2].VideoUrl) : null;
+                    lesson.VideoUrl4 = sections.Count > 3 ? (sections[3].VideoUrls?.FirstOrDefault() ?? sections[3].VideoUrl) : null;
+                    lesson.VideoUrl5 = sections.Count > 4 ? (sections[4].VideoUrls?.FirstOrDefault() ?? sections[4].VideoUrl) : null;
                 }
+                await _context.SaveChangesAsync();
+                var sectionDtos = (sections ?? new List<JsonSection>()).Select(s =>
+                {
+                    var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0) ? s.VideoUrls : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
+                    return new { title = s.Title, content = s.Content, showVideo = s.ShowVideo, showQuiz = s.ShowQuiz, videoUrls = urls ?? new List<string>() };
+                }).ToList();
+                return Ok(new { sections = sectionDtos });
             }
             else
             {
@@ -246,6 +304,7 @@ public class CourseController : ControllerBase
             }
 
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Update", "Lesson", id.ToString(), null, lesson.Title, "Cập nhật bài học");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -260,6 +319,7 @@ public class CourseController : ControllerBase
             var lesson = new Lesson { CourseId = form.CourseId, Title = form.Title ?? "Bài học mới", OrderIndex = form.OrderIndex };
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Create", "Lesson", lesson.Id.ToString(), null, lesson.Title, "Tạo bài học mới");
             return Ok(new { Id = lesson.Id, Title = lesson.Title });
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -273,7 +333,9 @@ public class CourseController : ControllerBase
                 var lesson = await _context.Lessons.FindAsync(dto.LessonIds[i]);
                 if (lesson != null) lesson.OrderIndex = i + 1;
             }
-            await _context.SaveChangesAsync(); return Ok();
+            await _context.SaveChangesAsync();
+            await _audit.LogAsync("Update", "Lesson", null, null, null, "Sắp xếp lại thứ tự bài học");
+            return Ok();
         } catch (Exception ex) { return StatusCode(500, ex.Message); }
     }
 
@@ -290,6 +352,7 @@ public class CourseController : ControllerBase
                 if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
                 course.IntroVideoUrl = null;
                 await _context.SaveChangesAsync();
+                await _audit.LogAsync("Delete", "Course", id.ToString(), null, null, "Xóa video giới thiệu khóa học");
             }
             return Ok();
         }
@@ -297,30 +360,61 @@ public class CourseController : ControllerBase
     }
 
     [HttpDelete("lessons/{id}/video/{num}")]
-    public async Task<IActionResult> DeleteLessonVideo(int id, int num)
+    public async Task<IActionResult> DeleteLessonVideo(int id, int num, [FromQuery] int? videoIndex = null)
     {
         try
         {
             var lesson = await _context.Lessons.FindAsync(id);
             if (lesson == null) return NotFound();
-            string? videoUrl = num switch { 1=>lesson.VideoUrl1, 2=>lesson.VideoUrl2, 3=>lesson.VideoUrl3, 4=>lesson.VideoUrl4, 5=>lesson.VideoUrl5, _=>null };
-            if (num >= 6 && !string.IsNullOrEmpty(lesson.SectionsJson))
+            string? videoUrl = null;
+            if (!string.IsNullOrEmpty(lesson.SectionsJson))
             {
                 var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var sections = JsonSerializer.Deserialize<List<JsonSection>>(lesson.SectionsJson, jsonOpts);
                 if (sections != null && num - 1 < sections.Count)
                 {
-                    videoUrl = sections[num - 1].VideoUrl;
-                    sections[num - 1].VideoUrl = null;
-                    lesson.SectionsJson = JsonSerializer.Serialize(sections);
+                    var sec = sections[num - 1];
+                    var urls = sec.VideoUrls ?? (!string.IsNullOrEmpty(sec.VideoUrl) ? new List<string> { sec.VideoUrl } : null);
+                    if (urls != null && urls.Count > 0)
+                    {
+                        var idx = videoIndex ?? 0;
+                        if (idx >= 0 && idx < urls.Count)
+                        {
+                            videoUrl = urls[idx];
+                            urls.RemoveAt(idx);
+                            if (urls.Count == 0) { sec.VideoUrls = null; sec.VideoUrl = null; }
+                            else { sec.VideoUrl = urls[0]; sec.VideoUrls = urls; }
+                            lesson.SectionsJson = JsonSerializer.Serialize(sections);
+                            if (num <= 5) { var v = urls.Count > 0 ? urls[0] : null; switch(num) { case 1: lesson.VideoUrl1=v; break; case 2: lesson.VideoUrl2=v; break; case 3: lesson.VideoUrl3=v; break; case 4: lesson.VideoUrl4=v; break; case 5: lesson.VideoUrl5=v; break; } }
+                        }
+                    }
+                    else if (videoIndex == null && !string.IsNullOrEmpty(sec.VideoUrl))
+                    {
+                        videoUrl = sec.VideoUrl;
+                        sec.VideoUrl = null;
+                        lesson.SectionsJson = JsonSerializer.Serialize(sections);
+                        if (num <= 5) { switch(num) { case 1: lesson.VideoUrl1=null; break; case 2: lesson.VideoUrl2=null; break; case 3: lesson.VideoUrl3=null; break; case 4: lesson.VideoUrl4=null; break; case 5: lesson.VideoUrl5=null; break; } }
+                    }
+                }
+            }
+            else
+            {
+                videoUrl = num switch { 1=>lesson.VideoUrl1, 2=>lesson.VideoUrl2, 3=>lesson.VideoUrl3, 4=>lesson.VideoUrl4, 5=>lesson.VideoUrl5, _=>null };
+                if (!string.IsNullOrEmpty(videoUrl) && videoIndex == null)
+                {
+                    switch(num) { case 1: lesson.VideoUrl1=null; break; case 2: lesson.VideoUrl2=null; break; case 3: lesson.VideoUrl3=null; break; case 4: lesson.VideoUrl4=null; break; case 5: lesson.VideoUrl5=null; break; }
+                }
+                else
+                {
+                    videoUrl = null;
                 }
             }
             if (!string.IsNullOrEmpty(videoUrl))
             {
                 var filePath = Path.Combine(_env.ContentRootPath, videoUrl.TrimStart('/'));
                 if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
-                if (num <= 5) { switch(num) { case 1: lesson.VideoUrl1=null; break; case 2: lesson.VideoUrl2=null; break; case 3: lesson.VideoUrl3=null; break; case 4: lesson.VideoUrl4=null; break; case 5: lesson.VideoUrl5=null; break; } }
                 await _context.SaveChangesAsync();
+                await _audit.LogAsync("Delete", "Lesson", id.ToString(), null, null, $"Xóa video bài học mục {num}");
             }
             return Ok();
         }
@@ -346,6 +440,7 @@ public class CourseController : ControllerBase
                 await _context.Database.ExecuteSqlRawAsync("DELETE FROM Lessons WHERE Id = {0}", id);
 
                 await transaction.CommitAsync();
+                await _audit.LogAsync("Delete", "Lesson", id.ToString(), null, null, "Xóa bài học");
                 return Ok();
             }
             catch
@@ -370,13 +465,20 @@ public class CourseController : ControllerBase
             if (form.CategoryId == null || form.CategoryId == 0)
                 return BadRequest("Vui lòng chọn danh mục khóa học.");
 
+            int? companyId = form.CompanyId.HasValue && form.CompanyId.Value > 0 ? form.CompanyId : null;
+            if (companyId == null && !User.IsInRole("SuperAdmin"))
+            {
+                var claim = User.FindFirst("CompanyId")?.Value;
+                if (int.TryParse(claim, out int cid) && cid > 0) companyId = cid;
+            }
+
             var course = new Course 
             { 
                 CourseCode = form.CourseCode ?? "", 
                 Title = form.Title ?? "", 
                 Description = form.Description, 
                 CategoryId = form.CategoryId.Value, 
-                CompanyId = form.CompanyId.HasValue && form.CompanyId.Value > 0 ? form.CompanyId : null,
+                CompanyId = companyId,
                 IsPublished = form.IsPublished,
                 StartDate = form.StartDate ?? DateTime.UtcNow, 
                 EndDate = form.EndDate,
@@ -385,7 +487,15 @@ public class CourseController : ControllerBase
             };
             
             _context.Courses.Add(course);
-            await _context.SaveChangesAsync(); 
+            await _context.SaveChangesAsync();
+            try
+            {
+                await _audit.LogAsync("Create", "Course", course.Id.ToString(), null, course.Title, $"Khóa học {course.Title} đã được tạo");
+            }
+            catch (Exception auditEx)
+            {
+                _logger.LogError(auditEx, "Audit log failed for Create Course {CourseId}", course.Id);
+            }
             return Ok();
         }
         catch (Exception ex) 
@@ -416,6 +526,7 @@ public class CourseController : ControllerBase
             };
             _context.Categories.Add(category);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Create", "Category", category.Id.ToString(), null, category.Name, "Tạo danh mục khóa học");
             return Ok(new CategoryDto(category.Id, category.Name, category.Description, category.CompanyId));
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -431,6 +542,7 @@ public class CourseController : ControllerBase
             existing.Name = dto.Name;
             existing.Description = dto.Description;
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Update", "Category", id.ToString(), null, existing.Name, "Cập nhật danh mục");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -443,8 +555,10 @@ public class CourseController : ControllerBase
         {
             var category = await _context.Categories.FindAsync(id);
             if (category == null) return NotFound();
+            var name = category.Name;
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync("Delete", "Category", id.ToString(), name, null, "Xóa danh mục khóa học");
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
@@ -455,7 +569,10 @@ public class CourseController : ControllerBase
     {
         var course = await _context.Courses.FindAsync(id);
         if (course == null) return NotFound();
+        var title = course.Title;
         _context.Courses.Remove(course);
-        await _context.SaveChangesAsync(); return Ok();
+        await _context.SaveChangesAsync();
+        await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học");
+        return Ok();
     }
 }

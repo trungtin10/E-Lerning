@@ -2,17 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import UserLayout from '../../components/layout/UserLayout';
 import api from '../../api/axios';
+import { useLanguage } from '../../context/LanguageContext';
 import { BookOpen, ArrowLeft, Loader2, Calendar, Layers, Search } from 'lucide-react';
 
 const CourseList = () => {
   const [courses, setCourses] = useState([]);
+  const [enrolledIds, setEnrolledIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
+  const { lang, t } = useLanguage();
 
   useEffect(() => {
     fetchCourses();
+    fetchEnrolledIds();
   }, []);
+
+  const fetchEnrolledIds = async () => {
+    try {
+      const res = await api.get('/learning/my-courses');
+      const list = Array.isArray(res.data) ? res.data : [];
+      setEnrolledIds(new Set(list.map(c => c.id)));
+    } catch { /* ignore */ }
+  };
 
   const fetchCourses = async () => {
     try {
@@ -38,10 +50,10 @@ const CourseList = () => {
     <UserLayout>
       <div className="mb-5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
         <button className="btn btn-link text-body-secondary p-0 mb-3 d-flex align-items-center gap-2 text-decoration-none fw-semibold" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft size={18} /> Quay lại Dashboard
+          <ArrowLeft size={18} /> {t('backToDashboard')}
         </button>
-        <h1 className="fw-bold mb-2" style={{ fontSize: '1.75rem', color: '#1a1a2e', letterSpacing: '-0.02em' }}>Khám phá khóa học</h1>
-        <p className="text-body-secondary mb-0" style={{ fontSize: '1rem' }}>Chọn khóa học phù hợp và bắt đầu học ngay.</p>
+        <h1 className="fw-bold mb-2" style={{ fontSize: '1.75rem', color: '#1a1a2e', letterSpacing: '-0.02em' }}>{t('exploreCourses')}</h1>
+        <p className="text-body-secondary mb-0" style={{ fontSize: '1rem' }}>{t('exploreCoursesDesc')}</p>
       </div>
 
       <div className="mb-5">
@@ -50,7 +62,7 @@ const CourseList = () => {
           <input
             type="text"
             className="form-control border-0 py-3"
-            placeholder="Tìm theo tên, mã hoặc danh mục..."
+            placeholder={t('searchPlaceholder')}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -62,8 +74,8 @@ const CourseList = () => {
       ) : filtered.length === 0 ? (
         <div className="text-center py-5 bg-white rounded-4 border shadow-sm">
           <BookOpen size={56} className="mb-3 opacity-25" style={{ color: '#6c757d' }} />
-          <h5 className="fw-semibold text-body-secondary">Không tìm thấy khóa học nào</h5>
-          <p className="text-body-secondary small mb-0">Thử thay đổi từ khóa tìm kiếm hoặc quay lại sau.</p>
+          <h5 className="fw-semibold text-body-secondary">{t('noCoursesFound')}</h5>
+          <p className="text-body-secondary small mb-0">{t('noCoursesFoundHint')}</p>
         </div>
       ) : (
         <div className="row g-4">
@@ -71,7 +83,7 @@ const CourseList = () => {
             <div key={course.id} className="col-12 col-md-6 col-xl-4">
               <div
                 className="card border-0 shadow-sm rounded-4 overflow-hidden h-100 transition-all course-card"
-                onClick={() => navigate(`/course/${course.id}`)}
+                onClick={() => enrolledIds.has(course.id) ? navigate(`/learning/${course.id}`) : navigate(`/course/${course.id}`)}
                 style={{ cursor: 'pointer' }}
               >
                 <div className="bg-light d-flex align-items-center justify-content-center overflow-hidden position-relative" style={{ aspectRatio: '16/9', minHeight: '160px' }}>
@@ -85,14 +97,14 @@ const CourseList = () => {
                 <div className="card-body p-4">
                   <h5 className="fw-bold mb-2" style={{ fontSize: '1.1rem', color: '#1a1a2e', lineHeight: 1.4 }}>{course.title}</h5>
                   <div className="text-body-secondary small mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
-                    <Layers size={14} /> Mã: {course.courseCode}
+                    <Layers size={14} /> {t('code')}: {course.courseCode}
                   </div>
                   <div className="text-body-secondary small d-flex align-items-center gap-2 mb-3" style={{ fontSize: '0.85rem' }}>
                     <Calendar size={14} />
-                    {course.startDate ? new Date(course.startDate).toLocaleDateString('vi-VN') : '—'}
+                    {course.startDate ? new Date(course.startDate).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US') : '—'}
                   </div>
                   <button className="btn btn-primary w-100 mt-2 rounded-3 fw-semibold py-2 d-flex align-items-center justify-content-center gap-2">
-                    Xem chi tiết
+                    {enrolledIds.has(course.id) ? t('startLearning') : t('viewDetails')}
                   </button>
                 </div>
               </div>

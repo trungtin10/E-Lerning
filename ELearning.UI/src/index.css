@@ -35,3 +35,30 @@ body {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-20px); }
 }
+
+/* Admin table - dấu gạch dọc ngăn cột, căn chỉnh phù hợp form */
+.admin-table-framed {
+  border-collapse: collapse;
+  width: 100%;
+}
+.admin-table-framed thead th {
+  background: #e9ecef !important;
+  color: #1a5276 !important;
+  font-weight: 700 !important;
+  padding: 12px 16px !important;
+  vertical-align: middle !important;
+  border-bottom: 2px solid #b0b8c0 !important;
+}
+.admin-table-framed thead th:not(:last-child),
+.admin-table-framed tbody td:not(:last-child) {
+  border-right: 1px solid #dee2e6 !important;
+}
+.admin-table-framed tbody td {
+  padding: 12px 16px !important;
+  vertical-align: middle !important;
+  border-bottom: 1px solid #e9ecef !important;
+}
+.admin-table-framed-wrapper {
+  border-radius: 8px;
+  overflow-x: auto;
+}

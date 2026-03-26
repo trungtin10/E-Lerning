@@ -7,7 +7,9 @@ namespace ELearning.Api.Services;
 public interface IEmailService
 {
     Task SendActivationEmailAsync(string toEmail, string fullName, string account, string password, string activationLink);
-    Task SendEmailAsync(string toEmail, string subject, string htmlBody); // Thêm hàm này để khớp với các yêu cầu khác nếu có
+    Task SendEmailAsync(string toEmail, string subject, string htmlBody);
+    Task SendExpiryReminderAsync(string toEmail, string companyName, DateTime expiresAt, int daysLeft);
+    Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetLink);
 }
 
 public class EmailService : IEmailService
@@ -66,5 +68,36 @@ public class EmailService : IEmailService
         await smtp.AuthenticateAsync(_config["EmailSettings:SenderEmail"], _config["EmailSettings:AppPassword"]);
         await smtp.SendAsync(email);
         await smtp.DisconnectAsync(true);
+    }
+
+    public async Task SendExpiryReminderAsync(string toEmail, string companyName, DateTime expiresAt, int daysLeft)
+    {
+        var htmlBody = $@"
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 40px; color: #1e293b;'>
+                <h2 style='color: #dc2626;'>Nhắc nhở gia hạn gói dịch vụ</h2>
+                <p>Kính gửi quý công ty <strong>{companyName}</strong>,</p>
+                <p>Gói dịch vụ E-Learning của quý công ty sẽ hết hạn vào ngày <strong>{expiresAt:dd/MM/yyyy}</strong> (còn {daysLeft} ngày).</p>
+                <p>Vui lòng liên hệ để gia hạn và tiếp tục sử dụng dịch vụ.</p>
+                <hr style='border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
+                <p style='font-size: 13px; color: #94a3b8;'>Đây là email tự động từ hệ thống E-Learning.</p>
+            </div>";
+        await SendEmailAsync(toEmail, $"[E-Learning] Nhắc nhở gia hạn - Còn {daysLeft} ngày", htmlBody);
+    }
+
+    public async Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetLink)
+    {
+        var htmlBody = $@"
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 40px; color: #1e293b; background-color: #ffffff;'>
+                <h2 style='color: #4f46e5; text-align: center; font-size: 24px; margin-bottom: 25px; font-weight: bold;'>Đặt lại mật khẩu</h2>
+                <p style='font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 25px;'>Xin chào {fullName},</p>
+                <p style='font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 25px;'>Bạn đã yêu cầu đặt lại mật khẩu. Vui lòng nhấn nút bên dưới để tiếp tục.</p>
+                <div style='text-align: center; margin: 30px 0;'>
+                    <a href='{resetLink}' style='background-color: #dc2626; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;'>ĐẶT LẠI MẬT KHẨU</a>
+                </div>
+                <p style='color: #94a3b8; font-size: 14px; margin-top: 20px;'>Link này có hiệu lực trong 24 giờ. Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+                <hr style='border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
+                <p style='font-size: 13px; color: #94a3b8; text-align: center;'>Đây là email tự động, vui lòng không trả lời.</p>
+            </div>";
+        await SendEmailAsync(toEmail, "[E-Learning] Đặt lại mật khẩu", htmlBody);
     }
 }

@@ -73,3 +73,46 @@ public record QuizResultDto(
     int CorrectAnswers,
     int TotalQuestions
 );
+
+public record QuizResultSummaryDto(
+    int AttemptId,
+    string UserName,
+    int CorrectAnswers,
+    int TotalQuestions,
+    int? TimeFromStartMinutes = null,
+    int? TotalTimeInCourseMinutes = null
+);
+
+public record QuizAttemptDetailDto(
+    int AttemptId,
+    string UserName,
+    string QuizTitle,
+    int Score,
+    int CorrectAnswers,
+    int TotalQuestions,
+    bool IsPassed,
+    DateTime CompletedAt,
+    List<QuizAttemptQuestionDto> Questions
+);
+
+public record QuizAttemptQuestionDto(
+    int QuestionId,
+    string Content,
+    List<QuizAttemptAnswerOptionDto> Answers,
+    int? SelectedAnswerId,
+    bool? IsCorrect
+);
+
+public record QuizAttemptAnswerOptionDto(
+    int Id,
+    string Content,
+    bool IsCorrect
+);
+
+public record QuizWithResultsSummaryDto(
+    int QuizId,
+    int? LessonId,
+    int SectionNumber,
+    string DisplayTitle,
+    int AttemptCount
+);

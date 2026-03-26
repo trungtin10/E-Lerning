@@ -4,6 +4,7 @@ import { BookOpen, Building2, User, CheckCircle2, XCircle, Trash2, Edit2, Loader
 
 const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -37,80 +38,81 @@ const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
     return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
+  const cellStyle = { fontSize: '0.8125rem', fontWeight: 500, color: '#475569', lineHeight: 1.4 };
+
   return (
-    <div className="table-responsive">
-      <table className="table table-hover align-middle mb-0">
+    <div className="table-responsive course-table admin-table-framed-wrapper">
+      <table className="table table-hover mb-0 admin-table-framed">
         <thead className="bg-light border-bottom">
           <tr>
-            <th className="px-4 py-3 border-0 text-uppercase" style={{ width: '150px', fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Mã khóa học</th>
-            <th className="py-3 border-0 text-uppercase" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Tên khóa học</th>
-            <th className="py-3 border-0 text-uppercase" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Danh mục</th>
-            <th className="py-3 border-0 text-uppercase" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Đơn vị sở hữu</th>
-            <th className="py-3 border-0 text-uppercase" style={{ width: '220px', fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Thời gian học</th>
-            <th className="py-3 border-0 text-uppercase text-center" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Trạng thái</th>
-            <th className="px-4 py-3 border-0 text-uppercase text-end" style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Thao tác</th>
+            <th className="px-4 py-3 border-0 text-uppercase" style={{ width: '150px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Mã khóa học</th>
+            <th className="py-3 border-0 text-uppercase" style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Tên khóa học</th>
+            <th className="py-3 border-0 text-uppercase" style={{ width: '140px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Danh mục</th>
+            <th className="py-3 border-0 text-uppercase" style={{ width: '140px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Đơn vị sở hữu</th>
+            <th className="py-3 border-0 text-uppercase" style={{ width: '200px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Thời gian học</th>
+            <th className="py-3 border-0 text-uppercase text-center" style={{ width: '100px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Trạng thái</th>
+            <th className="px-4 py-3 border-0 text-uppercase text-end" style={{ width: '120px', fontSize: '0.7rem', fontWeight: 600, color: '#64748b', letterSpacing: '0.05em' }}>Thao tác</th>
           </tr>
         </thead>
         <tbody>
           {courses.map((course) => (
-            <tr key={course.id}>
-              <td className="px-4 py-3">
-                <span className="badge bg-primary-subtle text-primary px-3 py-2 rounded-3" style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+            <tr key={course.id} className="course-table-row">
+              <td className="px-4 py-3 align-middle">
+                <span className="badge bg-primary-subtle text-primary px-2 py-1 rounded-2" style={{ fontSize: '0.75rem', fontWeight: 500 }}>
                   {course.courseCode}
                 </span>
               </td>
-              <td className="py-3">
+              <td className="py-3 align-middle">
                 <div
-                  className="d-flex align-items-center gap-3 cursor-pointer hover-underline text-primary"
-                  style={{ fontSize: '0.8125rem', fontWeight: 500 }}
+                  className="d-flex align-items-center gap-2 cursor-pointer hover-underline text-primary course-title-cell"
+                  style={cellStyle}
                   onClick={() => navigate(`/admin/courses/${course.id}`, { state: { from: location.pathname } })}
-                  title="Nhấn để xem nội dung khóa học"
+                  title={course.title}
                 >
                   {course.thumbnailUrl ? (
-                    <img src={course.thumbnailUrl} alt={course.title} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '6px' }} />
+                    <img src={course.thumbnailUrl} alt="" className="flex-shrink-0" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} />
                   ) : (
-                    <div className="bg-light p-2 rounded-2 text-muted d-flex align-items-center justify-content-center" style={{ width: '40px', height: '40px' }}>
-                      <BookOpen size={18} className="opacity-50" />
+                    <div className="bg-light rounded-2 text-muted flex-shrink-0 d-flex align-items-center justify-content-center" style={{ width: 36, height: 36, padding: 6 }}>
+                      <BookOpen size={16} className="opacity-50" />
                     </div>
                   )}
-                  {course.title}
+                  <span className="course-title-text">{course.title}</span>
                 </div>
               </td>
-              <td className="py-3">
+              <td className="py-3 align-middle">
                 <div className="d-flex align-items-center gap-2">
-                  <div className="p-1 bg-info-subtle rounded-2 text-info"><Layers size={14} /></div>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#475569' }}>{course.categoryName}</span>
+                  <div className="p-1 bg-info-subtle rounded-2 text-info flex-shrink-0"><Layers size={12} /></div>
+                  <span style={cellStyle}>{course.categoryName}</span>
                 </div>
               </td>
-              <td className="py-3">
-                <div className="d-flex align-items-center gap-2" style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#475569' }}>
-                  <Building2 size={14} className="opacity-50" /> {course.companyName ?? course.CompanyName ?? 'Hệ thống tổng'}
+              <td className="py-3 align-middle">
+                <div className="d-flex align-items-center gap-2" style={cellStyle}>
+                  <Building2 size={12} className="opacity-50 flex-shrink-0" />
+                  <span>{course.companyName ?? course.CompanyName ?? 'Hệ thống tổng'}</span>
                 </div>
               </td>
-              <td className="py-3">
-                <div className="d-flex flex-column gap-1">
-                  <div className="d-flex align-items-center gap-2" style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#475569' }}>
-                    <Calendar size={12} className="opacity-50" />
-                    <span>Bắt đầu: {formatDateTime(course.startDate)}</span>
-                  </div>
-                  <div className="d-flex align-items-center gap-2" style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#475569' }}>
-                    <Clock size={12} className="opacity-50" />
-                    <span>Hết hạn: {formatDateOnly(course.endDate)}</span>
-                  </div>
+              <td className="py-3 align-middle">
+                <div className="d-flex align-items-center gap-2">
+                  <Calendar size={12} className="opacity-50 flex-shrink-0" />
+                  <span style={cellStyle}>{formatDateTime(course.startDate)}</span>
+                </div>
+                <div className="d-flex align-items-center gap-2 mt-0.5">
+                  <Clock size={12} className="opacity-50 flex-shrink-0" />
+                  <span style={{ ...cellStyle, fontSize: '0.75rem', color: '#94a3b8' }}>Hết hạn: {formatDateOnly(course.endDate)}</span>
                 </div>
               </td>
-              <td className="py-3 text-center">
+              <td className="py-3 text-center align-middle">
                 {course.isPublished ? (
-                  <span className="badge bg-success-subtle text-success px-3 py-2 rounded-pill border border-success-subtle" style={{ fontSize: '0.8125rem', fontWeight: 500 }}>CÔNG KHAI</span>
+                  <span className="badge bg-success-subtle text-success px-2 py-1 rounded-pill" style={{ fontSize: '0.7rem', fontWeight: 500 }}>CÔNG KHAI</span>
                 ) : (
-                  <span className="badge bg-secondary-subtle text-secondary px-3 py-2 rounded-pill border border-secondary-subtle" style={{ fontSize: '0.8125rem', fontWeight: 500 }}>BẢN NHÁP</span>
+                  <span className="badge bg-secondary-subtle text-secondary px-2 py-1 rounded-pill" style={{ fontSize: '0.7rem', fontWeight: 500 }}>BẢN NHÁP</span>
                 )}
               </td>
-              <td className="px-4 py-3 text-end">
-                <div className="d-flex justify-content-end gap-2">
-                  <button className="btn btn-white btn-sm p-2 rounded-3 border shadow-sm text-info hover-bg-info-subtle transition-all" onClick={() => window.open(`/course/${course.id}`, '_blank')} title="Xem giao diện Học viên"><Eye size={16} /></button>
-                  <button className="btn btn-white btn-sm p-2 rounded-3 border shadow-sm text-primary hover-bg-primary-subtle transition-all" onClick={() => onEdit(course)} title="Sửa thông tin"><Edit2 size={16} /></button>
-                  <button className="btn btn-white btn-sm p-2 rounded-3 border shadow-sm text-danger hover-bg-danger-subtle transition-all" onClick={() => onDelete(course.id)} title="Xóa khóa học"><Trash2 size={16} /></button>
+              <td className="px-4 py-3 text-end align-middle">
+                <div className="d-flex justify-content-end gap-1">
+                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border" onClick={() => window.open(`/course/${course.id}`, '_blank')} title="Xem giao diện Học viên"><Eye size={14} /></button>
+                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border" onClick={() => onEdit(course)} title="Sửa thông tin"><Edit2 size={14} /></button>
+                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border text-danger" onClick={() => onDelete(course.id, course.title)} title="Xóa khóa học"><Trash2 size={14} /></button>
                 </div>
               </td>
             </tr>
@@ -118,7 +120,16 @@ const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
         </tbody>
       </table>
       <style>{`
+        .course-table table { border-collapse: collapse; }
+        .course-table th,
+        .course-table td { vertical-align: middle !important; }
+        .course-table-row { min-height: 56px; }
+        .course-table th { padding-top: 14px !important; padding-bottom: 14px !important; }
+        .course-table td { padding-top: 12px !important; padding-bottom: 12px !important; }
+        .course-title-cell { min-width: 0; }
+        .course-title-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
         .hover-underline:hover { text-decoration: underline !important; }
+        .mt-0\.5 { margin-top: 2px; }
       `}</style>
     </div>
   );

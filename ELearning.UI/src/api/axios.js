@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { startLoading, doneLoading } from '../utils/loadingStore';
 
 // =================================================================
 // == BƯỚC QUAN TRỌNG NHẤT ĐỂ CHẠY ONLINE ==
@@ -67,12 +68,21 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    doneLoading();
+    return response;
+  },
   (error) => {
-    if (error.response && error.response.status === 401) {
+    doneLoading();
+    if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
+    }
+    if (error.response?.status === 500) {
+      const data = error.response?.data;
+      const msg = typeof data === 'string' ? data : (data?.error ?? data?.message ?? data?.detail);
+      if (msg) console.error('[API 500]', error.config?.url, msg);
     }
     return Promise.reject(error);
   }
