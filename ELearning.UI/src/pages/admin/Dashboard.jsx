@@ -49,6 +49,22 @@ const Dashboard = () => {
     }
   };
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return '—';
+    let dStr = dateString;
+    if (typeof dStr === 'string' && !dStr.endsWith('Z') && !dStr.includes('+')) {
+      dStr += 'Z';
+    }
+    const date = new Date(dStr);
+    return date.toLocaleString('vi-VN', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    });
+  };
+
   const daysOfWeek = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayMondayBased = (year, month) => (new Date(year, month, 1).getDay() + 6) % 7;
@@ -203,7 +219,7 @@ const Dashboard = () => {
                       </td>
                       <td className="text-muted small">{activity.description}</td>
                       <td className="text-end text-muted small">
-                        {new Date(activity.time).toLocaleDateString('vi-VN')}
+                        {formatDateTime(activity.time)}
                       </td>
                     </tr>
                   ))}

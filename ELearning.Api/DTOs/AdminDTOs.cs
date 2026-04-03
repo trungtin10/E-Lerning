@@ -80,7 +80,11 @@ public class RegisterTenantFormDto
     public string SubDomain { get; set; } = null!;
     public string? ContactEmail { get; set; }
     public IFormFile? LogoFile { get; set; }
-    public string? ServicePlan { get; set; }
+    public int? ServicePlanId { get; set; }
+    public string? ServicePlan { get; set; } // Tên gói (giữ để tương thích)
+    public int BillingCycleMonths { get; set; } = 1;
+    public string? PaymentMethod { get; set; } // Cash, BankTransfer, VnPay, Direct
+    public decimal? AmountPaid { get; set; }
     public string Account { get; set; } = null!;
     public string Password { get; set; } = null!;
 }

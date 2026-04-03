@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useNotify } from '../../../context/NotifyContext';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
 import { Search, Plus } from 'lucide-react';
 import CompanyTable from './CompanyTable';
-import AddCompanyModal from './AddCompanyModal';
-import EditCompanyModal from './EditCompanyModal';
 import AssignAdminModal from './AssignAdminModal';
 
 const Companies = () => {
+  const navigate = useNavigate();
   const { toast, confirm } = useNotify();
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
 
@@ -49,8 +47,7 @@ const Companies = () => {
   };
 
   const handleEdit = (company) => {
-    setSelectedCompany(company);
-    setShowEditModal(true);
+    navigate(`/admin/companies/edit/${company.id}`, { state: { company } });
   };
 
   const handleAssignAdmin = (company) => {
@@ -80,7 +77,7 @@ const Companies = () => {
             textShadow: '0 1px 1px rgba(255,255,255,0.4)',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
           }}
-          onClick={() => setShowAddModal(true)}
+          onClick={() => navigate('/admin/companies/create')}
         >
           <Plus size={20} /> Tạo mới
         </button>
@@ -99,8 +96,6 @@ const Companies = () => {
         <CompanyTable companies={filteredCompanies} loading={loading} onDelete={handleDelete} onEdit={handleEdit} onAssignAdmin={handleAssignAdmin} />
       </div>
 
-      <AddCompanyModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onSuccess={fetchCompanies} />
-      <EditCompanyModal isOpen={showEditModal} company={selectedCompany} onClose={() => { setShowEditModal(false); setSelectedCompany(null); }} onSuccess={fetchCompanies} />
       <AssignAdminModal isOpen={showAssignModal} company={selectedCompany} onClose={() => { setShowAssignModal(false); setSelectedCompany(null); }} />
     </AdminLayout>
   );

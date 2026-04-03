@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,13 +11,7 @@ namespace ELearning.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_QuizAttemptAnswers_Answers_SelectedAnswerId",
-                table: "QuizAttemptAnswers");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_QuizAttemptAnswers_Questions_QuestionId",
-                table: "QuizAttemptAnswers");
 
             migrationBuilder.AddColumn<int>(
                 name: "Priority",
@@ -99,7 +93,7 @@ namespace ELearning.Api.Migrations
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                     table.ForeignKey(
                         name: "FK_LearnerBehaviorEvents_CourseEnrollments_EnrollmentId",
                         column: x => x.EnrollmentId,
@@ -111,7 +105,7 @@ namespace ELearning.Api.Migrations
                         column: x => x.CourseId,
                         principalTable: "Courses",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateTable(
@@ -173,34 +167,12 @@ namespace ELearning.Api.Migrations
                 table: "UserNotifications",
                 columns: new[] { "UserId", "IsRead", "CreatedAt" });
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_QuizAttemptAnswers_Answers_SelectedAnswerId",
-                table: "QuizAttemptAnswers",
-                column: "SelectedAnswerId",
-                principalTable: "Answers",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_QuizAttemptAnswers_Questions_QuestionId",
-                table: "QuizAttemptAnswers",
-                column: "QuestionId",
-                principalTable: "Questions",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_QuizAttemptAnswers_Answers_SelectedAnswerId",
-                table: "QuizAttemptAnswers");
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_QuizAttemptAnswers_Questions_QuestionId",
-                table: "QuizAttemptAnswers");
-
             migrationBuilder.DropTable(
                 name: "AnnouncementUserStates");
 
@@ -225,20 +197,6 @@ namespace ELearning.Api.Migrations
             migrationBuilder.DropColumn(
                 name: "TargetRoles",
                 table: "Announcements");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_QuizAttemptAnswers_Answers_SelectedAnswerId",
-                table: "QuizAttemptAnswers",
-                column: "SelectedAnswerId",
-                principalTable: "Answers",
-                principalColumn: "Id");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_QuizAttemptAnswers_Questions_QuestionId",
-                table: "QuizAttemptAnswers",
-                column: "QuestionId",
-                principalTable: "Questions",
-                principalColumn: "Id");
         }
     }
 }

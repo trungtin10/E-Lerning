@@ -76,6 +76,7 @@ const AdminLayout = ({ children }) => {
       { path: '/admin/company-courses', label: 'Quản lý khóa học' },
       { path: '/admin/learners', label: 'Theo dõi học viên' },
     ]},
+    { path: '/admin/subscription', icon: Package, label: 'Gói dịch vụ' },
     { path: '/admin/audit-logs', icon: FileText, label: 'Nhật ký hoạt động' },
     { path: '/admin/tickets', icon: MessageCircle, label: 'Hỗ trợ' },
   ];

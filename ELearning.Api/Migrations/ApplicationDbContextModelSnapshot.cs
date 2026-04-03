@@ -968,6 +968,9 @@ namespace ELearning.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Priority")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1002,7 +1005,64 @@ namespace ELearning.Api.Migrations
 
                     b.HasIndex("CompanyId");
 
+                    b.HasIndex("UserId");
+
                     b.ToTable("SupportTickets");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicketAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SupportTicketPostId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupportTicketPostId");
+
+                    b.ToTable("SupportTicketAttachments");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicketPost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SupportTicketId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupportTicketId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("SupportTicketPosts");
                 });
 
             modelBuilder.Entity("ELearning.Api.Models.Transaction", b =>
@@ -1397,7 +1457,7 @@ namespace ELearning.Api.Migrations
                     b.HasOne("ELearning.Api.Models.Course", "Course")
                         .WithMany()
                         .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("ELearning.Api.Models.CourseEnrollment", "Enrollment")
@@ -1408,7 +1468,7 @@ namespace ELearning.Api.Migrations
                     b.HasOne("ELearning.Api.Models.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Course");
@@ -1501,7 +1561,7 @@ namespace ELearning.Api.Migrations
                     b.HasOne("ELearning.Api.Models.Question", "Question")
                         .WithMany()
                         .HasForeignKey("QuestionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("ELearning.Api.Models.QuizAttempt", "QuizAttempt")
@@ -1513,7 +1573,7 @@ namespace ELearning.Api.Migrations
                     b.HasOne("ELearning.Api.Models.Answer", "SelectedAnswer")
                         .WithMany()
                         .HasForeignKey("SelectedAnswerId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Question");
@@ -1531,7 +1591,45 @@ namespace ELearning.Api.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("ELearning.Api.Models.ApplicationUser", "Author")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
                     b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicketAttachment", b =>
+                {
+                    b.HasOne("ELearning.Api.Models.SupportTicketPost", "Post")
+                        .WithMany("Attachments")
+                        .HasForeignKey("SupportTicketPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Post");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicketPost", b =>
+                {
+                    b.HasOne("ELearning.Api.Models.SupportTicket", "Ticket")
+                        .WithMany("Posts")
+                        .HasForeignKey("SupportTicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ELearning.Api.Models.ApplicationUser", "Author")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Ticket");
                 });
 
             modelBuilder.Entity("ELearning.Api.Models.Transaction", b =>
@@ -1686,6 +1784,16 @@ namespace ELearning.Api.Migrations
             modelBuilder.Entity("ELearning.Api.Models.ServicePlan", b =>
                 {
                     b.Navigation("Companies");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicket", b =>
+                {
+                    b.Navigation("Posts");
+                });
+
+            modelBuilder.Entity("ELearning.Api.Models.SupportTicketPost", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 #pragma warning restore 612, 618
         }

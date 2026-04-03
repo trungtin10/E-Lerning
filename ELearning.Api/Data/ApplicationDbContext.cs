@@ -13,6 +13,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Transaction> Transactions { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<SupportTicket> SupportTickets { get; set; } = null!;
+    public DbSet<SupportTicketPost> SupportTicketPosts { get; set; } = null!;
+    public DbSet<SupportTicketAttachment> SupportTicketAttachments { get; set; } = null!;
     public DbSet<Announcement> Announcements { get; set; } = null!;
     public DbSet<AnnouncementUserState> AnnouncementUserStates { get; set; } = null!;
     public DbSet<UserNotification> UserNotifications { get; set; } = null!;
@@ -100,13 +102,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
-        builder.Entity<QuizAttemptAnswer>(entity =>
-        {
-            entity.HasOne(qa => qa.QuizAttempt)
-                .WithMany(a => a.SelectedAnswers)
-                .HasForeignKey(qa => qa.QuizAttemptId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+
 
         builder.Entity<Certificate>(entity =>
         {
@@ -149,15 +145,70 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany()
                 .HasForeignKey(t => t.CompanyId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(t => t.Author)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<SupportTicketPost>(entity =>
+        {
+            entity.HasOne(p => p.Ticket)
+                .WithMany(t => t.Posts)
+                .HasForeignKey(p => p.SupportTicketId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(p => p.Author)
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<SupportTicketAttachment>(entity =>
+        {
+            entity.HasOne(a => a.Post)
+                .WithMany(p => p.Attachments)
+                .HasForeignKey(a => a.SupportTicketPostId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<LearnerBehaviorEvent>(entity =>
         {
             entity.HasIndex(e => new { e.UserId, e.CourseId, e.CreatedAt });
+            
             entity.HasOne(e => e.Enrollment)
                 .WithMany()
                 .HasForeignKey(e => e.EnrollmentId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(e => e.Course)
+                .WithMany()
+                .HasForeignKey(e => e.CourseId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<QuizAttemptAnswer>(entity =>
+        {
+            entity.HasOne(qa => qa.QuizAttempt)
+                .WithMany(a => a.SelectedAnswers)
+                .HasForeignKey(qa => qa.QuizAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(qa => qa.Question)
+                .WithMany()
+                .HasForeignKey(qa => qa.QuestionId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(qa => qa.SelectedAnswer)
+                .WithMany()
+                .HasForeignKey(qa => qa.SelectedAnswerId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         builder.Entity<AnnouncementUserState>(entity =>

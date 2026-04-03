@@ -69,7 +69,7 @@ public class TransactionController : ControllerBase
             .OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(t => new TransactionDto(t.Id, t.CompanyId, t.Company!.CompanyName, t.ServicePlanId, t.ServicePlan!.Name, t.Amount, t.Currency, t.Status, t.PaymentDate, t.PlanExpiresAt, t.BillingCycleMonths, t.CreatedAt))
+            .Select(t => new TransactionDto(t.Id, t.CompanyId, t.Company!.CompanyName, t.ServicePlanId, t.ServicePlan!.Name, t.Amount, t.Currency, t.Status, t.PaymentGateway, t.Notes, t.PaymentDate, t.PlanExpiresAt, t.BillingCycleMonths, t.CreatedAt))
             .ToListAsync();
         return Ok(new { items = list, total, page, pageSize });
     }
@@ -104,6 +104,68 @@ public class TransactionController : ControllerBase
         company.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await _audit.LogAsync("Create", "Transaction", tx.Id.ToString(), null, $"Company {company.CompanyName} gia hạn gói {plan.Name}");
-        return Ok(new TransactionDto(tx.Id, tx.CompanyId, company.CompanyName, tx.ServicePlanId, plan.Name, tx.Amount, tx.Currency, tx.Status, tx.PaymentDate, tx.PlanExpiresAt, tx.BillingCycleMonths, tx.CreatedAt));
+        return Ok(new TransactionDto(tx.Id, tx.CompanyId, company.CompanyName, tx.ServicePlanId, plan.Name, tx.Amount, tx.Currency, tx.Status, tx.PaymentGateway, tx.Notes, tx.PaymentDate, tx.PlanExpiresAt, tx.BillingCycleMonths, tx.CreatedAt));
+    }
+
+    [HttpPost("{id:int}/complete")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> Complete(int id)
+    {
+        var tx = await _context.Transactions
+            .Include(t => t.Company)
+            .Include(t => t.ServicePlan)
+            .FirstOrDefaultAsync(t => t.Id == id);
+            
+        if (tx == null) return NotFound();
+        if (tx.Status == "Completed") return BadRequest("Giao dịch này đã hoàn tất.");
+
+        tx.Status = "Completed";
+        tx.PaymentDate = DateTime.UtcNow;
+
+        var company = tx.Company;
+        if (company != null && tx.ServicePlan != null)
+        {
+            DateTime startFrom = (company.PlanExpiresAt.HasValue && company.PlanExpiresAt > DateTime.UtcNow) 
+                ? company.PlanExpiresAt.Value 
+                : DateTime.UtcNow;
+
+            var expiresAt = startFrom.AddMonths(tx.BillingCycleMonths);
+            
+            tx.PlanExpiresAt = expiresAt;
+            company.ServicePlanId = tx.ServicePlanId;
+            company.ServicePlan = tx.ServicePlan.Name;
+            company.PlanExpiresAt = expiresAt;
+            company.MaxUsers = tx.ServicePlan.MaxUsers;
+            company.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+        await _audit.LogAsync("Update", "Transaction", tx.Id.ToString(), "Pending", "Completed", $"Xác nhận thanh toán cho {company?.CompanyName}");
+        
+        return Ok();
+    }
+
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var tx = await _context.Transactions.FindAsync(id);
+        if (tx == null) return NotFound();
+        _context.Transactions.Remove(tx);
+        await _context.SaveChangesAsync();
+        await _audit.LogAsync("Delete", "Transaction", id.ToString(), null, null, "Xóa 1 giao dịch");
+        return NoContent();
+    }
+
+    [HttpPost("bulk-delete")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> BulkDelete([FromBody] List<int> ids)
+    {
+        if (ids == null || ids.Count == 0) return BadRequest("Không có ID để xóa.");
+        var items = await _context.Transactions.Where(x => ids.Contains(x.Id)).ToListAsync();
+        _context.Transactions.RemoveRange(items);
+        await _context.SaveChangesAsync();
+        await _audit.LogAsync("BulkDelete", "Transaction", null, string.Join(",", ids), null, $"Xóa {items.Count} giao dịch");
+        return NoContent();
     }
 }

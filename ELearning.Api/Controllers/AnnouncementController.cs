@@ -55,6 +55,38 @@ public class AnnouncementController : ControllerBase
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    private class AnnouncementState
+    {
+        public Announcement Announcement { get; set; } = null!;
+        public bool IsDismissed { get; set; }
+        public bool IsAcknowledged { get; set; }
+    }
+
+    private async Task<bool> TableExistsAsync(string tableName)
+    {
+        var connection = _context.Database.GetDbConnection();
+        try
+        {
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tableName";
+            var param = command.CreateParameter();
+            param.ParameterName = "@tableName";
+            param.Value = tableName;
+            command.Parameters.Add(param);
+
+            var result = await command.ExecuteScalarAsync();
+            return Convert.ToInt32(result) > 0;
+        }
+        finally
+        {
+            if (connection.State == System.Data.ConnectionState.Open)
+                await connection.CloseAsync();
+        }
+    }
+
     [HttpGet("active")]
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<AnnouncementDto>>> GetActive()
@@ -106,16 +138,34 @@ public class AnnouncementController : ControllerBase
         }
 
         // Join state để loại banner đã dismiss / popup đã ack
-        var list = await (from a in query
-                          join s in _context.AnnouncementUserStates.AsNoTracking().Where(x => x.UserId == userId)
-                            on a.Id equals s.AnnouncementId into states
-                          from st in states.DefaultIfEmpty()
-                          select new
-                          {
-                              Announcement = a,
-                              IsDismissed = st != null && st.DismissedAt != null,
-                              IsAcknowledged = st != null && st.AcknowledgedAt != null
-                          })
+        List<AnnouncementState> items;
+        if (await TableExistsAsync("AnnouncementUserStates"))
+        {
+            items = await (from a in query
+                           join s in _context.AnnouncementUserStates.AsNoTracking().Where(x => x.UserId == userId)
+                             on a.Id equals s.AnnouncementId into states
+                           from st in states.DefaultIfEmpty()
+                           select new AnnouncementState
+                           {
+                               Announcement = a,
+                               IsDismissed = st != null && st.DismissedAt != null,
+                               IsAcknowledged = st != null && st.AcknowledgedAt != null
+                           })
+                .ToListAsync();
+        }
+        else
+        {
+            items = await query
+                .Select(a => new AnnouncementState
+                {
+                    Announcement = a,
+                    IsDismissed = false,
+                    IsAcknowledged = false
+                })
+                .ToListAsync();
+        }
+
+        var list = items
             .Where(x =>
                 !(x.Announcement.DisplayType == "Banner" && x.IsDismissed)
                 && !(x.Announcement.DisplayType == "Popup" && x.IsAcknowledged)
@@ -139,7 +189,7 @@ public class AnnouncementController : ControllerBase
                 x.IsDismissed,
                 x.IsAcknowledged
             ))
-            .ToListAsync();
+            .ToList();
 
         return Ok(list);
     }

@@ -22,6 +22,9 @@ public class SupportTicket
     public DateTime? RepliedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
 
     public virtual Company Company { get; set; } = null!;
+    public virtual ApplicationUser Author { get; set; } = null!;
+    public virtual ICollection<SupportTicketPost> Posts { get; set; } = new List<SupportTicketPost>();
 }

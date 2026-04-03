@@ -128,7 +128,7 @@ public class LearnerController : ControllerBase
                     UserId = u.Id,
                     User = u,
                     CourseId = 0,
-                    Course = null,
+                    Course = null!,
                     ProgressPercentage = 0,
                     TotalLearningTimeMinutes = 0,
                     Status = "NotEnrolled",

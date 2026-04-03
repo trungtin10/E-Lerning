@@ -26,21 +26,28 @@ public class AuditService : IAuditService
 
     public async Task LogAsync(string action, string? entityType, string? entityId, string? oldValue, string? newValue, string? details = null, string? userIdOverride = null, string? userNameOverride = null)
     {
-        var ip = _httpContext.HttpContext?.Connection?.RemoteIpAddress?.ToString();
-        var log = new AuditLog
+        try
         {
-            UserId = userIdOverride ?? _userId,
-            UserName = userNameOverride ?? _userName,
-            Action = action,
-            EntityType = entityType,
-            EntityId = entityId,
-            OldValue = oldValue?.Length > 2000 ? oldValue[..2000] : oldValue,
-            NewValue = newValue?.Length > 2000 ? newValue[..2000] : newValue,
-            IpAddress = ip,
-            Details = details,
-            CreatedAt = DateTime.UtcNow
-        };
-        _context.AuditLogs.Add(log);
-        await _context.SaveChangesAsync();
+            var ip = _httpContext.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+            var log = new AuditLog
+            {
+                UserId = userIdOverride ?? _userId,
+                UserName = userNameOverride ?? _userName,
+                Action = action,
+                EntityType = entityType,
+                EntityId = entityId,
+                OldValue = oldValue?.Length > 2000 ? oldValue[..2000] : oldValue,
+                NewValue = newValue?.Length > 2000 ? newValue[..2000] : newValue,
+                IpAddress = ip,
+                Details = details,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.AuditLogs.Add(log);
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            // Không làm gián đoạn luồng nghiệp vụ chính nếu bảng audit bị lệch schema.
+        }
     }
 }

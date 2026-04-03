@@ -25,7 +25,12 @@ const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) =
 
   const formatDateTime = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
+    let dStr = dateString;
+    // Nếu backend trả về UTC nhưng thiếu 'Z', ta chủ động thêm để JS hiểu đúng là UTC
+    if (typeof dStr === 'string' && !dStr.endsWith('Z') && !dStr.includes('+')) {
+      dStr += 'Z';
+    }
+    const date = new Date(dStr);
     const time = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
     const day = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
     return `${time} - ${day}`;
@@ -41,6 +46,7 @@ const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) =
             <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Địa chỉ Domain</th>
             <th className="py-3 border-0 text-secondary small fw-bold text-uppercase" style={{ width: '220px' }}>Thời gian tạo</th>
             <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center" style={{ width: '100px' }}>Quy mô</th>
+            <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center" style={{ width: '110px' }}>Trạng thái</th>
             <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center" style={{ width: '150px' }}>Gói dịch vụ</th>
             <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end" style={{ width: '150px' }}>Thao tác</th>
           </tr>
@@ -91,6 +97,11 @@ const CompanyTable = ({ companies, loading, onEdit, onDelete, onAssignAdmin }) =
                 <div className="d-inline-flex align-items-center gap-1 px-3 py-1 bg-light rounded-pill border text-dark small fw-bold">
                   <Users size={14} className="text-muted" /> {company.userCount}
                 </div>
+              </td>
+              <td className="py-3 text-center">
+                <span className={`badge w-100 py-2 rounded-3 fw-bold ${company.isActive ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-secondary-subtle text-secondary border border-secondary-subtle'}`}>
+                  {company.isActive ? 'Đang hoạt động' : 'Chưa kích hoạt'}
+                </span>
               </td>
               <td className="py-3 text-center">
                 <span className={`badge w-100 py-2 rounded-3 fw-bold ${

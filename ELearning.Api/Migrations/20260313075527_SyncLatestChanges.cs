@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,22 +11,12 @@ namespace ELearning.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "QuizAttemptAnswers");
-
-            migrationBuilder.DropTable(
-                name: "SectionProgresses");
-
-            migrationBuilder.DropTable(
-                name: "LessonSections");
-
-            migrationBuilder.DropColumn(
-                name: "CorrectAnswers",
-                table: "QuizAttempts");
-
-            migrationBuilder.DropColumn(
-                name: "TotalQuestions",
-                table: "QuizAttempts");
+            // Defensive SQL for drifted databases: some environments had different FK names or missing tables.
+            migrationBuilder.Sql("IF OBJECT_ID('QuizAttemptAnswers', 'U') IS NOT NULL DROP TABLE [QuizAttemptAnswers]");
+            migrationBuilder.Sql("IF OBJECT_ID('SectionProgresses', 'U') IS NOT NULL DROP TABLE [SectionProgresses]");
+            migrationBuilder.Sql("IF OBJECT_ID('LessonSections', 'U') IS NOT NULL DROP TABLE [LessonSections]");
+            migrationBuilder.Sql("IF COL_LENGTH('QuizAttempts', 'CorrectAnswers') IS NOT NULL ALTER TABLE [QuizAttempts] DROP COLUMN [CorrectAnswers]");
+            migrationBuilder.Sql("IF COL_LENGTH('QuizAttempts', 'TotalQuestions') IS NOT NULL ALTER TABLE [QuizAttempts] DROP COLUMN [TotalQuestions]");
         }
 
         /// <inheritdoc />

@@ -86,19 +86,23 @@ public static class DbSeeder
         }
 
         // 5. Bản ghi mẫu nhật ký hoạt động (nếu bảng trống - để kiểm tra hiển thị)
-        if (!await context.AuditLogs.AnyAsync())
+        try
         {
-            context.AuditLogs.Add(new AuditLog
+            if (!await context.AuditLogs.AnyAsync())
             {
-                UserId = user?.Id,
-                UserName = "Hệ thống",
-                Action = "Create",
-                EntityType = "System",
-                EntityId = "0",
-                Details = "Khởi tạo nhật ký hoạt động",
-                CreatedAt = DateTime.UtcNow
-            });
-            await context.SaveChangesAsync();
+                context.AuditLogs.Add(new AuditLog
+                {
+                    UserId = user?.Id,
+                    UserName = "Hệ thống",
+                    Action = "Create",
+                    EntityType = "System",
+                    EntityId = "0",
+                    Details = "Khởi tạo nhật ký hoạt động",
+                    CreatedAt = DateTime.UtcNow
+                });
+                await context.SaveChangesAsync();
+            }
         }
+        catch { /* Bỏ qua nếu schema AuditLogs cũ chưa đồng bộ */ }
     }
 }

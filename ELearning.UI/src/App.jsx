@@ -16,6 +16,8 @@ const pathTitles = {
   '/confirm-email': 'Xác nhận email',
   '/admin/dashboard': 'Dashboard',
   '/admin/companies': 'Quản lý công ty',
+  '/admin/companies/create': 'Tạo công ty mới',
+  '/admin/companies/checkout-success': 'Xác nhận thanh toán',
   '/admin/users': 'Quản lý người dùng',
   '/admin/company-users': 'Nhân viên công ty',
   '/admin/learners': 'Theo dõi học viên',
@@ -24,6 +26,8 @@ const pathTitles = {
   '/admin/categories': 'Danh mục',
   '/admin/settings': 'Cài đặt',
   '/admin/plans': 'Gói dịch vụ',
+  '/admin/subscription': 'Gói dịch vụ & Thanh toán',
+  '/checkout/vnpay-return': 'Kết quả thanh toán',
   '/admin/transactions': 'Giao dịch',
   '/admin/audit-logs': 'Nhật ký',
   '/admin/tickets': 'Hỗ trợ',
@@ -103,12 +107,17 @@ import ResetPassword from './pages/auth/ResetPassword';
 import ConfirmEmail from './pages/auth/ConfirmEmail';
 import AdminDashboard from './pages/admin/Dashboard';
 import Companies from './pages/admin/companies/index';
+import CreateCompany from './pages/admin/companies/CreateCompany';
+import EditCompany from './pages/admin/companies/EditCompany';
+import CheckoutSuccess from './pages/admin/companies/CheckoutSuccess';
 import Users from './pages/admin/Users';
 import PlanManagement from './pages/admin/plans/PlanManagement';
 import Transactions from './pages/admin/plans/Transactions';
 import AuditLogs from './pages/admin/plans/AuditLogs';
 import Tickets from './pages/admin/plans/Tickets';
 import Announcements from './pages/admin/plans/Announcements';
+import Subscription from './pages/admin/plans/Subscription';
+import CheckoutReturn from './pages/admin/plans/CheckoutReturn';
 import CompanyUsers from './pages/admin/CompanyUsers';
 import Learners from './pages/admin/Learners';
 import Courses from './pages/admin/courses/index';
@@ -135,6 +144,9 @@ function AppRoutes() {
         {/* Admin Routes */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/companies" element={<Companies />} />
+        <Route path="/admin/companies/create" element={<CreateCompany />} />
+        <Route path="/admin/companies/edit/:id" element={<EditCompany />} />
+        <Route path="/admin/companies/checkout-success" element={<CheckoutSuccess />} />
         <Route path="/admin/users" element={<Users />} />
         {/* SỬA ROUTE: Thêm tham số :subDomain */}
         <Route path="/admin/company-users/:subDomain" element={<CompanyUsers />} />
@@ -146,9 +158,11 @@ function AppRoutes() {
         <Route path="/admin/categories" element={<Categories />} />
         <Route path="/admin/categories/:categoryId/courses" element={<CategoryCourses />} />
         <Route path="/admin/plans" element={<PlanManagement />} />
+        <Route path="/admin/subscription" element={<Subscription />} />
+        <Route path="/checkout/vnpay-return" element={<CheckoutReturn />} />
         <Route path="/admin/transactions" element={<Transactions />} />
         <Route path="/admin/audit-logs" element={<AuditLogs />} />
-        <Route path="/admin/tickets" element={<Tickets />} />
+        <Route path="/admin/tickets/:ticketId?" element={<Tickets />} />
         <Route path="/admin/announcements" element={<Announcements />} />
 
         {/* User Routes */}

@@ -42,6 +42,8 @@ public record TransactionDto(
     decimal Amount,
     string Currency,
     string Status,
+    string? PaymentGateway,
+    string? Notes,
     DateTime? PaymentDate,
     DateTime? PlanExpiresAt,
     int BillingCycleMonths,
@@ -73,18 +75,43 @@ public record AuditLogDto(
     DateTime CreatedAt
 );
 
-public record SupportTicketDto(
+/// <summary>Hàng trong danh sách ticket (diễn đàn).</summary>
+public record SupportTicketListItemDto(
     int Id,
     int CompanyId,
     string CompanyName,
-    string UserId,
+    string CreatedByUserId,
+    string CreatedByName,
     string Subject,
-    string Content,
     string Status,
     string Priority,
-    string? AdminReply,
-    DateTime? RepliedAt,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    DateTime LastActivityAt,
+    int PostCount
+);
+
+public record SupportTicketPostDto(
+    int Id,
+    string UserId,
+    string AuthorName,
+    string AuthorRole,
+    string Body,
+    DateTime CreatedAt,
+    IReadOnlyList<string> AttachmentUrls
+);
+
+public record SupportTicketThreadDto(
+    int Id,
+    int CompanyId,
+    string CompanyName,
+    string CreatedByUserId,
+    string CreatedByName,
+    string Subject,
+    string Status,
+    string Priority,
+    DateTime CreatedAt,
+    DateTime LastActivityAt,
+    IReadOnlyList<SupportTicketPostDto> Posts
 );
 
 public record CreateTicketDto(string Subject, string Content, string Priority = "Normal");
@@ -109,6 +136,8 @@ public record AnnouncementDto(
 );
 
 public record ReplyTicketDto(string Reply);
+
+public record TicketStatusPatchDto(string Status);
 
 public record CreateAnnouncementDto(
     string Title,

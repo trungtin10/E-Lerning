@@ -67,6 +67,31 @@ public class SuperAdminController : ControllerBase
         return $"{Request.Scheme}://{host}";
     }
 
+    private async Task<bool> TableExistsAsync(string tableName)
+    {
+        var connection = _context.Database.GetDbConnection();
+        try
+        {
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tableName";
+            var param = command.CreateParameter();
+            param.ParameterName = "@tableName";
+            param.Value = tableName;
+            command.Parameters.Add(param);
+
+            var result = await command.ExecuteScalarAsync();
+            return Convert.ToInt32(result) > 0;
+        }
+        finally
+        {
+            if (connection.State == System.Data.ConnectionState.Open)
+                await connection.CloseAsync();
+        }
+    }
+
     [HttpGet("users")]
     public async Task<ActionResult<IEnumerable<UserSummaryDto>>> GetAllUsers([FromQuery] string? subDomain = null)
     {
@@ -206,42 +231,43 @@ public class SuperAdminController : ControllerBase
         try
         {
             var startDate = DateTime.UtcNow.AddMonths(-months);
-            var userGrowthData = await _context.Users
+            
+            // 1. Biểu đồ tăng trưởng người dùng
+            var userLogs = await _context.Users
                 .AsNoTracking()
                 .Where(u => u.CreatedAt >= startDate)
+                .Select(u => new { u.CreatedAt })
+                .ToListAsync();
+
+            var userGrowth = userLogs
                 .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
-                .OrderBy(x => x.Year).ThenBy(x => x.Month)
-                .ToListAsync();
-            var userGrowth = userGrowthData.Select(x => new GrowthPointDto($"{x.Year}-{x.Month:D2}", x.Count)).ToList();
-
-            var companyGrowthData = await _context.Companies
-                .AsNoTracking()
-                .Where(c => c.SubDomain != "admin" && c.CreatedAt >= startDate)
-                .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
-                .Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
-                .OrderBy(x => x.Year).ThenBy(x => x.Month)
-                .ToListAsync();
-            var companyGrowth = companyGrowthData.Select(x => new GrowthPointDto($"{x.Year}-{x.Month:D2}", x.Count)).ToList();
-
-            // Dùng subquery thay vì c.Users.Count để tránh lỗi EF Core translation
-            var userCountsByCompany = await _context.Users
-                .AsNoTracking()
-                .Where(u => u.CompanyId != null)
-                .GroupBy(u => u.CompanyId!.Value)
-                .Select(g => new { CompanyId = g.Key, Count = g.Count() })
-                .ToListAsync();
-            var companiesForTop = await _context.Companies
-                .AsNoTracking()
-                .Where(c => c.SubDomain != "admin")
-                .Select(c => new { c.Id, c.CompanyName })
-                .ToListAsync();
-            var topByUsers = companiesForTop
-                .Select(c => new { c.Id, c.CompanyName, Count = userCountsByCompany.FirstOrDefault(x => x.CompanyId == c.Id)?.Count ?? 0 })
-                .OrderByDescending(x => x.Count)
-                .Take(10)
+                .Select(g => new GrowthPointDto($"{g.Key.Year}-{g.Key.Month:D2}", g.Count()))
+                .OrderBy(x => x.Month)
                 .ToList();
 
+            // 2. Biểu đồ tăng trưởng công ty
+            var companyLogs = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin" && c.CreatedAt >= startDate)
+                .Select(c => new { c.CreatedAt })
+                .ToListAsync();
+
+            var companyGrowth = companyLogs
+                .GroupBy(c => new { c.CreatedAt.Year, c.CreatedAt.Month })
+                .Select(g => new GrowthPointDto($"{g.Key.Year}-{g.Key.Month:D2}", g.Count()))
+                .OrderBy(x => x.Month)
+                .ToList();
+
+            // 3. Top công ty theo số lượng người dùng
+            var topByUsers = await _context.Companies
+                .AsNoTracking()
+                .Where(c => c.SubDomain != "admin")
+                .OrderByDescending(c => c.Users.Count)
+                .Take(10)
+                .Select(c => new TopCompanyDto(c.Id, c.CompanyName, c.Users.Count))
+                .ToListAsync();
+
+            // 4. Top công ty theo dung lượng lưu trữ
             var topByStorage = await _context.Companies
                 .AsNoTracking()
                 .Where(c => c.SubDomain != "admin")
@@ -250,22 +276,20 @@ public class SuperAdminController : ControllerBase
                 .Select(c => new TopCompanyDto(c.Id, c.CompanyName, (int)(c.StorageUsedBytes / 1024 / 1024)))
                 .ToListAsync();
 
+            // 5. Danh sách dung lượng chi tiết
             var storageList = await _context.Companies
                 .AsNoTracking()
                 .Where(c => c.SubDomain != "admin")
-                .Select(c => new CompanyStorageDto(c.Id, c.CompanyName, c.StorageUsedBytes, c.Plan != null ? c.Plan.StorageLimitGB : 10))
                 .OrderByDescending(c => c.StorageUsedBytes)
                 .Take(20)
+                .Select(c => new CompanyStorageDto(c.Id, c.CompanyName, c.StorageUsedBytes, c.Plan != null ? c.Plan.StorageLimitGB : 10))
                 .ToListAsync();
 
-            return Ok(new DashboardAnalyticsDto(userGrowth, companyGrowth,
-                topByUsers.Select(x => new TopCompanyDto(x.Id, x.CompanyName, x.Count)).ToList(),
-                topByStorage,
-                storageList));
+            return Ok(new DashboardAnalyticsDto(userGrowth, companyGrowth, topByUsers, topByStorage, storageList));
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "Dashboard analytics failed", message = ex.Message });
+            return StatusCode(500, new { error = "Dashboard analytics failed", message = ex.Message, detail = ex.InnerException?.Message });
         }
     }
 
@@ -292,11 +316,47 @@ public class SuperAdminController : ControllerBase
             _context.Companies.Add(company);
             await _context.SaveChangesAsync();
 
+            // Tạo bản ghi giao dịch (Transaction) nếu có gói dịch vụ
+            if (form.ServicePlanId.HasValue)
+            {
+                var plan = await _context.ServicePlans.FindAsync(form.ServicePlanId.Value);
+                if (plan != null)
+                {
+                    var months = form.BillingCycleMonths > 0 ? form.BillingCycleMonths : 1;
+                    var amount = form.AmountPaid ?? (months >= 12 ? plan.PriceYearly : plan.PriceMonthly);
+                    var expiresAt = DateTime.UtcNow.AddMonths(months);
+
+                    var tx = new Transaction
+                    {
+                        CompanyId = company.Id,
+                        ServicePlanId = plan.Id,
+                        Amount = amount,
+                        Currency = "VND",
+                        Status = "Completed",
+                        PaymentGateway = form.PaymentMethod ?? "Direct",
+                        TransactionRef = "ADMIN_CREATED",
+                        PaymentDate = DateTime.UtcNow,
+                        PlanExpiresAt = expiresAt,
+                        BillingCycleMonths = months,
+                        CreatedAt = DateTime.UtcNow,
+                        Notes = $"Tạo giao dịch tự động khi đăng ký công ty {company.CompanyName}"
+                    };
+                    _context.Transactions.Add(tx);
+
+                    // Cập nhật thông tin gói vào profile của Company
+                    company.ServicePlanId = plan.Id;
+                    company.ServicePlan = plan.Name;
+                    company.MaxUsers = plan.MaxUsers;
+                    company.PlanExpiresAt = expiresAt;
+                }
+            }
+
             var user = new ApplicationUser { UserName = form.Account, Email = form.ContactEmail, FullName = "Admin " + form.CompanyName, CompanyId = company.Id, IsActive = true, EmailConfirmed = false, CreatedAt = DateTime.UtcNow };
             var result = await _userManager.CreateAsync(user, form.Password);
             if (!result.Succeeded) { _context.Companies.Remove(company); await _context.SaveChangesAsync(); return BadRequest(result.Errors.First().Description); }
 
-            await _roleManager.CreateAsync(new IdentityRole("Admin"));
+            if (!await _roleManager.RoleExistsAsync("Admin"))
+                await _roleManager.CreateAsync(new IdentityRole("Admin"));
             await _userManager.AddToRoleAsync(user, "Admin");
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
@@ -436,20 +496,93 @@ public class SuperAdminController : ControllerBase
     {
         try
         {
-            var company = await _context.Companies.Include(c => c.Users).Include(c => c.Courses).ThenInclude(crs => crs.Lessons).Include(c => c.Categories).Include(c => c.Departments).FirstOrDefaultAsync(c => c.Id == id);
+            var company = await _context.Companies
+                .Include(c => c.Users)
+                .Include(c => c.Courses).ThenInclude(crs => crs.Lessons).ThenInclude(l => l.Quizzes)
+                .Include(c => c.Categories)
+                .Include(c => c.Departments)
+                .FirstOrDefaultAsync(c => c.Id == id);
+                
             if (company == null) return NotFound();
-            foreach (var course in company.Courses) { _context.Lessons.RemoveRange(course.Lessons); }
+
+            var userIds = company.Users.Select(u => u.Id).ToList();
+            var courseIds = company.Courses.Select(c => c.Id).ToList();
+            var lessonIds = company.Courses.SelectMany(c => c.Lessons).Select(l => l.Id).ToList();
+            var quizIds = company.Courses.SelectMany(c => c.Lessons).SelectMany(l => l.Quizzes).Select(q => q.Id).ToList();
+
+            // 1. Dọn dẹp dữ liệu tương tác của Users (Foreign Key: NoAction)
+            if (await TableExistsAsync("LearnerBehaviorEvents"))
+            {
+                var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => userIds.Contains(e.UserId!) || courseIds.Contains(e.CourseId)).ToListAsync();
+                _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
+            }
+
+            if (await TableExistsAsync("AnnouncementUserStates"))
+            {
+                var announcementStates = await _context.AnnouncementUserStates.Where(s => userIds.Contains(s.UserId)).ToListAsync();
+                _context.AnnouncementUserStates.RemoveRange(announcementStates);
+            }
+
+            var quizAttempts = await _context.QuizAttempts.Where(qa => userIds.Contains(qa.UserId)).ToListAsync();
+            _context.QuizAttempts.RemoveRange(quizAttempts);
+
+            var progress = await _context.LessonProgresses.Where(lp => userIds.Contains(lp.Enrollment.UserId)).ToListAsync();
+            _context.LessonProgresses.RemoveRange(progress);
+
+            var certificates = await _context.Certificates.Where(cert => userIds.Contains(cert.UserId)).ToListAsync();
+            _context.Certificates.RemoveRange(certificates);
+
+            var enrollments = await _context.CourseEnrollments.Where(ce => userIds.Contains(ce.UserId)).ToListAsync();
+            _context.CourseEnrollments.RemoveRange(enrollments);
+
+            // 2. Dọn dẹp dữ liệu Giao dịch và Hỗ trợ
+            var transactions = await _context.Transactions.Where(t => t.CompanyId == id).ToListAsync();
+            _context.Transactions.RemoveRange(transactions);
+
+            var tickets = await _context.SupportTickets.Where(t => t.CompanyId == id).ToListAsync();
+            var ticketIds = tickets.Select(t => t.Id).ToList();
+            var posts = await _context.SupportTicketPosts.Where(p => ticketIds.Contains(p.SupportTicketId)).ToListAsync();
+            _context.SupportTicketPosts.RemoveRange(posts);
+            _context.SupportTickets.RemoveRange(tickets);
+
+            // 3. Dọn dẹp Khóa học & Bài tập (Quizzes -> Lessons -> Courses)
+            var questions = await _context.Questions.Where(q => quizIds.Contains(q.QuizId)).ToListAsync();
+            var questionIds = questions.Select(q => q.Id).ToList();
+            var answers = await _context.Answers.Where(a => questionIds.Contains(a.QuestionId)).ToListAsync();
+            
+            _context.Answers.RemoveRange(answers);
+            _context.Questions.RemoveRange(questions);
+            foreach (var course in company.Courses) {
+                foreach (var lesson in course.Lessons) {
+                    _context.Quizzes.RemoveRange(lesson.Quizzes);
+                }
+                _context.Lessons.RemoveRange(course.Lessons);
+            }
             _context.Courses.RemoveRange(company.Courses);
-            foreach (var user in company.Users.ToList()) { await _userManager.DeleteAsync(user); }
+
+            // 4. Xóa Users (Identity Flow: Xóa Roles, Logins trước)
+            foreach (var user in company.Users.ToList()) {
+                await _userManager.DeleteAsync(user);
+            }
+
+            // 5. Xóa các thực thể khác và Company
             _context.Categories.RemoveRange(company.Categories);
             _context.Departments.RemoveRange(company.Departments);
+            
+            var announcements = await _context.Announcements.Where(a => a.TargetCompanyId == id).ToListAsync();
+            _context.Announcements.RemoveRange(announcements);
+
             var companyName = company.CompanyName;
             var subDomain = company.SubDomain;
             _context.Companies.Remove(company);
+
             await _context.SaveChangesAsync();
             await _audit.LogAsync("Delete", "Company", id.ToString(), $"{companyName} ({subDomain})", null, $"Xóa công ty {companyName}");
             return Ok();
         }
-        catch (Exception ex) { return StatusCode(500, ex.Message); }
+        catch (Exception ex) 
+        { 
+            return StatusCode(500, $"Lỗi hệ thống khi xóa công ty: {ex.Message} {(ex.InnerException != null ? " -> " + ex.InnerException.Message : "")}"); 
+        }
     }
 }
