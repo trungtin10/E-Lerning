@@ -1,3 +1,4 @@
+using ELearning.Api;
 using ELearning.Api.Data;
 using ELearning.Api.Models;
 using ELearning.Api.Services;
@@ -8,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,6 +63,19 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId)) return;
+
+            var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+            var dbUser = await userManager.FindByIdAsync(userId);
+            if (dbUser == null || !dbUser.IsActive)
+                context.Fail("Tài khoản đã bị tạm khóa hoặc không còn tồn tại.");
+        }
     };
 });
 
@@ -224,5 +240,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapAuthProfileEndpoints();
 
 app.Run();

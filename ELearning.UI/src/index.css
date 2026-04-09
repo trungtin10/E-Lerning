@@ -19,6 +19,21 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+.lang-select {
+  width: auto !important;
+  padding: 0.35rem 2rem 0.35rem 0.75rem !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  background-color: #fff !important;
+  font-size: 0.875rem !important;
+  line-height: 1.2 !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+.lang-select:focus {
+  border-color: rgba(37, 99, 235, 0.35) !important;
+  box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.12) !important;
+}
+
 .glass-card {
   @apply bg-white/80 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)];
 }

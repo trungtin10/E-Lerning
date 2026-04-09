@@ -43,7 +43,22 @@ public class AdminController : ControllerBase
         foreach (var user in users)
         {
             var roles = await _userManager.GetRolesAsync(user);
-            userSummaries.Add(new UserSummaryDto(user.Id, user.FullName, user.UserName!, roles.FirstOrDefault(), user.Company?.CompanyName, user.Company?.SubDomain, user.IsActive, user.EmailConfirmed));
+            var role = roles.FirstOrDefault();
+            var displayEmail = user.GetDisplayEmail()
+                ?? (role == "Admin" ? user.Company?.ContactEmail : null);
+            userSummaries.Add(new UserSummaryDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Account = user.UserName!,
+                Email = displayEmail,
+                Role = role,
+                CompanyName = user.Company?.CompanyName,
+                SubDomain = user.Company?.SubDomain,
+                IsActive = user.IsActive,
+                EmailConfirmed = user.EmailConfirmed,
+                IsExpired = false
+            });
         }
         return Ok(userSummaries);
     }
@@ -86,7 +101,9 @@ public class AdminController : ControllerBase
         if (user == null || user.CompanyId != companyId) return NotFound();
 
         user.FullName = dto.FullName;
-        user.Email = dto.Email;
+        var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+        user.Email = email;
+        user.NormalizedEmail = _userManager.NormalizeEmail(email);
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
 
@@ -100,6 +117,29 @@ public class AdminController : ControllerBase
 
         await _audit.LogAsync("Update", "User", id, user.UserName, null, $"Cập nhật nhân viên {user.FullName} ({user.UserName})");
         return Ok();
+    }
+
+    [HttpPatch("users/{id}/active")]
+    public async Task<IActionResult> SetUserActive(string id, [FromBody] SetUserActiveDto dto)
+    {
+        int companyId = GetAdminCompanyId();
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.Equals(id, currentUserId, StringComparison.Ordinal) && !dto.IsActive)
+            return BadRequest("Không thể tự khóa tài khoản của chính bạn.");
+
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null || user.CompanyId != companyId) return NotFound();
+        if (string.Equals(user.UserName, "superadmin", StringComparison.OrdinalIgnoreCase) && !dto.IsActive)
+            return BadRequest("Không thể khóa tài khoản này.");
+
+        user.IsActive = dto.IsActive;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Không thể cập nhật trạng thái.");
+
+        var detail = dto.IsActive ? "Mở khóa" : "Tạm khóa";
+        await _audit.LogAsync("Update", "User", id, user.UserName, null, $"{detail} nhân viên {user.FullName} ({user.UserName})");
+        return Ok(new { isActive = user.IsActive });
     }
 
     [HttpDelete("users/{id}")]

@@ -15,7 +15,7 @@ using Google.Apis.Auth;
 namespace ELearning.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/auth")]
 public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
@@ -110,24 +110,18 @@ public class AuthController : ControllerBase
             return Unauthorized(new { error = "invalid_password", message = "Sai mật khẩu." });
 
         if (!user.EmailConfirmed) return BadRequest("Vui lòng kích hoạt tài khoản qua Email.");
-        if (!user.IsActive) return BadRequest("Tài khoản đã bị vô hiệu hóa.");
+        if (!user.IsActive) return BadRequest("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị.");
 
         var roles = await _userManager.GetRolesAsync(user);
         var token = GenerateJwtToken(user, roles);
 
-        string? companyLogoUrl = null;
-        if (user.CompanyId.HasValue && user.CompanyId.Value > 0)
-        {
-            var company = await _context.Companies.AsNoTracking()
-                .Where(c => c.Id == user.CompanyId.Value)
-                .Select(c => c.LogoUrl)
-                .FirstOrDefaultAsync();
-            companyLogoUrl = company;
-        }
+        var (companyLogoUrl, subDomain, companyName) = await GetCompanyBrandingAsync(user.CompanyId);
 
         await _audit.LogAsync("Login", "User", user.Id, null, user.UserName ?? user.Email, "Đăng nhập thành công", user.Id, user.UserName ?? user.FullName);
-        return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl));
+        return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl, user.Email, user.PhoneNumber, subDomain, companyName));
     }
+
+    // GET/PUT hồ sơ: đăng ký trong Program.cs (AuthProfileEndpoints) để route luôn có mặt.
 
     // --- ĐỔI MẬT KHẨU ---
     [HttpPost("change-password")]
@@ -165,25 +159,32 @@ public class AuthController : ControllerBase
                 return BadRequest("Tài khoản Google này chưa được cấp quyền truy cập hệ thống.");
             }
 
+            if (!user.IsActive)
+                return BadRequest("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị.");
+
             var roles = await _userManager.GetRolesAsync(user);
             var token = GenerateJwtToken(user, roles);
 
-            string? companyLogoUrl = null;
-            if (user.CompanyId.HasValue && user.CompanyId.Value > 0)
-            {
-                companyLogoUrl = await _context.Companies.AsNoTracking()
-                    .Where(c => c.Id == user.CompanyId.Value)
-                    .Select(c => c.LogoUrl)
-                    .FirstOrDefaultAsync();
-            }
+            var (companyLogoUrl, subDomain, companyName) = await GetCompanyBrandingAsync(user.CompanyId);
 
             await _audit.LogAsync("GoogleLogin", "User", user.Id, null, user.UserName ?? user.Email, "Đăng nhập Google", user.Id, user.UserName ?? user.FullName);
-            return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl));
+            return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl, user.Email, user.PhoneNumber, subDomain, companyName));
         }
         catch (Exception ex)
         {
             return BadRequest("Xác thực Google thất bại: " + ex.Message);
         }
+    }
+
+    private async Task<(string? LogoUrl, string? SubDomain, string? CompanyName)> GetCompanyBrandingAsync(int? companyId)
+    {
+        if (!companyId.HasValue || companyId.Value <= 0)
+            return (null, null, null);
+        var row = await _context.Companies.AsNoTracking()
+            .Where(c => c.Id == companyId.Value)
+            .Select(c => new { c.LogoUrl, c.SubDomain, c.CompanyName })
+            .FirstOrDefaultAsync();
+        return row == null ? (null, null, null) : (row.LogoUrl, row.SubDomain, row.CompanyName);
     }
 
     private string GenerateJwtToken(ApplicationUser user, IList<string> roles)

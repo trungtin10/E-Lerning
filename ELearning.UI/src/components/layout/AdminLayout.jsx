@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { getUploadUrl } from '../../api/axios';
+import '../../styles/adminTheme.css';
 import {
   LayoutDashboard, Building2, Users, BookOpen,
   Menu, X, LogOut, ChevronDown, ChevronRight, Mail,
-  Package, CreditCard, FileText, MessageCircle, Megaphone, GraduationCap
+  Package, CreditCard, FileText, MessageCircle, Megaphone, GraduationCap,
+  User, KeyRound,
 } from 'lucide-react';
 import NotificationBell from '../common/NotificationBell';
+import UserAccountDialogs from '../account/UserAccountDialogs';
 
 const AdminLayout = ({ children }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [courseMenuOpen, setCourseMenuOpen] = useState(false);
+  const [homeConfigMenuOpen, setHomeConfigMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
@@ -38,6 +43,9 @@ const AdminLayout = ({ children }) => {
     if (location.pathname.startsWith('/admin/courses') || location.pathname.startsWith('/admin/company-courses') || location.pathname.startsWith('/admin/learners')) {
       setCourseMenuOpen(true);
     }
+    if (location.pathname.startsWith('/admin/home-config')) {
+      setHomeConfigMenuOpen(true);
+    }
   }, [location.pathname]);
 
   const handleLogout = () => {
@@ -45,6 +53,23 @@ const AdminLayout = ({ children }) => {
     localStorage.removeItem('user');
     navigate('/login');
   };
+
+  const refreshUserRef = useRef(() => {});
+  refreshUserRef.current = () => {
+    const raw = localStorage.getItem('user');
+    if (!raw) return;
+    try {
+      setUser(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    const onUp = () => refreshUserRef.current();
+    window.addEventListener('elearning-user-updated', onUp);
+    return () => window.removeEventListener('elearning-user-updated', onUp);
+  }, []);
 
   if (!user) return null;
 
@@ -56,7 +81,16 @@ const AdminLayout = ({ children }) => {
   };
 
   const menuItems = isSuperAdmin ? [
-    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Tổng quan hệ thống' },
+    { type: 'dropdown', icon: LayoutDashboard, label: 'Cấu hình trang chủ', children: [
+      { path: '/admin/home-config/header', label: 'Đầu trang' },
+      { path: '/admin/home-config/slider-vi', label: 'Slider trang chủ VN' },
+      { path: '/admin/home-config/slider-en', label: 'Slider trang chủ EN' },
+      { path: '/admin/home-config/small-banner', label: 'Banner nhỏ' },
+      { path: '/admin/home-config/testimonials', label: 'Cảm nhận khách hàng' },
+      { path: '/admin/home-config/footer', label: 'Thông tin chân trang' },
+      { path: '/admin/home-config/policy', label: 'Chính sách & Quy định' },
+      { path: '/admin/home-config/social-links', label: 'Liên kết mạng xã hội' },
+    ]},
     { path: '/admin/companies', icon: Building2, label: 'Quản lý Công ty' },
     { path: '/admin/users', icon: Users, label: 'Người dùng toàn hệ thống' },
     { type: 'dropdown', icon: BookOpen, label: 'Khóa học', children: [
@@ -83,61 +117,104 @@ const AdminLayout = ({ children }) => {
   ];
 
   return (
-    <div className="min-h-screen d-flex flex-column admin-theme" style={{ backgroundColor: '#f5f5f5', fontFamily: 'Arial, Helvetica, Verdana, sans-serif' }}>
-      {/* Header gradient xanh */}
-      <header
-        className="d-flex align-items-center justify-content-between px-4 py-3"
-        style={{
-          background: 'linear-gradient(90deg, #1a5276 0%, #2471a3 50%, #3498db 100%)',
-          minHeight: '72px'
-        }}
-      >
+    <div className="min-h-screen d-flex flex-column admin-shell">
+      <header className="admin-header d-flex align-items-center justify-content-between px-4 py-3">
         <div className="d-flex align-items-center gap-3">
-          <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden flex-shrink-0 bg-white" style={{ width: 44, height: 44, padding: 6 }}>
+          <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden flex-shrink-0 admin-chip" style={{ width: 40, height: 40, padding: 6 }}>
             <img src={logoUrl} alt="Logo" className="w-100 h-100 object-fit-contain" onError={(e) => { e.target.onerror = null; e.target.src = '/h_logo.png'; setLogoError(true); }} />
             {logoError && (
-              <span className="fw-bold text-primary" style={{ fontSize: '1.2rem' }}>EL</span>
+              <span className="fw-bold" style={{ fontSize: '1.05rem' }}>EL</span>
             )}
           </div>
-          <div>
-            <div className="text-white fw-bold" style={{ fontSize: '1.35rem', letterSpacing: '0.05em' }}>E-LEARNING ADMIN</div>
-            <div className="text-white-50" style={{ fontSize: '0.8rem', letterSpacing: '0.02em' }}>SYSTEM MANAGER</div>
+          <div className="admin-brand">
+            <button
+              type="button"
+              className="admin-brand__title btn btn-link p-0 text-decoration-none"
+              onClick={() => navigate('/admin/dashboard')}
+              aria-label="Về trang dashboard"
+            >
+              E-Learning Admin
+            </button>
+            <div className="admin-brand__subtitle">{isSuperAdmin ? 'System' : 'Company'}</div>
           </div>
         </div>
 
         <div className="d-flex align-items-center gap-3">
-          <button className="btn btn-link p-2 text-white d-lg-none" onClick={() => setSidebarOpen(!isSidebarOpen)}>
+          <button className="btn btn-link p-2 text-dark d-lg-none" onClick={() => setSidebarOpen(!isSidebarOpen)} aria-label="Toggle sidebar">
             {isSidebarOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
           <NotificationBell />
           <div
-            className="bg-white px-3 py-2 rounded-2 border"
-            style={{ borderColor: '#cbd5e1', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }}
+            className="admin-chip px-3 py-2 rounded-2"
           >
-            <span className="text-dark fw-medium small">Welcome: {user.fullName || user.account || 'Admin'}</span>
+            <span className="text-dark fw-medium small">{user.fullName || user.account || 'Admin'}</span>
           </div>
-          <div className="position-relative d-none d-md-block">
+          <div className="position-relative">
             <div className="d-flex align-items-center" onClick={() => setUserMenuOpen(!isUserMenuOpen)} style={{ cursor: 'pointer' }}>
-              <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden bg-white border" style={{ width: 36, height: 36 }}>
+              <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden admin-chip" style={{ width: 34, height: 34 }}>
                 {!logoError ? (
                   <img src={logoUrl} alt="" className="w-100 h-100 object-fit-contain" />
                 ) : (
-                  <span className="fw-bold text-primary small">{getInitials(user.fullName)}</span>
+                  <span className="fw-bold small">{getInitials(user.fullName)}</span>
                 )}
               </div>
-              <ChevronDown size={16} className="text-white ms-1" />
+              <ChevronDown size={16} className="text-muted ms-1" />
             </div>
             {isUserMenuOpen && (
               <>
                 <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 999 }} onClick={() => setUserMenuOpen(false)} />
-                <div className="position-absolute end-0 mt-2 bg-white rounded-3 shadow-lg border overflow-hidden" style={{ minWidth: '220px', zIndex: 1000 }}>
-                  <div className="p-3 border-bottom bg-light">
-                    <div className="fw-bold text-dark small">{user.fullName || user.account || 'Admin'}</div>
-                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>{user.email || user.account}</div>
+                <div className="position-absolute end-0 mt-2 bg-white rounded-4 shadow-lg border overflow-hidden admin-user-menu" style={{ width: 280, zIndex: 1000 }}>
+                  <div className="p-3 border-bottom" style={{ background: 'rgba(17,24,39,0.02)' }}>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="rounded-circle admin-chip d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 44, height: 44, overflow: 'hidden' }}>
+                        {!logoError ? (
+                          <img src={logoUrl} alt="" className="w-100 h-100 object-fit-contain" />
+                        ) : (
+                          <span className="fw-bold">{getInitials(user.fullName)}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.95rem' }}>{user.fullName || user.account || 'Admin'}</div>
+                        <div className="text-muted text-truncate" style={{ fontSize: '0.78rem' }}>{user.email || user.account}</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="border-top">
-                    <button onClick={handleLogout} className="btn btn-white w-100 text-danger d-flex align-items-center gap-2 px-3 py-2 border-0 text-start">
-                      <LogOut size={16} /> <span className="small">Đăng xuất</span>
+
+                  <div className="p-2">
+                    <Link
+                      to="/admin/profile"
+                      className="admin-user-menu-item d-flex align-items-center gap-2 px-2 py-2 rounded-3 text-decoration-none"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <span className="admin-user-menu-icon">
+                        <User size={16} />
+                      </span>
+                      <span className="flex-grow-1 small fw-medium text-dark">Hồ sơ</span>
+                    </Link>
+                    <button
+                      type="button"
+                      className="admin-user-menu-item btn w-100 text-start d-flex align-items-center gap-2 px-2 py-2 rounded-3 border-0"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setPasswordOpen(true);
+                      }}
+                    >
+                      <span className="admin-user-menu-icon">
+                        <KeyRound size={16} />
+                      </span>
+                      <span className="flex-grow-1 small fw-medium text-dark">Đổi mật khẩu</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2 border-top">
+                    <button
+                      onClick={handleLogout}
+                      className="admin-user-menu-item btn w-100 text-start d-flex align-items-center gap-2 px-2 py-2 rounded-3 border-0 text-danger"
+                    >
+                      <span className="admin-user-menu-icon admin-user-menu-icon-danger">
+                        <LogOut size={16} />
+                      </span>
+                      <span className="flex-grow-1 small fw-semibold">Đăng xuất</span>
                     </button>
                   </div>
                 </div>
@@ -147,15 +224,12 @@ const AdminLayout = ({ children }) => {
         </div>
       </header>
 
-      {/* Vạch đỏ ngăn cách */}
-      <div style={{ height: 3, backgroundColor: '#dc2626' }} />
-
       {/* Body: Sidebar + Content */}
-      <div className="d-flex flex-grow-1 overflow-hidden position-relative">
+      <div className="d-flex flex-grow-1 overflow-hidden position-relative admin-main">
         {isSidebarOpen && (
           <div
             className="d-lg-none position-fixed"
-            style={{ top: 75, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 799 }}
+            style={{ top: 64, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 799 }}
             onClick={() => setSidebarOpen(false)}
             aria-hidden="true"
           />
@@ -163,55 +237,63 @@ const AdminLayout = ({ children }) => {
         <aside
           className={`transition-all d-flex flex-column flex-shrink-0 ${!isSidebarOpen ? 'd-none' : ''} admin-sidebar`}
           style={{
-            width: 260,
-            minHeight: 'calc(100vh - 75px - 3px)',
-            backgroundColor: '#e8ecf0',
-            borderRight: '1px solid #d1d5db'
+            width: 276,
+            minHeight: 'calc(100vh - 64px)',
           }}
         >
-          <div className="text-center py-3 px-2">
-            <h6 className="fw-bold text-dark mb-0 text-uppercase" style={{ fontSize: '0.85rem', textDecoration: 'underline', letterSpacing: '0.08em' }}>Menu</h6>
-          </div>
-          <nav className="nav flex-column gap-0 px-2 pb-3">
+          <div className="admin-sidebar-scroll flex-grow-1">
+            <nav className="nav flex-column gap-1 admin-nav-section">
             {menuItems.map((item) => {
               if (item.type === 'dropdown') {
                 const Icon = item.icon;
-                const isChildActive = item.children?.some(c => 
+                const isHomeCfg = item.label === 'Cấu hình trang chủ';
+                const isChildActive = item.children?.some(c =>
                   location.pathname === c.path ||
                   (c.path?.includes('courses') && location.pathname.startsWith('/admin/courses')) ||
                   (c.path?.includes('company-courses') && location.pathname.startsWith('/admin/company-courses')) ||
-                  (c.path?.includes('learners') && location.pathname.startsWith('/admin/learners'))
+                  (c.path?.includes('learners') && location.pathname.startsWith('/admin/learners')) ||
+                  (typeof c.path === 'string' && c.path.startsWith('/admin/home-config') && location.pathname.startsWith('/admin/home-config'))
                 );
                 return (
                   <div key={item.label} className="mb-1">
                     <div
-                      className={`d-flex align-items-center gap-2 px-3 py-2 rounded-2 border-0 admin-sidebar-link ${isChildActive ? 'admin-sidebar-active' : ''}`}
+                      className={`admin-nav-link ${isChildActive ? 'active' : ''}`}
                       style={{ cursor: 'pointer' }}
-                      onClick={() => setCourseMenuOpen(!courseMenuOpen)}
+                      onClick={() => {
+                        if (isHomeCfg) setHomeConfigMenuOpen((v) => !v);
+                        else setCourseMenuOpen((v) => !v);
+                      }}
                     >
-                      <ChevronRight
-                        size={18}
-                        className="flex-shrink-0 transition-transform"
-                        style={{ color: '#1a5276', transform: courseMenuOpen ? 'rotate(90deg)' : 'none' }}
-                      />
-                      <Icon size={18} className="flex-shrink-0" style={{ color: '#1a5276' }} />
-                      <span>{item.label}</span>
+                      <div className="admin-nav-item">
+                        <span className="admin-nav-icon"><Icon size={16} /></span>
+                        <span className="admin-nav-label">{item.label}</span>
+                        <ChevronDown
+                          size={16}
+                          className="admin-nav-caret transition-transform"
+                          style={{ transform: (isHomeCfg ? homeConfigMenuOpen : courseMenuOpen) ? 'rotate(180deg)' : 'none' }}
+                        />
+                      </div>
                     </div>
-                    {courseMenuOpen && item.children && (
+                    {(isHomeCfg ? homeConfigMenuOpen : courseMenuOpen) && item.children && (
                       <div className="ps-4 py-1">
                         {item.children.map((child) => {
                           const isActive = location.pathname === child.path ||
                             (child.path?.includes('courses') && location.pathname.startsWith('/admin/courses')) ||
                             (child.path?.includes('company-courses') && location.pathname.startsWith('/admin/company-courses')) ||
-                            (child.path?.includes('learners') && location.pathname.startsWith('/admin/learners'));
+                            (child.path?.includes('learners') && location.pathname.startsWith('/admin/learners')) ||
+                            (typeof child.path === 'string' && child.path.startsWith('/admin/home-config') && location.pathname.startsWith('/admin/home-config'));
                           return (
                             <Link
                               key={child.path}
                               to={child.path}
-                              className={`d-block py-2 px-2 rounded-2 small text-decoration-none admin-sidebar-link ${isActive ? 'admin-sidebar-active' : ''}`}
-                              style={{ color: '#1a5276' }}
+                              className={`admin-nav-link ${isActive ? 'active' : ''}`}
                             >
-                              {child.label}
+                              <div className="admin-nav-item" style={{ minHeight: 38, paddingTop: 8, paddingBottom: 8 }}>
+                                <span style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: 999, background: isActive ? 'rgba(37,99,235,0.65)' : 'rgba(17,24,39,0.25)' }} />
+                                </span>
+                                <span className="admin-nav-label" style={{ fontSize: '0.84rem' }}>{child.label}</span>
+                              </div>
                             </Link>
                           );
                         })}
@@ -229,49 +311,33 @@ const AdminLayout = ({ children }) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`nav-link d-flex align-items-center gap-2 px-3 py-2 rounded-2 border-0 admin-sidebar-link ${isActive ? 'admin-sidebar-active' : ''}`}
+                  className={`admin-nav-link ${isActive ? 'active' : ''}`}
                 >
-                  <ChevronRight size={18} className="flex-shrink-0" style={{ color: '#1a5276' }} />
-                  <Icon size={18} className="flex-shrink-0" style={{ color: '#1a5276' }} />
-                  <span>{item.label}</span>
+                  <div className="admin-nav-item">
+                    <span className="admin-nav-icon"><Icon size={16} /></span>
+                    <span className="admin-nav-label">{item.label}</span>
+                  </div>
                 </Link>
               );
             })}
-          </nav>
+            </nav>
+          </div>
         </aside>
 
-        <main className="flex-grow-1 d-flex flex-column overflow-hidden bg-white" style={{ boxShadow: '-2px 0 8px rgba(0,0,0,0.04)' }}>
+        <main className="flex-grow-1 d-flex flex-column overflow-hidden admin-content">
           <div className="p-4 overflow-auto flex-grow-1">
             {children}
           </div>
-          <footer className="py-2 px-4 text-center small text-muted" style={{ backgroundColor: '#1a5276', color: 'rgba(255,255,255,0.9)' }}>
+          <footer className="admin-footer py-3 px-4 text-center small">
             © {new Date().getFullYear()} E-Learning. All rights reserved.
           </footer>
         </main>
       </div>
 
-      <style>{`
-        .admin-theme, .admin-theme * { font-family: Arial, Helvetica, Verdana, sans-serif !important; }
-        .admin-theme { color: #333333; }
-        .admin-theme h1, .admin-theme h2, .admin-theme h3, .admin-theme h4, .admin-theme h5, .admin-theme h6 { color: #1a5276 !important; font-weight: bold; }
-        .admin-theme a, .admin-theme .text-primary { color: #0056b3 !important; }
-        .admin-theme a:hover { text-decoration: underline; }
-        .admin-theme .table thead th { background: linear-gradient(#f2f2f2, #e6e6e6) !important; color: #333 !important; font-weight: bold; border: 1px solid #cccccc !important; }
-        .admin-theme .table td, .admin-theme .table th { border-color: #dee2e6 !important; color: #333333; }
-        .admin-theme .table tbody tr:hover { background-color: #f9f9f9; }
-        .admin-theme .btn-primary { background-color: #0056b3 !important; border-color: #0056b3 !important; color: white !important; }
-        .admin-theme .btn-primary:hover { background-color: #004494 !important; border-color: #004494 !important; }
-        .admin-theme .admin-price, .admin-theme .text-danger { color: #d9534f !important; }
-        .admin-sidebar-link { color: #1a5276 !important; transition: all 0.2s; }
-        .admin-sidebar-link span { color: #1a5276 !important; font-weight: bold !important; font-size: 0.95rem !important; }
-        .admin-sidebar-link:hover { background-color: #e6e6e6 !important; color: #1a5276 !important; }
-        .admin-sidebar-active { background-color: #d6eaf8 !important; color: #1a5276 !important; }
-        .admin-sidebar-active:hover { background-color: #aed6f1 !important; }
-        .dropdown-item:hover { background-color: #f2f2f2 !important; }
-        @media (max-width: 991px) {
-          .admin-sidebar { position: fixed !important; left: 0; top: 75px; z-index: 800; height: calc(100vh - 78px) !important; box-shadow: 4px 0 12px rgba(0,0,0,0.15); }
-        }
-      `}</style>
+      <UserAccountDialogs
+        passwordOpen={passwordOpen}
+        onClosePassword={() => setPasswordOpen(false)}
+      />
     </div>
   );
 };

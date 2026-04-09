@@ -1,21 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { getUploadUrl } from '../../api/axios';
 import { useLanguage } from '../../context/LanguageContext';
+import api from '../../api/axios';
 import {
   LayoutDashboard, BookOpen, GraduationCap,
   Settings, LogOut, UserCircle, ChevronDown, HelpCircle,
-  Home, MapPin, Phone, Mail, Apple, Play, QrCode, Bot
+  Home, MapPin, Phone, Mail, Apple, Play, QrCode, Bot,
+  User, KeyRound,
 } from 'lucide-react';
 import NotificationBell from '../common/NotificationBell';
+import UserAccountDialogs from '../account/UserAccountDialogs';
 
 const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [supportForm, setSupportForm] = useState(() => ({
+    fullName: '',
+    email: '',
+    message: '',
+    files: [],
+  }));
   const navigate = useNavigate();
   const location = useLocation();
   const { lang, setLang, t } = useLanguage();
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const refreshUserRef = useRef(() => {});
+  refreshUserRef.current = () => {
+    try {
+      setUser(JSON.parse(localStorage.getItem('user') || '{}'));
+    } catch {
+      setUser({});
+    }
+  };
+
+  useEffect(() => {
+    const onUp = () => refreshUserRef.current();
+    window.addEventListener('elearning-user-updated', onUp);
+    return () => window.removeEventListener('elearning-user-updated', onUp);
+  }, []);
+
   const logoUrl = user.companyLogoUrl ? getUploadUrl(user.companyLogoUrl) : '/h_logo.png';
 
   const menuItems = [
@@ -29,6 +62,60 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/login');
+  };
+
+  useEffect(() => {
+    setSupportForm((prev) => ({
+      ...prev,
+      fullName: prev.fullName || user.fullName || '',
+      email: prev.email || user.email || '',
+    }));
+  }, [user.fullName, user.email]);
+
+  const openSupport = () => {
+    setSupportForm((prev) => ({
+      ...prev,
+      fullName: user.fullName || prev.fullName || '',
+      email: user.email || prev.email || '',
+    }));
+    setSupportOpen(true);
+  };
+
+  const closeSupport = () => {
+    setSupportOpen(false);
+    setSupportSubmitting(false);
+  };
+
+  const handleSupportFiles = (e) => {
+    const arr = Array.from(e.target.files || []);
+    setSupportForm((prev) => ({ ...prev, files: [...(prev.files || []), ...arr].slice(0, 8) }));
+    e.target.value = '';
+  };
+
+  const removeSupportFileAt = (idx) => {
+    setSupportForm((prev) => ({ ...prev, files: (prev.files || []).filter((_, i) => i !== idx) }));
+  };
+
+  const submitSupport = async (e) => {
+    e.preventDefault();
+    if (!supportForm.message?.trim()) return;
+    setSupportSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('fullName', supportForm.fullName || '');
+      fd.append('email', supportForm.email || '');
+      fd.append('message', supportForm.message || '');
+      (supportForm.files || []).forEach((f) => fd.append('files', f));
+      await api.post('/ticket/contact', fd);
+      alert('Đã gửi yêu cầu hỗ trợ.');
+      setSupportForm((prev) => ({ ...prev, message: '', files: [] }));
+      closeSupport();
+    } catch (err) {
+      const msg = err.response?.data;
+      alert(typeof msg === 'string' ? msg : (msg?.message || 'Không gửi được yêu cầu.'));
+    } finally {
+      setSupportSubmitting(false);
+    }
   };
 
   return (
@@ -85,10 +172,10 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
               <NotificationBell />
             </div>
             <select
-              className="form-select form-select-sm border py-1 px-3"
-              style={{ width: 'auto', fontSize: '0.875rem' }}
+              className="form-select form-select-sm lang-select"
               value={lang}
               onChange={(e) => setLang(e.target.value)}
+              aria-label="Language"
             >
               <option value="vi">{t('langVi')}</option>
               <option value="en">{t('langEn')}</option>
@@ -105,13 +192,55 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
               {userMenuOpen && (
                 <>
                   <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 998 }} onClick={() => setUserMenuOpen(false)} />
-                  <div className="dropdown-menu dropdown-menu-end show position-absolute end-0 mt-2 shadow border" style={{ zIndex: 999, minWidth: 200 }}>
-                    <div className="px-3 py-2 border-bottom">
-                      <div className="fw-bold small">{user.fullName || t('student')}</div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{user.email || user.account}</div>
+                  <div className="dropdown-menu dropdown-menu-end show position-absolute end-0 mt-2 shadow-lg border rounded-4 overflow-hidden user-user-menu" style={{ zIndex: 999, width: 280 }}>
+                    <div className="p-3 border-bottom" style={{ background: 'linear-gradient(135deg, rgba(37,99,235,0.10), rgba(99,102,241,0.10))' }}>
+                      <div className="d-flex align-items-center gap-3">
+                        <div className="rounded-circle border bg-white d-flex align-items-center justify-content-center flex-shrink-0" style={{ width: 44, height: 44, overflow: 'hidden' }}>
+                          <img src={logoUrl} alt="" className="w-100 h-100 object-fit-contain" onError={(e) => { e.target.onerror = null; e.target.src = '/h_logo.png'; }} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="fw-bold text-dark text-truncate" style={{ fontSize: '0.95rem' }}>{user.fullName || t('student')}</div>
+                          <div className="text-muted text-truncate" style={{ fontSize: '0.78rem' }}>{user.email || user.account}</div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="border-top">
-                      <button className="dropdown-item small text-danger w-100 text-start" onClick={handleLogout}>{t('logout')}</button>
+
+                    <div className="p-2">
+                      <Link
+                        to="/profile"
+                        className="user-user-menu-item d-flex align-items-center gap-2 px-2 py-2 rounded-3 text-decoration-none"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        <span className="user-user-menu-icon">
+                          <User size={16} />
+                        </span>
+                        <span className="flex-grow-1 small fw-medium text-dark">Hồ sơ</span>
+                      </Link>
+                      <button
+                        type="button"
+                        className="user-user-menu-item btn w-100 text-start d-flex align-items-center gap-2 px-2 py-2 rounded-3 border-0"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          setPasswordOpen(true);
+                        }}
+                      >
+                        <span className="user-user-menu-icon">
+                          <KeyRound size={16} />
+                        </span>
+                        <span className="flex-grow-1 small fw-medium text-dark">Đổi mật khẩu</span>
+                      </button>
+                    </div>
+
+                    <div className="p-2 border-top">
+                      <button
+                        className="user-user-menu-item btn w-100 text-start d-flex align-items-center gap-2 px-2 py-2 rounded-3 border-0 text-danger"
+                        onClick={handleLogout}
+                      >
+                        <span className="user-user-menu-icon user-user-menu-icon-danger">
+                          <LogOut size={16} />
+                        </span>
+                        <span className="flex-grow-1 small fw-semibold">{t('logout')}</span>
+                      </button>
                     </div>
                   </div>
                 </>
@@ -126,6 +255,88 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
           {children}
         </div>
       </main>
+
+      {/* Floating inbox support button (bottom-right) */}
+      {!hideHeader && (
+        <button
+          type="button"
+          className="user-support-fab"
+          title="Gửi hỗ trợ"
+          aria-label="Gửi hỗ trợ"
+          onClick={openSupport}
+        >
+          <Mail size={22} />
+        </button>
+      )}
+
+      {/* Support modal */}
+      {supportOpen && (
+        <>
+          <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 2000, background: 'rgba(0,0,0,0.35)' }} onClick={closeSupport} />
+          <div className="position-fixed top-0 end-0 h-100 bg-white shadow-lg" style={{ zIndex: 2001, width: 'min(520px, 100vw)' }}>
+            <div className="d-flex align-items-center justify-content-between px-3 py-2 text-white" style={{ background: '#002060' }}>
+              <button type="button" className="btn btn-link text-white p-1 text-decoration-none" onClick={closeSupport} aria-label="Back">
+                ←
+              </button>
+              <div className="fw-bold">Trợ lý AI</div>
+              <button type="button" className="btn btn-link text-white p-1 text-decoration-none" onClick={closeSupport} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={submitSupport} className="p-3" style={{ overflow: 'auto', height: 'calc(100% - 44px)' }}>
+              <div className="mb-3">
+                <label className="form-label small fw-semibold">Họ tên</label>
+                <input
+                  className="form-control"
+                  placeholder="Họ tên của bạn"
+                  value={supportForm.fullName}
+                  onChange={(e) => setSupportForm((p) => ({ ...p, fullName: e.target.value }))}
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label small fw-semibold">Email</label>
+                <input
+                  type="email"
+                  className="form-control"
+                  placeholder="Email của bạn"
+                  value={supportForm.email}
+                  onChange={(e) => setSupportForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label small fw-semibold">Nội dung liên hệ</label>
+                <textarea
+                  className="form-control"
+                  rows={6}
+                  placeholder="Nội dung liên hệ của bạn..."
+                  value={supportForm.message}
+                  onChange={(e) => setSupportForm((p) => ({ ...p, message: e.target.value }))}
+                />
+              </div>
+              <div className="mb-2">
+                <label className="form-label small fw-semibold">Đính kèm tập tin</label>
+                <input type="file" className="form-control" multiple onChange={handleSupportFiles} />
+                {supportForm.files?.length > 0 && (
+                  <div className="mt-2 d-flex flex-wrap gap-2">
+                    {supportForm.files.map((f, idx) => (
+                      <span key={f.name + idx} className="badge text-bg-light border d-inline-flex align-items-center gap-2">
+                        <span className="text-truncate" style={{ maxWidth: 240 }}>{f.name}</span>
+                        <button type="button" className="btn btn-sm p-0 border-0" onClick={() => removeSupportFileAt(idx)} aria-label="Remove">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="pt-2">
+                <button type="submit" className="btn btn-primary" disabled={supportSubmitting || !supportForm.message?.trim()}>
+                  {supportSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
 
       {/* Footer - kiểu HUTECH eLearning */}
       {!hideHeader && (
@@ -219,6 +430,11 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
         </footer>
       )}
 
+      <UserAccountDialogs
+        passwordOpen={passwordOpen}
+        onClosePassword={() => setPasswordOpen(false)}
+      />
+
       <style>{`
         .hover-bg-light:hover {
           background-color: #f8f9fa;
@@ -227,6 +443,30 @@ const UserLayout = ({ children, hideSidebar = true, hideHeader = false }) => {
         .w-250 { width: 260px; }
         .transition-all { transition: all 0.3s ease; }
         footer a:hover { opacity: 1 !important; }
+        .user-user-menu { border-color: rgba(15, 23, 42, 0.08) !important; }
+        .user-user-menu-item { background: transparent; transition: background-color 0.15s ease, transform 0.06s ease; }
+        .user-user-menu-item:hover { background-color: rgba(2, 6, 23, 0.04); }
+        .user-user-menu-item:active { transform: translateY(1px); }
+        .user-user-menu-icon { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: rgba(37,99,235,0.10); color: #2563eb; flex-shrink: 0; }
+        .user-user-menu-icon-danger { background: rgba(220,38,38,0.10); color: #dc2626; }
+        .user-support-fab{
+          position: fixed;
+          right: 18px;
+          bottom: 18px;
+          width: 56px;
+          height: 56px;
+          border-radius: 999px;
+          border: 1px solid rgba(15,23,42,0.10);
+          background: #0b1220;
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+          z-index: 1500;
+        }
+        .user-support-fab:hover{ filter: brightness(1.05); transform: translateY(-1px); }
+        .user-support-fab:active{ transform: translateY(0px); }
       `}</style>
     </div>
   );

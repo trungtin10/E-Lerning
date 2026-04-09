@@ -239,12 +239,8 @@ const Subscription = () => {
             // Nếu Free hết hạn, disable Free card; bắt buộc chọn gói trả phí
             const isDisabled = processing !== null || (isFree && isExpired && isFreePlan);
 
-            const btnClass =
-              style.tone === 'dark'
-                ? 'btn-dark'
-                : style.featured
-                  ? 'btn-primary'
-                  : 'btn-outline-primary';
+            // Đồng bộ màu nút nâng cấp: tất cả gói trả phí dùng nút đen
+            const btnClass = canBuy ? 'btn-dark' : 'btn-outline-secondary';
 
             return (
               <div key={p.id} className="col-12 col-sm-6 col-lg-3">

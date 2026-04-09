@@ -150,6 +150,91 @@ public class TicketController : ControllerBase
     private static DateTime? AsUtc(DateTime? dt) =>
         dt.HasValue ? AsUtc(dt.Value) : null;
 
+    /// <summary>
+    /// User/Học viên: gửi yêu cầu hỗ trợ nhanh từ giao diện user (multipart).
+    /// Dữ liệu sẽ được lưu thành ticket để SuperAdmin xử lý.
+    /// </summary>
+    [HttpPost("contact")]
+    [Authorize]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<object>> Contact(
+        [FromForm] string? fullName,
+        [FromForm] string? email,
+        [FromForm] string message)
+    {
+        var userId = CurrentUserId;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var user = await _context.Users.Include(u => u.Company).FirstOrDefaultAsync(u => u.Id == userId);
+        if (user?.CompanyId == null || user.Company == null) return BadRequest("Thiếu thông tin công ty.");
+        if (string.IsNullOrWhiteSpace(message)) return BadRequest("Nội dung liên hệ là bắt buộc.");
+
+        List<string> attachmentUrls;
+        try
+        {
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        var now = DateTime.UtcNow;
+        var displayName = string.IsNullOrWhiteSpace(fullName)
+            ? (user.FullName ?? user.UserName ?? userId)
+            : fullName.Trim();
+        var displayEmail = string.IsNullOrWhiteSpace(email) ? (user.Email ?? "") : email.Trim();
+
+        var subject = $"Yêu cầu hỗ trợ - {displayName}";
+        var body = $"Họ tên: {displayName}\nEmail: {displayEmail}\n\n{message.Trim()}";
+
+        var ticket = new SupportTicket
+        {
+            CompanyId = user.CompanyId.Value,
+            UserId = userId,
+            Subject = subject,
+            Content = body,
+            Priority = "Normal",
+            Status = "Open",
+            CreatedAt = now,
+            UpdatedAt = now,
+            LastActivityAt = now
+        };
+        _context.SupportTickets.Add(ticket);
+        await _context.SaveChangesAsync();
+
+        var post = new SupportTicketPost
+        {
+            SupportTicketId = ticket.Id,
+            UserId = userId,
+            Body = body,
+            CreatedAt = now
+        };
+        _context.SupportTicketPosts.Add(post);
+        await _context.SaveChangesAsync();
+
+        foreach (var url in attachmentUrls)
+            _context.SupportTicketAttachments.Add(new SupportTicketAttachment { SupportTicketPostId = post.Id, FileUrl = url });
+        await _context.SaveChangesAsync();
+
+        var superIds = await _userManager.GetUsersInRoleAsync("SuperAdmin");
+        var superUserIds = superIds.Select(u => u.Id).ToList();
+        if (superUserIds.Count > 0)
+        {
+            await _notification.NotifyUsersAsync(
+                superUserIds,
+                $"Ticket mới: {ticket.Subject}",
+                $"{user.Company.CompanyName} vừa gửi yêu cầu hỗ trợ.",
+                "Ticket",
+                "Info",
+                "/admin/tickets/" + ticket.Id);
+        }
+
+        await _audit.LogAsync("Create", "SupportTicket", ticket.Id.ToString(), null, ticket.Subject, "User gửi yêu cầu hỗ trợ");
+
+        return Ok(new { id = ticket.Id });
+    }
+
     private async Task<SupportTicketThreadDto> MapThreadAsync(SupportTicket ticket)
     {
         var author = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == ticket.UserId);

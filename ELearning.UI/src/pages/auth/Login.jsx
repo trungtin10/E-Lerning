@@ -43,10 +43,34 @@ const Login = () => {
 
     try {
       const response = await api.post('auth/login', formData);
-      const { token, fullName, account, roles, companyId, subDomain, companyLogoUrl } = response.data;
+      const {
+        token,
+        fullName,
+        account,
+        roles,
+        companyId,
+        subDomain,
+        companyLogoUrl,
+        email,
+        phoneNumber,
+        companyName,
+      } = response.data;
 
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ fullName, account, roles, companyId, subDomain, companyLogoUrl }));
+      localStorage.setItem(
+        'user',
+        JSON.stringify({
+          fullName,
+          account,
+          roles,
+          companyId,
+          subDomain,
+          companyLogoUrl,
+          email,
+          phoneNumber,
+          companyName,
+        })
+      );
 
       if (companyLogoUrl) {
         setFavicon(getUploadUrl(companyLogoUrl));

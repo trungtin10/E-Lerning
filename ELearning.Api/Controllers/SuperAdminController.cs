@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using System.Web;
 
 namespace ELearning.Api.Controllers;
@@ -128,18 +129,23 @@ public class SuperAdminController : ControllerBase
         {
             var roles = await _userManager.GetRolesAsync(user);
             bool isExpired = !user.EmailConfirmed && (DateTime.UtcNow - user.CreatedAt).TotalHours > 24;
+            var role = roles.FirstOrDefault();
+            var displayEmail = user.GetDisplayEmail()
+                ?? (role == "Admin" ? user.Company?.ContactEmail : null);
 
-            userSummaries.Add(new UserSummaryDto(
-                user.Id,
-                user.FullName,
-                user.UserName!,
-                roles.FirstOrDefault(),
-                user.Company?.CompanyName,
-                user.Company?.SubDomain,
-                user.IsActive,
-                user.EmailConfirmed,
-                isExpired
-            ));
+            userSummaries.Add(new UserSummaryDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Account = user.UserName!,
+                Email = displayEmail,
+                Role = role,
+                CompanyName = user.Company?.CompanyName,
+                SubDomain = user.Company?.SubDomain,
+                IsActive = user.IsActive,
+                EmailConfirmed = user.EmailConfirmed,
+                IsExpired = isExpired
+            });
         }
         return Ok(userSummaries);
     }
@@ -432,6 +438,13 @@ public class SuperAdminController : ControllerBase
                 return BadRequest("Email không tồn tại hoặc không gửi được thư kích hoạt. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
             }
 
+            if (string.IsNullOrWhiteSpace(company.ContactEmail) && !string.IsNullOrWhiteSpace(dto.Email))
+            {
+                company.ContactEmail = dto.Email.Trim();
+                company.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
             await _audit.LogAsync("Create", "User", user.Id, null, $"{user.FullName} ({user.UserName})", $"Gán Admin cho công ty {company.CompanyName}");
             return Ok(new { Message = "Đã gửi email kích hoạt!" });
         }
@@ -450,7 +463,16 @@ public class SuperAdminController : ControllerBase
             if (user.CompanyId.HasValue)
             {
                 var company = await _context.Companies.FindAsync(user.CompanyId.Value);
-                if (company != null) { company.IsActive = true; await _context.SaveChangesAsync(); }
+                if (company != null)
+                {
+                    company.IsActive = true;
+                    if (string.IsNullOrWhiteSpace(company.ContactEmail) && !string.IsNullOrWhiteSpace(user.Email))
+                    {
+                        company.ContactEmail = user.Email!.Trim();
+                    }
+                    company.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
             }
             return Ok("Kích hoạt thành công!");
         }
@@ -461,10 +483,25 @@ public class SuperAdminController : ControllerBase
     public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies()
     {
         var baseUrl = GetBaseUrl();
+        var now = DateTime.UtcNow;
         return await _context.Companies
             .Where(c => c.SubDomain != "admin" && !c.CompanyName.Contains("Hệ Thống"))
             .OrderByDescending(c => c.CreatedAt)
-            .Select(c => new CompanyDto(c.Id, c.CompanyName, c.SubDomain, c.LogoUrl != null ? baseUrl + c.LogoUrl : null, c.CustomDomain, c.ServicePlan, c.ContactEmail, c.IsActive, c.Users.Count, c.CreatedAt, c.UpdatedAt))
+            .Select(c => new CompanyDto(
+                c.Id,
+                c.CompanyName,
+                c.SubDomain,
+                c.LogoUrl != null ? baseUrl + c.LogoUrl : null,
+                c.CustomDomain,
+                c.ServicePlan,
+                c.ServicePlanId,
+                c.PlanExpiresAt,
+                _context.Transactions.Any(t => t.CompanyId == c.Id && t.Status == "Completed"),
+                c.ContactEmail,
+                c.IsActive,
+                c.Users.Count,
+                c.CreatedAt,
+                c.UpdatedAt))
             .ToListAsync();
     }
 
@@ -481,6 +518,23 @@ public class SuperAdminController : ControllerBase
             company.ContactEmail = form.ContactEmail;
             company.ServicePlan = form.ServicePlan;
             company.UpdatedAt = DateTime.UtcNow;
+
+            if (form.TrialDays.HasValue && form.TrialDays.Value > 0)
+            {
+                var trialDays = form.TrialDays.Value;
+                company.PlanExpiresAt = DateTime.UtcNow.AddDays(trialDays);
+                if (!string.IsNullOrWhiteSpace(company.ServicePlan))
+                {
+                    var plan = await _context.ServicePlans.AsNoTracking()
+                        .FirstOrDefaultAsync(p => p.Name == company.ServicePlan);
+                    if (plan != null)
+                    {
+                        company.ServicePlanId = plan.Id;
+                        company.MaxUsers = plan.MaxUsers;
+                    }
+                }
+            }
+
             if (form.LogoFile != null && form.LogoFile.Length > 0)
             {
                 var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
@@ -504,7 +558,9 @@ public class SuperAdminController : ControllerBase
         if (user.UserName == "superadmin") return BadRequest("Không thể sửa SuperAdmin.");
 
         user.FullName = dto.FullName;
-        user.Email = dto.Email;
+        var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
+        user.Email = email;
+        user.NormalizedEmail = _userManager.NormalizeEmail(email);
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
 
@@ -518,6 +574,28 @@ public class SuperAdminController : ControllerBase
 
         await _audit.LogAsync("Update", "User", id, user.UserName, null, $"Cập nhật user {user.FullName} ({user.UserName})");
         return Ok();
+    }
+
+    [HttpPatch("users/{id}/active")]
+    public async Task<IActionResult> SetUserActive(string id, [FromBody] SetUserActiveDto dto)
+    {
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.Equals(id, currentUserId, StringComparison.Ordinal) && !dto.IsActive)
+            return BadRequest("Không thể tự khóa tài khoản của chính bạn.");
+
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+        if (string.Equals(user.UserName, "superadmin", StringComparison.OrdinalIgnoreCase) && !dto.IsActive)
+            return BadRequest("Không thể khóa tài khoản superadmin.");
+
+        user.IsActive = dto.IsActive;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Không thể cập nhật trạng thái.");
+
+        var detail = dto.IsActive ? "Mở khóa" : "Tạm khóa";
+        await _audit.LogAsync("Update", "User", id, user.UserName, null, $"{detail} tài khoản {user.FullName} ({user.UserName})");
+        return Ok(new { isActive = user.IsActive });
     }
 
     [HttpDelete("users/{userId}")]

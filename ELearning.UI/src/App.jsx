@@ -14,7 +14,15 @@ const pathTitles = {
   '/forgot-password': 'Đặt lại mật khẩu',
   '/reset-password': 'Đặt mật khẩu mới',
   '/confirm-email': 'Xác nhận email',
-  '/admin/dashboard': 'Dashboard',
+  '/admin/dashboard': 'Cấu hình trang chủ',
+  '/admin/home-config/header': 'Đầu trang',
+  '/admin/home-config/slider-vi': 'Slider trang chủ VN',
+  '/admin/home-config/slider-en': 'Slider trang chủ EN',
+  '/admin/home-config/small-banner': 'Banner nhỏ',
+  '/admin/home-config/testimonials': 'Cảm nhận khách hàng',
+  '/admin/home-config/footer': 'Thông tin chân trang',
+  '/admin/home-config/policy': 'Chính sách & Quy định',
+  '/admin/home-config/social-links': 'Liên kết mạng xã hội',
   '/admin/companies': 'Quản lý công ty',
   '/admin/companies/create': 'Tạo công ty mới',
   '/admin/users': 'Quản lý người dùng',
@@ -31,6 +39,8 @@ const pathTitles = {
   '/admin/audit-logs': 'Nhật ký',
   '/admin/tickets': 'Hỗ trợ',
   '/admin/announcements': 'Thông báo',
+  '/admin/profile': 'Hồ sơ',
+  '/profile': 'Hồ sơ',
   '/dashboard': 'Dashboard',
   '/courses': 'Khám phá khóa học',
   '/course': 'Chi tiết khóa học',
@@ -113,11 +123,13 @@ import PlanManagement from './pages/admin/plans/PlanManagement';
 import Transactions from './pages/admin/plans/Transactions';
 import AuditLogs from './pages/admin/plans/AuditLogs';
 import Tickets from './pages/admin/plans/Tickets';
+import CreateTicket from './pages/admin/plans/CreateTicket';
 import Announcements from './pages/admin/plans/Announcements';
 import Subscription from './pages/admin/plans/Subscription';
 import CheckoutReturn from './pages/admin/plans/CheckoutReturn';
 import CompanyUsers from './pages/admin/CompanyUsers';
 import Learners from './pages/admin/Learners';
+import HomeConfig from './pages/admin/HomeConfig';
 import Courses from './pages/admin/courses/index';
 import CourseDetail from './pages/admin/courses/CourseDetail';
 import Categories from './pages/admin/courses/Categories';
@@ -127,6 +139,7 @@ import UserDashboard from './pages/user/Dashboard';
 import LearningView from './pages/user/LearningView';
 import CourseOverview from './pages/user/CourseOverview';
 import CourseList from './pages/user/CourseList';
+import MyProfile from './pages/account/MyProfile';
 
 function AppRoutes() {
   usePageTitle();
@@ -141,6 +154,14 @@ function AppRoutes() {
 
         {/* Admin Routes */}
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/home-config/header" element={<HomeConfig />} />
+        <Route path="/admin/home-config/slider-vi" element={<HomeConfig />} />
+        <Route path="/admin/home-config/slider-en" element={<HomeConfig />} />
+        <Route path="/admin/home-config/small-banner" element={<HomeConfig />} />
+        <Route path="/admin/home-config/testimonials" element={<HomeConfig />} />
+        <Route path="/admin/home-config/footer" element={<HomeConfig />} />
+        <Route path="/admin/home-config/policy" element={<HomeConfig />} />
+        <Route path="/admin/home-config/social-links" element={<HomeConfig />} />
         <Route path="/admin/companies" element={<Companies />} />
         <Route path="/admin/companies/create" element={<CreateCompany />} />
         <Route path="/admin/companies/edit/:id" element={<EditCompany />} />
@@ -159,8 +180,10 @@ function AppRoutes() {
         <Route path="/checkout/vnpay-return" element={<CheckoutReturn />} />
         <Route path="/admin/transactions" element={<Transactions />} />
         <Route path="/admin/audit-logs" element={<AuditLogs />} />
+        <Route path="/admin/tickets/new" element={<CreateTicket />} />
         <Route path="/admin/tickets/:ticketId?" element={<Tickets />} />
         <Route path="/admin/announcements" element={<Announcements />} />
+        <Route path="/admin/profile" element={<MyProfile />} />
 
         {/* User Routes */}
         <Route path="/dashboard" element={<UserDashboard />} />
@@ -171,6 +194,7 @@ function AppRoutes() {
         <Route path="/my-courses" element={<UserDashboard />} />
         <Route path="/certificates" element={<UserDashboard />} />
         <Route path="/settings" element={<UserDashboard />} />
+        <Route path="/profile" element={<MyProfile />} />
 
         {/* Placeholder */}
         <Route path="/admin/settings" element={<AdminDashboard />} />

@@ -8,9 +8,10 @@ import VideoPlayer from '../../../components/common/VideoPlayer';
 import { useNotify } from '../../../context/NotifyContext';
 import QuizSectionInline from '../../../components/admin/QuizSectionInline';
 import {
-  Plus, Video, FileText, Loader2, ArrowLeft, Trash2, Minus,
-  PlayCircle, Save, Upload, X, Settings, ClipboardCheck,
-  Info, BookOpen, RefreshCw, HelpCircle, GripVertical, Calendar, Star, Eye, AlertCircle, Link, CheckCircle2, ListChecks
+  Plus, Video, Loader2, ArrowLeft, Trash2, Minus,
+  Save, Upload, ClipboardCheck,
+  Info, BookOpen, RefreshCw, HelpCircle, GripVertical, Star, Eye, AlertCircle, CheckCircle2,
+  ChevronDown, ChevronUp, MoreVertical, LayoutList, BarChart3
 } from 'lucide-react';
 
 const CourseDetail = () => {
@@ -38,6 +39,8 @@ const CourseDetail = () => {
 
   const [isAdding, setIsAdding] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
+  /** Thu gọn / mở rộng danh sách bài giảng (kiểu Canvas) */
+  const [lessonsExpanded, setLessonsExpanded] = useState(true);
   const { toast, confirm } = useNotify();
   const showToast = toast;
 
@@ -263,30 +266,43 @@ const CourseDetail = () => {
   const sectionIcons = [<Info size={20} className="text-info" key="i1" />, <BookOpen size={20} className="text-primary" key="i2" />, <RefreshCw size={20} className="text-success" key="i3" />, <HelpCircle size={20} className="text-warning" key="i4" />, <CheckCircle2 size={20} className="text-dark" key="i5" />];
 
   const renderSection = (index, section, num) => (
-    <div key={index} className="mb-5 p-4 border rounded-4 bg-white shadow-sm">
-      <div className="d-flex align-items-center justify-content-between mb-4 border-bottom pb-3">
-        <div className="d-flex align-items-center gap-2 flex-grow-1">
-            {sectionIcons[index % sectionIcons.length]}
-            <input type="text" className="form-control form-control-sm border-0 bg-light fw-bold text-dark w-75 rounded-3" value={section.title} onChange={e => updateSection(index, 'title', e.target.value)} />
-            {editData.sections.length > 1 && (
-              <button type="button" className="btn btn-outline-danger btn-sm rounded-pill px-2" onClick={() => removeSection(index)} title="Xóa phần"><Minus size={14} /></button>
-            )}
+    <div key={index} className="mb-3 p-3 border rounded-4 bg-white shadow-sm">
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span
+          className="badge rounded-pill"
+          style={{ background: 'rgba(37,99,235,0.10)', border: '1px solid rgba(37,99,235,0.14)', color: '#2563eb', fontWeight: 800 }}
+        >
+          Mục {num}
+        </span>
+        <div className="flex-grow-1 min-w-0">
+          <input
+            type="text"
+            className="form-control form-control-sm bg-light border-0 fw-bold"
+            value={section.title}
+            onChange={e => updateSection(index, 'title', e.target.value)}
+            placeholder="Tiêu đề mục..."
+          />
         </div>
-        <div className="d-flex gap-3 align-items-center">
-            <div className="form-check form-switch">
-                <input className="form-check-input cursor-pointer" type="checkbox" id={`showVideo${index}`} checked={section.showVideo} onChange={e => updateSection(index, 'showVideo', e.target.checked)} />
-                <label className="form-check-label small fw-bold cursor-pointer" htmlFor={`showVideo${index}`}>Video</label>
-            </div>
-            <div className="form-check form-switch">
-                <input className="form-check-input cursor-pointer" type="checkbox" id={`showQuiz${index}`} checked={section.showQuiz} onChange={e => updateSection(index, 'showQuiz', e.target.checked)} />
-                <label className="form-check-label small fw-bold cursor-pointer" htmlFor={`showQuiz${index}`}>Trắc nghiệm</label>
-            </div>
+        <div className="d-flex align-items-center gap-3 ms-auto">
+          <div className="form-check form-switch m-0">
+            <input className="form-check-input cursor-pointer" type="checkbox" id={`showVideo${index}`} checked={section.showVideo} onChange={e => updateSection(index, 'showVideo', e.target.checked)} />
+            <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`showVideo${index}`}>Video</label>
+          </div>
+          <div className="form-check form-switch m-0">
+            <input className="form-check-input cursor-pointer" type="checkbox" id={`showQuiz${index}`} checked={section.showQuiz} onChange={e => updateSection(index, 'showQuiz', e.target.checked)} />
+            <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`showQuiz${index}`}>Quiz</label>
+          </div>
+          {editData.sections.length > 1 && (
+            <button type="button" className="btn btn-sm btn-outline-secondary rounded-3" onClick={() => removeSection(index)} title="Xóa mục">
+              <Minus size={14} />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="mb-4">
         <div className="d-flex justify-content-end mb-2">
-          <button className="btn btn-outline-primary btn-sm px-3 fw-bold rounded-pill d-flex align-items-center gap-1" onClick={() => handleSaveLesson(num, 'content')} disabled={submitting}>
+          <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveLesson(num, 'content')} disabled={submitting}>
             {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu nội dung
           </button>
         </div>
@@ -312,16 +328,16 @@ const CourseDetail = () => {
       )}
 
       {section.showVideo && (
-        <div className="video-section mt-4 p-4 bg-light rounded-4 border">
+                <div className="video-section mt-4 p-3 bg-light rounded-4 border">
           <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
             <div className="d-flex align-items-center gap-2 text-dark fw-bold"><Video size={18} className="text-primary" /> Video bài giảng</div>
-            <button className="btn btn-outline-primary btn-sm px-3 fw-bold rounded-pill d-flex align-items-center gap-1" onClick={() => handleSaveLesson(num, 'video')} disabled={submitting}>
+            <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveLesson(num, 'video')} disabled={submitting}>
               {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu video
             </button>
           </div>
 
           <div className="d-flex justify-content-center mb-4">
-            <label className="btn btn-white py-4 px-5 rounded-3 border-2 border-dashed fw-bold shadow-sm d-block hover-bg-primary-subtle transition-all cursor-pointer">
+            <label className="btn btn-white py-4 px-5 rounded-3 border-2 border-dashed fw-bold d-block hover-bg-primary-subtle transition-all cursor-pointer">
               <Upload size={24} className="text-primary mb-2 d-block mx-auto" />
               <span className="text-dark small d-block">Chọn tệp video (có thể chọn nhiều)</span>
               <input type="file" className="d-none" accept="video/*" multiple onChange={e => onFileChange(index, e.target.files)} />
@@ -336,7 +352,7 @@ const CourseDetail = () => {
                   <div key={`saved-${vi}`} className="position-relative">
                     <div className="d-flex justify-content-between align-items-center mb-2">
                       <span className="small text-muted">Video {vi + 1}</span>
-                      <button className="btn btn-outline-danger btn-sm rounded-pill px-3" onClick={() => handleDeleteVideo(index, num, vi, false)}>
+                      <button className="btn btn-sm btn-outline-secondary rounded-3 px-3 text-danger" onClick={() => handleDeleteVideo(index, num, vi, false)}>
                         <Trash2 size={12} className="me-1" /> Xóa
                       </button>
                     </div>
@@ -349,7 +365,7 @@ const CourseDetail = () => {
                   <div key={`preview-${vi}`} className="position-relative">
                     <div className="d-flex justify-content-between align-items-center mb-2">
                       <span className="small text-muted">Video mới (chưa lưu)</span>
-                      <button className="btn btn-outline-danger btn-sm rounded-pill px-3" onClick={() => handleDeleteVideo(index, num, vi, true)}>
+                      <button className="btn btn-sm btn-outline-secondary rounded-3 px-3 text-danger" onClick={() => handleDeleteVideo(index, num, vi, true)}>
                         <Trash2 size={12} className="me-1" /> Xóa
                       </button>
                     </div>
@@ -406,6 +422,37 @@ const CourseDetail = () => {
     } catch (err) { console.error(err); }
   };
 
+  const togglePublishCourse = async () => {
+    if (!course) return;
+    setSubmitting(true);
+    const data = new FormData();
+    data.append('CourseCode', course.courseCode || '');
+    data.append('Title', course.title || '');
+    data.append('Description', course.description || '');
+    data.append('IsPublished', (!course.isPublished).toString());
+    data.append('ShowIntroVideo', course.showIntroVideo ? 'true' : 'false');
+    data.append('IntroExternalVideoUrl', course.introExternalVideoUrl || '');
+    try {
+      await api.put(`/course/${id}`, data);
+      showToast(course.isPublished ? 'Đã gỡ công bố khóa học.' : 'Đã công bố khóa học.');
+      await fetchCourseDetail();
+    } catch (err) {
+      showToast('Không thể cập nhật trạng thái công bố.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const selectIntro = () => {
+    setActiveItem({ type: 'intro' });
+    setSearchParams({ tab: 'intro' }, { replace: true });
+  };
+
+  const selectLesson = (lesson) => {
+    setActiveItem({ type: 'ls', data: lesson });
+    setSearchParams({ tab: 'lesson', lesson: String(lesson.id) }, { replace: true });
+  };
+
   if (loading) return <AdminLayout><div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={48} /></div></AdminLayout>;
 
   if (!course) {
@@ -422,79 +469,157 @@ const CourseDetail = () => {
 
   return (
     <AdminLayout>
-      <div className="mb-4 d-flex align-items-center justify-content-between">
-        <div className="d-flex align-items-center gap-3">
-          <button className="btn btn-light rounded-circle p-2 shadow-sm" onClick={() => navigate(location.state?.from || '/admin/courses')}><ArrowLeft size={20} /></button>
-          <div>
-            <h2 className="fw-bold tracking-tight mb-0">{course.title}</h2>
-            <p className="text-muted small mb-0">Mã khóa học: <span className="fw-bold text-primary">{course.courseCode}</span></p>
-          </div>
+      <div className="mb-3">
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <button type="button" className="btn btn-light rounded-circle p-2 shadow-sm border" onClick={() => navigate(location.state?.from || '/admin/courses')} title="Quay lại">
+            <ArrowLeft size={20} />
+          </button>
+          <nav aria-label="breadcrumb" className="mb-0 flex-grow-1 min-w-0">
+            <ol className="breadcrumb mb-0 py-1 small flex-nowrap overflow-hidden">
+              <li className="breadcrumb-item flex-shrink-0">
+                <button type="button" className="btn btn-link p-0 text-decoration-none text-muted" onClick={() => navigate('/admin/courses')}>Khóa học</button>
+              </li>
+              <li className="breadcrumb-item text-truncate min-w-0" title={course.title}>
+                <span className="text-dark fw-semibold">{course.title}</span>
+              </li>
+              <li className="breadcrumb-item active text-truncate flex-shrink-0" aria-current="page">Nội dung giảng dạy</li>
+            </ol>
+          </nav>
         </div>
-        <div className="d-flex gap-2">
-          <button className="btn btn-primary fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => window.open(`/course/${id}`, '_blank')}><Eye size={18} /> Xem chi tiết</button>
-          <button className="btn btn-outline-primary fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => navigate(`/admin/courses/${id}/quiz`)}><ClipboardCheck size={18} /> Xem chi tiết bài kiểm tra</button>
-        </div>
+        <p className="text-muted small mb-0 ms-1 ps-5 ps-md-0 ms-md-0">
+          Mã: <span className="fw-bold text-primary font-monospace">{course.courseCode}</span>
+        </p>
       </div>
 
-      <div className="row g-4 align-items-start">
-        <div className="col-md-4">
-          <div className="card border-0 shadow-sm rounded-4 p-4 bg-white sticky-top" style={{ top: '100px' }}>
-            <h6 className="fw-bold text-secondary mb-4 text-uppercase tracking-widest" style={{ fontSize: '0.7rem' }}>Cấu trúc khóa học</h6>
-            <div className={`d-flex align-items-center gap-3 py-3 px-3 mb-4 rounded-3 cursor-pointer transition-all ${activeItem.type === 'intro' ? 'bg-dark text-white shadow-lg' : 'bg-light text-dark border'}`} onClick={() => { setActiveItem({ type: 'intro' }); setSearchParams({ tab: 'intro' }, { replace: true }); }}>
-              <div className={`p-2 rounded-2 ${activeItem.type === 'intro' ? 'bg-primary text-white' : 'bg-white text-primary shadow-sm'}`}><Star size={18} /></div>
-              <div className="fw-bold small">Giới thiệu khóa học</div>
+      <div className="row g-3 align-items-start">
+        <div className="col-lg-4 col-xl-3">
+          <div className="card border-0 shadow-sm rounded-4 overflow-hidden sticky-lg-top" style={{ top: '84px' }}>
+            <div className="px-3 py-2 border-bottom bg-light d-flex align-items-center justify-content-between">
+              <span className="small fw-bold text-secondary text-uppercase d-flex align-items-center gap-2" style={{ fontSize: '0.7rem', letterSpacing: '0.04em' }}>
+                <LayoutList size={16} className="text-primary" /> Nội dung
+              </span>
             </div>
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <h6 className="fw-bold text-secondary mb-0 text-uppercase tracking-widest" style={{ fontSize: '0.6rem' }}>Danh sách bài giảng</h6>
-              <button
-                className="btn btn-sm p-1 border"
-                style={{
-                  background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
-                  borderColor: '#1a5276',
-                  color: '#fff',
-                  borderRadius: 2,
-                  textShadow: '0 1px 1px rgba(255,255,255,0.4)',
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
-                }}
-                onClick={() => setIsAdding(true)}
-              ><Plus size={14} /></button>
-            </div>
-            <Reorder.Group axis="y" values={course.lessons || []} onReorder={handleReorder} className="list-unstyled p-0 m-0">
-              {(course.lessons || []).map((lesson, idx) => (
-                <Reorder.Item key={lesson.id} value={lesson} className="d-flex align-items-center gap-2 mb-2 group">
-                  <div className="cursor-grab text-muted opacity-50"><GripVertical size={16} /></div>
-                  <div
-                    className={`flex-grow-1 d-flex align-items-center gap-3 py-3 px-3 rounded-3 cursor-pointer transition-all position-relative ${activeItem.type === 'ls' && activeItem.data?.id === lesson.id ? 'bg-primary text-white shadow-sm' : 'hover-bg-light border'}`}
-                    onClick={() => { setActiveItem({ type: 'ls', data: lesson }); setSearchParams({ tab: 'lesson', lesson: String(lesson.id) }, { replace: true }); }}
+            <div className="p-3 bg-white">
+              <div className="course-outline-toolbar mb-3">
+                <div className="course-outline-toolbar__left">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary rounded-pill px-3 d-inline-flex align-items-center justify-content-center"
+                    onClick={() => setLessonsExpanded((v) => !v)}
                   >
-                    <div className="fw-bold small flex-grow-1">{idx + 1}. {lesson.title}</div>
-                    <button className={`btn btn-link p-0 border-0 ${activeItem.type === 'ls' && activeItem.data?.id === lesson.id ? 'text-white-50' : 'text-danger opacity-0 group-hover:opacity-100'}`} onClick={(e) => handleDeleteLesson(e, lesson.id)}><Trash2 size={16} /></button>
-                  </div>
-                </Reorder.Item>
-              ))}
-            </Reorder.Group>
-            {isAdding && (
-              <div className="p-2 border-primary border-2 border-dashed rounded-3 mt-2 bg-primary-subtle">
-                <input autoFocus type="text" className="form-control form-control-sm border-0 bg-transparent fw-bold" placeholder="Tên bài giảng..." value={newLessonTitle} onChange={(e) => setNewLessonTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleQuickAddLesson()} onBlur={() => !newLessonTitle && setIsAdding(false)} />
+                    {lessonsExpanded ? <><ChevronUp size={14} className="me-1" /> Thu gọn DS</> : <><ChevronDown size={14} className="me-1" /> Mở rộng DS</>}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary rounded-3 px-3 fw-bold d-inline-flex align-items-center justify-content-center gap-1 ms-auto flex-shrink-0 course-outline-toolbar__add"
+                  onClick={() => setIsAdding(true)}
+                >
+                  <Plus size={16} /> Bài học
+                </button>
               </div>
-            )}
+
+              <button
+                type="button"
+                className={`course-outline-item w-100 text-start d-flex align-items-center gap-2 mb-2 border-0 rounded-2 py-2 px-3 ${activeItem.type === 'intro' ? 'course-outline-item--active' : 'bg-white'}`}
+                onClick={selectIntro}
+              >
+                <Star size={18} className={activeItem.type === 'intro' ? 'text-primary' : 'text-warning'} />
+                <span className="fw-semibold small flex-grow-1 course-outline-title">Giới thiệu khóa học</span>
+                {course.isPublished ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <span className="small text-muted flex-shrink-0">—</span>}
+              </button>
+
+              <button
+                type="button"
+                className="w-100 d-flex align-items-center justify-content-between py-2 px-2 mb-1 rounded-2 border-0 course-module-bar text-start"
+                onClick={() => setLessonsExpanded((e) => !e)}
+              >
+                <span className="small fw-bold text-secondary text-uppercase" style={{ fontSize: '0.65rem', letterSpacing: '0.06em' }}>
+                  Bài giảng ({(course.lessons || []).length})
+                </span>
+                {lessonsExpanded ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+              </button>
+
+              {lessonsExpanded && (
+                <Reorder.Group axis="y" values={course.lessons || []} onReorder={handleReorder} className="list-unstyled p-0 m-0">
+                  {(course.lessons || []).map((lesson, idx) => {
+                    const isActive = activeItem.type === 'ls' && activeItem.data?.id === lesson.id;
+                    return (
+                      <Reorder.Item key={lesson.id} value={lesson} className="d-flex align-items-stretch gap-1 mb-2 group">
+                        <div className="cursor-grab text-muted opacity-50 d-flex align-items-center px-1" title="Kéo để sắp xếp">
+                          <GripVertical size={14} />
+                        </div>
+                        <div className={`flex-grow-1 course-outline-item rounded-2 d-flex align-items-center gap-1 py-2 px-2 ${isActive ? 'course-outline-item--active' : 'bg-white'}`}>
+                          <button
+                            type="button"
+                            className="flex-grow-1 text-start border-0 bg-transparent d-flex align-items-center gap-2 py-1 min-w-0"
+                            onClick={() => selectLesson(lesson)}
+                          >
+                            <span className="small fw-bold text-muted flex-shrink-0">{idx + 1}</span>
+                            <span className="small fw-semibold text-dark course-outline-title">{lesson.title}</span>
+                          </button>
+                          <CheckCircle2 size={18} className="text-success flex-shrink-0" aria-hidden />
+                          <div className="dropdown">
+                            <button
+                              type="button"
+                              className="btn btn-link p-1 text-secondary d-inline-flex align-items-center"
+                              data-bs-toggle="dropdown"
+                              data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
+                              data-bs-offset="0,4"
+                              aria-label="Thao tác bài học"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical size={18} />
+                            </button>
+                            <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-1 small">
+                              <li>
+                                <button type="button" className="dropdown-item py-2" onClick={() => selectLesson(lesson)}>Mở chỉnh sửa</button>
+                              </li>
+                              <li><hr className="dropdown-divider my-0" /></li>
+                              <li>
+                                <button type="button" className="dropdown-item py-2 text-danger" onClick={(e) => handleDeleteLesson(e, lesson.id)}>Xóa bài học</button>
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      </Reorder.Item>
+                    );
+                  })}
+                </Reorder.Group>
+              )}
+
+              {isAdding && (
+                <div className="p-2 border border-primary border-2 border-dashed rounded-3 mt-2 bg-primary-subtle">
+                  <input
+                    autoFocus
+                    type="text"
+                    className="form-control form-control-sm border-0 bg-transparent fw-bold"
+                    placeholder="Tên bài giảng mới..."
+                    value={newLessonTitle}
+                    onChange={(e) => setNewLessonTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleQuickAddLesson()}
+                    onBlur={() => !newLessonTitle && setIsAdding(false)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="col-md-8">
-          <div className="card border-0 shadow-sm rounded-4 p-4 bg-light">
+        <div className="col-lg-8 col-xl-9">
+          <div className="card border-0 shadow-sm rounded-4 p-3 p-md-4 bg-white">
             {activeItem.type === 'intro' ? (
-              <div className="bg-white p-4 rounded-4 shadow-sm">
-                <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+              <div className="p-0">
+                <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 border-bottom pb-3">
                   <h4 className="fw-bold mb-0 text-dark">Giới thiệu khóa học</h4>
-                  <button className="btn btn-dark px-4 py-2 fw-bold rounded-3 shadow-sm d-flex align-items-center gap-2" onClick={() => handleSaveIntro('all')} disabled={submitting}>
-                    {submitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Lưu giới thiệu
+                  <button className="btn btn-sm btn-primary px-3 fw-bold rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('all')} disabled={submitting}>
+                    {submitting ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Lưu giới thiệu
                   </button>
                 </div>
 
                 <div className="mb-4">
                     <div className="d-flex justify-content-end mb-2">
-                      <button className="btn btn-outline-primary btn-sm px-3 fw-bold rounded-pill d-flex align-items-center gap-1" onClick={() => handleSaveIntro('content')} disabled={submitting}>
+                      <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('content')} disabled={submitting}>
                         {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu nội dung
                       </button>
                     </div>
@@ -502,13 +627,13 @@ const CourseDetail = () => {
                     <TiptapEditor content={editData.description} onChange={(val) => setEditData({...editData, description: val})} />
                 </div>
 
-                <div className="video-section mt-5 p-4 bg-light rounded-4 border">
-                    <div className="d-flex align-items-center justify-content-between mb-4 border-bottom pb-3">
+                <div className="video-section mt-4 p-3 bg-light rounded-4 border">
+                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 border-bottom pb-3">
                         <div className="d-flex align-items-center gap-2 text-dark fw-bold">
                             <Video size={20} className="text-primary" /> Video giới thiệu khóa học
                         </div>
                         <div className="d-flex align-items-center gap-2">
-                          <button className="btn btn-outline-primary btn-sm px-3 fw-bold rounded-pill d-flex align-items-center gap-1" onClick={() => handleSaveIntro('video')} disabled={submitting}>
+                          <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('video')} disabled={submitting}>
                             {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu video
                           </button>
                           <div className="form-check form-switch">
@@ -550,8 +675,8 @@ const CourseDetail = () => {
               </div>
             ) : (
               <div className="lesson-editor">
-                <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3 bg-white p-3 rounded-3 shadow-sm">
-                  <h4 className="fw-bold mb-0 text-primary">{editData.title}</h4>
+                <div className="d-flex justify-content-between align-items-center mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                  <h4 className="fw-bold mb-0 text-dark">{editData.title}</h4>
                 </div>
 
                 <div className="row mb-4 bg-white p-3 mx-0 rounded-3 shadow-sm border">
@@ -566,37 +691,75 @@ const CourseDetail = () => {
                 </div>
 
                 {editData.sections?.map((section, index) => renderSection(index, section, index + 1))}
-                <div className="mb-4 d-flex justify-content-center">
-                  <button
-                    type="button"
-                    className="btn btn-lg px-5 py-3 d-flex align-items-center gap-2 fw-bold border"
-                    style={{
-                      background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
-                      borderColor: '#1a5276',
-                      color: '#fff',
-                      borderRadius: 2,
-                      textShadow: '0 1px 1px rgba(255,255,255,0.4)',
-                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
-                    }}
-                    onClick={addSection}
-                  >
-                    <Plus size={22} /> Tạo mới
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <button type="button" className="btn btn-sm btn-primary d-flex align-items-center gap-2 px-3" onClick={addSection}>
+                    <Plus size={16} /> Thêm mục
+                  </button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2 px-3" onClick={() => handleSaveLesson(0, 'all')} disabled={submitting}>
+                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lưu bài học
                   </button>
                 </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* removed: publish + quick actions sidebar */}
       </div>
       <style>{`
         .hover-bg-light:hover { background-color: #f8f9fa; }
         .cursor-pointer { cursor: pointer; }
+        .cursor-grab { cursor: grab; }
         .transition-all { transition: all 0.2s ease; }
         .btn-white { background: white; border: 1px solid #dee2e6; }
         .animate-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .hover-scale:hover { transform: scale(1.02); }
         .btn-xs { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
+        .course-outline-toolbar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
+        .course-outline-toolbar__left { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
+        .course-outline-toolbar .btn { line-height: 1.15; min-height: 34px; }
+        .course-outline-toolbar__left .btn { font-size: 0.82rem; padding-top: 6px; padding-bottom: 6px; }
+        .course-outline-toolbar__add { min-width: 120px; justify-self: end; }
+        @media (max-width: 420px) {
+          .course-outline-toolbar__left { grid-template-columns: 1fr; }
+          .course-outline-toolbar__add { min-width: 112px; }
+        }
+        @media (max-width: 520px) {
+          .course-outline-toolbar { grid-template-columns: 1fr; }
+          .course-outline-toolbar__add {
+            order: -1;
+            justify-self: stretch;
+            width: 100%;
+            min-width: 0;
+          }
+        }
+        .course-module-bar {
+          background: linear-gradient(180deg, #eef1f4 0%, #e2e6ea 100%);
+          color: #495057;
+        }
+        .course-module-bar:hover { filter: brightness(0.97); }
+        .course-outline-title {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          white-space: normal;
+          line-height: 1.25;
+        }
+        .course-outline-item {
+          border: 1px solid #dee2e6;
+          border-left: 4px solid #198754;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+          min-height: 52px;
+        }
+        .course-outline-item:hover { background: #f8fffb !important; }
+        .course-outline-item--active {
+          border-left-color: #0d6efd !important;
+          background: #e7f1ff !important;
+          box-shadow: 0 2px 8px rgba(13, 110, 253, 0.12);
+        }
       `}</style>
     </AdminLayout>
   );

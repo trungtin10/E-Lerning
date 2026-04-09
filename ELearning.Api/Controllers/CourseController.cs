@@ -65,6 +65,11 @@ public class CourseController : ControllerBase
         try
         {
             var query = _context.Courses.Include(c => c.Category).Include(c => c.Company).AsQueryable();
+            // Người học/nhân viên: chỉ xem khóa học đã công khai
+            if (!User.IsInRole("SuperAdmin") && !User.IsInRole("Admin"))
+            {
+                query = query.Where(c => c.IsPublished);
+            }
             if (!User.IsInRole("SuperAdmin"))
             {
                 var companyId = await GetUserCompanyIdAsync() ?? 0;
@@ -86,6 +91,9 @@ public class CourseController : ControllerBase
         {
             var course = await _context.Courses.Include(c => c.Lessons).Include(c => c.Category).FirstOrDefaultAsync(c => c.Id == id);
             if (course == null) return NotFound();
+            // Người học/nhân viên không được xem khóa học bản nháp
+            if (!course.IsPublished && !User.IsInRole("SuperAdmin") && !User.IsInRole("Admin"))
+                return NotFound();
             var lessons = course.Lessons.OrderBy(l => l.OrderIndex).ToList();
 
             var lessonDtos = lessons.Select(l =>
@@ -597,12 +605,77 @@ public class CourseController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteCourse(int id)
     {
-        var course = await _context.Courses.FindAsync(id);
+        var course = await _context.Courses
+            .Include(c => c.Lessons)
+            .ThenInclude(l => l.Quizzes)
+            .FirstOrDefaultAsync(c => c.Id == id);
         if (course == null) return NotFound();
+
+        // Scoped: Admin chỉ xóa khóa học của công ty mình (SuperAdmin được xóa tất cả)
+        if (!User.IsInRole("SuperAdmin"))
+        {
+            var companyId = await GetUserCompanyIdAsync() ?? 0;
+            if (course.CompanyId != companyId) return StatusCode(403, "Không có quyền xóa khóa học này.");
+        }
+
+        // Xóa toàn bộ dữ liệu liên quan để không bị lỗi khóa ngoại
+        // Thứ tự xóa: QuizAttemptAnswers -> QuizAttempts -> LessonProgresses -> Enrollments -> Certificates -> LearnerBehaviorEvents -> Answers -> Questions -> Quizzes -> Lessons -> Course
+        var quizIds = course.Lessons.SelectMany(l => l.Quizzes).Select(q => q.Id).ToList();
+
+        if (quizIds.Count > 0)
+        {
+            var quizAttemptIds = await _context.QuizAttempts
+                .AsNoTracking()
+                .Where(qa => quizIds.Contains(qa.QuizId))
+                .Select(qa => qa.Id)
+                .ToListAsync();
+
+            if (quizAttemptIds.Count > 0)
+            {
+                var quizAttemptAnswers = await _context.QuizAttemptAnswers
+                    .Where(a => quizAttemptIds.Contains(a.QuizAttemptId))
+                    .ToListAsync();
+                _context.QuizAttemptAnswers.RemoveRange(quizAttemptAnswers);
+
+                var quizAttempts = await _context.QuizAttempts.Where(qa => quizAttemptIds.Contains(qa.Id)).ToListAsync();
+                _context.QuizAttempts.RemoveRange(quizAttempts);
+            }
+        }
+
+        var enrollments = await _context.CourseEnrollments.Where(e => e.CourseId == id).ToListAsync();
+        var enrollmentIds = enrollments.Select(e => e.Id).ToList();
+
+        var progresses = await _context.LessonProgresses.Where(lp => enrollmentIds.Contains(lp.EnrollmentId)).ToListAsync();
+        _context.LessonProgresses.RemoveRange(progresses);
+
+        _context.CourseEnrollments.RemoveRange(enrollments);
+
+        var certificates = await _context.Certificates.Where(c => c.CourseId == id).ToListAsync();
+        _context.Certificates.RemoveRange(certificates);
+
+        var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => e.CourseId == id).ToListAsync();
+        _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
+
+        if (quizIds.Count > 0)
+        {
+            var questions = await _context.Questions.Where(q => quizIds.Contains(q.QuizId)).ToListAsync();
+            var questionIds = questions.Select(q => q.Id).ToList();
+            var answers = await _context.Answers.Where(a => questionIds.Contains(a.QuestionId)).ToListAsync();
+            _context.Answers.RemoveRange(answers);
+            _context.Questions.RemoveRange(questions);
+        }
+
+        // Xóa quiz (FK Quiz->Lesson OnDelete SetNull, nhưng ta xóa luôn để gọn DB)
+        var quizzes = course.Lessons.SelectMany(l => l.Quizzes).ToList();
+        _context.Quizzes.RemoveRange(quizzes);
+
+        _context.Lessons.RemoveRange(course.Lessons);
+
         var title = course.Title;
         _context.Courses.Remove(course);
+
         await _context.SaveChangesAsync();
-        await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học");
+        await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học (kèm dữ liệu liên quan)");
         return Ok();
     }
 }

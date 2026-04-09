@@ -12,7 +12,30 @@ public record AuthResponseDto(
     string Account,
     List<string> Roles,
     int? CompanyId,
-    string? CompanyLogoUrl = null
+    string? CompanyLogoUrl = null,
+    string? Email = null,
+    string? PhoneNumber = null,
+    string? SubDomain = null,
+    string? CompanyName = null
+);
+
+public record UserProfileDto(
+    string FullName,
+    string UserName,
+    string? Email,
+    string? PhoneNumber,
+    List<string> Roles,
+    int? CompanyId,
+    string? CompanyName,
+    string? SubDomain,
+    string? CompanyLogoUrl,
+    string? JobTitle
+);
+
+public record UpdateMyProfileDto(
+    string FullName,
+    string? PhoneNumber,
+    string? JobTitle
 );
 
 public record RegisterDto(

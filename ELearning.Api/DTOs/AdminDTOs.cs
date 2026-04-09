@@ -16,6 +16,9 @@ public record CompanyDto(
     string? LogoUrl,
     string? CustomDomain,
     string? ServicePlan,
+    int? ServicePlanId,
+    DateTime? PlanExpiresAt,
+    bool HasPaidSubscription,
     string? ContactEmail,
     bool IsActive,
     int UserCount,
@@ -105,6 +108,8 @@ public class UpdateCompanyFormDto
     public string SubDomain { get; set; } = null!;
     public string? ContactEmail { get; set; }
     public string? ServicePlan { get; set; }
+    // Nếu set (3/7/30), cập nhật hạn dùng thử từ thời điểm hiện tại
+    public int? TrialDays { get; set; }
     public IFormFile? LogoFile { get; set; }
 }
 

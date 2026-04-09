@@ -1,16 +1,19 @@
 namespace ELearning.Api.DTOs;
 
-public record UserSummaryDto(
-    string Id,
-    string FullName,
-    string Account,
-    string? Role,
-    string? CompanyName,
-    string? SubDomain,
-    bool IsActive,
-    bool EmailConfirmed,
-    bool IsExpired = false
-);
+/// <summary>Dùng class (không phải positional record) để System.Text.Json luôn xuất đúng tên thuộc tính camelCase, ví dụ <c>email</c>.</summary>
+public class UserSummaryDto
+{
+    public string Id { get; set; } = null!;
+    public string FullName { get; set; } = null!;
+    public string Account { get; set; } = null!;
+    public string? Email { get; set; }
+    public string? Role { get; set; }
+    public string? CompanyName { get; set; }
+    public string? SubDomain { get; set; }
+    public bool IsActive { get; set; }
+    public bool EmailConfirmed { get; set; }
+    public bool IsExpired { get; set; }
+}
 
 public record UserDetailDto(
     string Id,
@@ -30,3 +33,8 @@ public record UpdateUserDto(
     string? Role,
     bool IsActive
 );
+
+public class SetUserActiveDto
+{
+    public bool IsActive { get; set; }
+}

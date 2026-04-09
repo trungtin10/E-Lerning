@@ -68,15 +68,7 @@ const Companies = () => {
           <p className="text-muted small">Danh sách các đối tác và cấu hình hệ thống riêng biệt.</p>
         </div>
         <button
-          className="btn d-flex align-items-center gap-2 px-4 py-2 fw-bold border"
-          style={{
-            background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
-            borderColor: '#1a5276',
-            color: '#fff',
-            borderRadius: 2,
-            textShadow: '0 1px 1px rgba(255,255,255,0.4)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
-          }}
+          className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 fw-bold"
           onClick={() => navigate('/admin/companies/create')}
         >
           <Plus size={20} /> Tạo mới
@@ -85,14 +77,34 @@ const Companies = () => {
 
       <div className="card border-0 shadow-sm rounded-4 mb-4">
         <div className="card-body p-3">
-          <div className="input-group bg-light border-0 rounded-3 px-2">
-            <span className="input-group-text bg-transparent border-0 text-muted"><Search size={18} /></span>
-            <input type="text" className="form-control bg-transparent border-0 py-2" placeholder="Tìm kiếm công ty..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <div className="row g-2 align-items-center">
+            <div className="col-12 col-lg-10">
+              <div className="input-group input-group-sm bg-light border-0 rounded-3 px-2">
+                <span className="input-group-text bg-transparent border-0 text-muted"><Search size={16} /></span>
+                <input
+                  type="text"
+                  className="form-control bg-transparent border-0"
+                  placeholder="Tìm kiếm công ty..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="col-12 col-lg-2 d-flex justify-content-lg-end">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary px-3 rounded-3"
+                onClick={() => setSearchTerm('')}
+                disabled={!searchTerm.trim()}
+              >
+                Xóa
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+      <div className="card border-0 shadow-sm rounded-4 overflow-visible">
         <CompanyTable companies={filteredCompanies} loading={loading} onDelete={handleDelete} onEdit={handleEdit} onAssignAdmin={handleAssignAdmin} />
       </div>
 
