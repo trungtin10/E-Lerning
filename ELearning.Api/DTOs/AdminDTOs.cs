@@ -82,6 +82,7 @@ public class RegisterTenantFormDto
     public IFormFile? LogoFile { get; set; }
     public int? ServicePlanId { get; set; }
     public string? ServicePlan { get; set; } // Tên gói (giữ để tương thích)
+    public int ServicePlanDurationDays { get; set; } = 7; // mặc định 7 ngày dùng thử
     public int BillingCycleMonths { get; set; } = 1;
     public string? PaymentMethod { get; set; } // Cash, BankTransfer, VnPay, Direct
     public decimal? AmountPaid { get; set; }
@@ -116,3 +117,28 @@ public class CreateUserByAdminDto
     public string Role { get; set; } = "Student";
 }
 
+public class AdminUpdateUserDto
+{
+    public string FullName { get; set; } = null!;
+    public string Email { get; set; } = null!;
+    public string Role { get; set; } = null!;
+}
+
+public class CompanySubscriptionInfoDto
+{
+    public string? CurrentPlan { get; set; }
+    public DateTime? PlanExpiryDate { get; set; }
+    public int UserCount { get; set; }
+    public int MaxUsers { get; set; }
+    public List<CompanyTransactionDto> Transactions { get; set; } = new();
+}
+
+public class CompanyTransactionDto
+{
+    public int Id { get; set; }
+    public string PlanName { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public string Status { get; set; } = null!;
+    public DateTime CreatedAt { get; set; }
+    public string? PaymentGateway { get; set; }
+}

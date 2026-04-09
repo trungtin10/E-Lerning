@@ -74,6 +74,7 @@ const AdminLayout = ({ children }) => {
     { path: `/admin/company-users/${user.subDomain || 'default'}`, icon: Users, label: 'Quản lý Nhân viên' },
     { type: 'dropdown', icon: BookOpen, label: 'Khóa học', children: [
       { path: '/admin/company-courses', label: 'Quản lý khóa học' },
+      { path: '/admin/categories', label: 'Danh mục khóa học' },
       { path: '/admin/learners', label: 'Theo dõi học viên' },
     ]},
     { path: '/admin/subscription', icon: Package, label: 'Gói dịch vụ' },

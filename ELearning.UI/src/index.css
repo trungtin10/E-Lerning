@@ -62,3 +62,53 @@ body {
   border-radius: 8px;
   overflow-x: auto;
 }
+
+/* Tickets page styles */
+.extra-small { font-size: 0.75rem; }
+.hover-shadow:hover { box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important; }
+.bg-info-subtle { background-color: #e0f2fe; }
+.text-info-emphasis { color: #0369a1; }
+.payment-option:hover { border-color: #3498db !important; background-color: #f0f9ff; }
+.cursor-pointer { cursor: pointer; }
+.bg-primary-subtle { background-color: #eef2ff; }
+.transition-all { transition: all 0.3s ease; }
+.bg-gradient-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.bg-gradient-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+.bg-gradient-info { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.bg-gradient-danger { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); }
+.bg-gradient-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.bg-gradient-light { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+.hover-bg-light:hover { background-color: #f8f9fa !important; }
+.form-control:focus, .form-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+.card-header {
+  border-bottom: none;
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.list-group-item-action:hover {
+  background-color: #f8f9fa;
+}
+.badge {
+  font-weight: 500;
+}
+.modal-content {
+  border: none;
+}
+.alert {
+  border-radius: 0.75rem;
+}
+.btn {
+  font-weight: 500;
+}
+.form-text {
+  color: #6c757d;
+  font-size: 0.875rem;
+}

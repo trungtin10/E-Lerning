@@ -14,9 +14,34 @@ namespace ELearning.Api.Controllers;
 public class TicketController : ControllerBase
 {
     private const long MaxImageBytes = 8 * 1024 * 1024;
+    private const long MaxFileBytes = 20 * 1024 * 1024;
     private static readonly HashSet<string> AllowedImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/jpeg", "image/png", "image/gif", "image/webp"
+    };
+    private static readonly HashSet<string> AllowedFileContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // documents
+        "application/pdf",
+        "text/plain",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        // archives
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/x-rar-compressed",
+        "application/octet-stream" // fallback for some browsers (validated by extension)
+    };
+
+    private static readonly HashSet<string> AllowedFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".zip", ".rar"
     };
 
     private readonly ApplicationDbContext _context;
@@ -64,7 +89,7 @@ public class TicketController : ControllerBase
         return companyId > 0 && ticket.CompanyId == companyId;
     }
 
-    private async Task<List<string>> SaveTicketImageFilesAsync(IFormFileCollection files)
+    private async Task<List<string>> SaveTicketAttachmentsAsync(IFormFileCollection files)
     {
         var urls = new List<string>();
         if (files == null || files.Count == 0) return urls;
@@ -75,18 +100,31 @@ public class TicketController : ControllerBase
         {
             if (file.Length == 0) continue;
             if (count >= 8) break;
-            if (file.Length > MaxImageBytes) throw new InvalidOperationException($"Ảnh vượt quá {MaxImageBytes / 1024 / 1024}MB: {file.FileName}");
             var contentType = file.ContentType ?? "";
-            if (!AllowedImageContentTypes.Contains(contentType))
-                throw new InvalidOperationException($"Chỉ chấp nhận ảnh JPEG, PNG, GIF, WebP: {file.FileName}");
-            var ext = Path.GetExtension(file.FileName);
-            if (string.IsNullOrEmpty(ext) || ext.Length > 10) ext = contentType switch
+            var ext = Path.GetExtension(file.FileName) ?? "";
+            if (string.IsNullOrWhiteSpace(ext) || ext.Length > 10) ext = "";
+
+            var isImage = AllowedImageContentTypes.Contains(contentType)
+                          || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                          || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+                          || ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+                          || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+                          || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+
+            if (!AllowedFileExtensions.Contains(ext))
+                throw new InvalidOperationException($"File không hợp lệ (chỉ nhận ảnh/pdf/doc/xls/ppt/txt/zip/rar): {file.FileName}");
+
+            if (isImage)
             {
-                "image/png" => ".png",
-                "image/gif" => ".gif",
-                "image/webp" => ".webp",
-                _ => ".jpg"
-            };
+                if (file.Length > MaxImageBytes) throw new InvalidOperationException($"Ảnh vượt quá {MaxImageBytes / 1024 / 1024}MB: {file.FileName}");
+            }
+            else
+            {
+                if (file.Length > MaxFileBytes) throw new InvalidOperationException($"File vượt quá {MaxFileBytes / 1024 / 1024}MB: {file.FileName}");
+                if (!AllowedFileContentTypes.Contains(contentType))
+                    throw new InvalidOperationException($"Loại file không được hỗ trợ: {file.FileName}");
+            }
+
             var fileName = Guid.NewGuid().ToString("N") + ext;
             var filePath = Path.Combine(uploadDir, fileName);
             await using (var stream = new FileStream(filePath, FileMode.Create))
@@ -172,10 +210,10 @@ public class TicketController : ControllerBase
         if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(content))
             return BadRequest("Tiêu đề và nội dung là bắt buộc.");
 
-        List<string> imageUrls;
+        List<string> attachmentUrls;
         try
         {
-            imageUrls = await SaveTicketImageFilesAsync(Request.Form.Files);
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
         }
         catch (InvalidOperationException ex)
         {
@@ -208,7 +246,7 @@ public class TicketController : ControllerBase
         _context.SupportTicketPosts.Add(post);
         await _context.SaveChangesAsync();
 
-        foreach (var url in imageUrls)
+        foreach (var url in attachmentUrls)
         {
             _context.SupportTicketAttachments.Add(new SupportTicketAttachment { SupportTicketPostId = post.Id, FileUrl = url });
         }
@@ -350,18 +388,18 @@ public class TicketController : ControllerBase
         var userId = CurrentUserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         var bodyText = body?.Trim() ?? "";
-        List<string> imageUrls;
+        List<string> attachmentUrls;
         try
         {
-            imageUrls = await SaveTicketImageFilesAsync(Request.Form.Files);
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(ex.Message);
         }
 
-        if (string.IsNullOrEmpty(bodyText) && imageUrls.Count == 0)
-            return BadRequest("Nhập nội dung hoặc đính kèm ít nhất một ảnh.");
+        if (string.IsNullOrEmpty(bodyText) && attachmentUrls.Count == 0)
+            return BadRequest("Nhập nội dung hoặc đính kèm ít nhất một tệp.");
 
         var ticket = await _context.SupportTickets
             .Include(t => t.Company)
@@ -401,7 +439,7 @@ public class TicketController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        foreach (var url in imageUrls)
+        foreach (var url in attachmentUrls)
         {
             _context.SupportTicketAttachments.Add(new SupportTicketAttachment { SupportTicketPostId = post.Id, FileUrl = url });
         }

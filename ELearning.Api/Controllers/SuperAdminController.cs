@@ -298,8 +298,10 @@ public class SuperAdminController : ControllerBase
     {
         try
         {
-            if (await _context.Companies.AnyAsync(c => c.SubDomain == form.SubDomain)) return BadRequest("Tên miền này đã tồn tại.");
-            if (await _userManager.FindByNameAsync(form.Account) != null) return BadRequest("Tên tài khoản này đã tồn tại.");
+            if (await _context.Companies.AnyAsync(c => c.SubDomain == form.SubDomain))
+                return Conflict("Công ty/subdomain này đã kích hoạt rồi.");
+            if (await _userManager.FindByNameAsync(form.Account) != null)
+                return Conflict("Tài khoản admin này đã kích hoạt rồi.");
 
             string? logoUrl = null;
             if (form.LogoFile != null && form.LogoFile.Length > 0)
@@ -316,9 +318,29 @@ public class SuperAdminController : ControllerBase
             _context.Companies.Add(company);
             await _context.SaveChangesAsync();
 
-            // Tạo bản ghi giao dịch (Transaction) nếu có gói dịch vụ
-            if (form.ServicePlanId.HasValue)
+            // Dùng thử: set gói + hết hạn theo ngày (KHÔNG tạo giao dịch)
+            var trialDays = form.ServicePlanDurationDays > 0 ? form.ServicePlanDurationDays : 7;
+            if (trialDays > 0)
             {
+                // Nếu không truyền ServicePlanId thì default Basic
+                ServicePlan? plan = null;
+                if (form.ServicePlanId.HasValue)
+                    plan = await _context.ServicePlans.FindAsync(form.ServicePlanId.Value);
+                if (plan == null)
+                    plan = await _context.ServicePlans.FirstOrDefaultAsync(p => p.Name == "Basic");
+
+                if (plan != null)
+                {
+                    var expiresAt = DateTime.UtcNow.AddDays(trialDays);
+                    company.ServicePlanId = plan.Id;
+                    company.ServicePlan = plan.Name;
+                    company.MaxUsers = plan.MaxUsers;
+                    company.PlanExpiresAt = expiresAt;
+                }
+            }
+            else if (form.ServicePlanId.HasValue)
+            {
+                // Trường hợp có thanh toán/chu kỳ tháng: tạo giao dịch như trước
                 var plan = await _context.ServicePlans.FindAsync(form.ServicePlanId.Value);
                 if (plan != null)
                 {
@@ -343,7 +365,6 @@ public class SuperAdminController : ControllerBase
                     };
                     _context.Transactions.Add(tx);
 
-                    // Cập nhật thông tin gói vào profile của Company
                     company.ServicePlanId = plan.Id;
                     company.ServicePlan = plan.Name;
                     company.MaxUsers = plan.MaxUsers;
@@ -473,6 +494,30 @@ public class SuperAdminController : ControllerBase
             return Ok();
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
+    }
+
+    [HttpPut("users/{id}")]
+    public async Task<IActionResult> UpdateUser(string id, [FromBody] AdminUpdateUserDto dto)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+        if (user.UserName == "superadmin") return BadRequest("Không thể sửa SuperAdmin.");
+
+        user.FullName = dto.FullName;
+        user.Email = dto.Email;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
+
+        var currentRoles = await _userManager.GetRolesAsync(user);
+        if (!currentRoles.Contains(dto.Role))
+        {
+            await _userManager.RemoveFromRolesAsync(user, currentRoles);
+            if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
+            await _userManager.AddToRoleAsync(user, dto.Role);
+        }
+
+        await _audit.LogAsync("Update", "User", id, user.UserName, null, $"Cập nhật user {user.FullName} ({user.UserName})");
+        return Ok();
     }
 
     [HttpDelete("users/{userId}")]

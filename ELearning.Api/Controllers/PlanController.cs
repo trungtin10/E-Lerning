@@ -10,7 +10,7 @@ namespace ELearning.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SuperAdmin")]
+[Authorize]
 public class PlanController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -23,6 +23,7 @@ public class PlanController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<ActionResult<IEnumerable<ServicePlanDto>>> GetAll()
     {
         var plans = await _context.ServicePlans
@@ -33,6 +34,7 @@ public class PlanController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
     public async Task<ActionResult<ServicePlanDto>> GetById(int id)
     {
         var plan = await _context.ServicePlans.FindAsync(id);
@@ -41,6 +43,7 @@ public class PlanController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<ActionResult<ServicePlanDto>> Create([FromBody] CreateServicePlanDto dto)
     {
         var plan = new ServicePlan
@@ -61,6 +64,7 @@ public class PlanController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<ActionResult<ServicePlanDto>> Update(int id, [FromBody] UpdateServicePlanDto dto)
     {
         var plan = await _context.ServicePlans.FindAsync(id);
@@ -81,6 +85,7 @@ public class PlanController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> Delete(int id)
     {
         var plan = await _context.ServicePlans.FindAsync(id);

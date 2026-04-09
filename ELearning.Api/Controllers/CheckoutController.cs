@@ -97,7 +97,11 @@ public class CheckoutController : ControllerBase
     {
         var response = _vnPayService.PaymentExecute(Request.Query);
 
-        var frontendReturnUrl = _config["VnPay:FrontendReturnUrl"] ?? _config["VnPay:ReturnUrl"];
+        var appDomain = _config["AppSettings:AppDomain"]?.TrimEnd('/');
+        var frontendReturnUrl =
+            _config["VnPay:FrontendReturnUrl"]
+            ?? (string.IsNullOrWhiteSpace(appDomain) ? null : (appDomain + "/checkout/vnpay-return"))
+            ?? _config["VnPay:ReturnUrl"];
 
         if (response == null || !response.Success)
         {

@@ -59,6 +59,9 @@ public class VnPayService : IVnPayService
         {
             if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
             {
+                // VNPay signature must exclude these fields
+                if (key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase)) continue;
+                if (key.Equals("vnp_SecureHashType", StringComparison.OrdinalIgnoreCase)) continue;
                 vnpay.AddResponseData(key, value!);
             }
         }

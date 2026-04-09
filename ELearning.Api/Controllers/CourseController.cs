@@ -508,7 +508,16 @@ public class CourseController : ControllerBase
     [HttpGet("categories")]
     public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories() 
     { 
-        return await _context.Categories
+        var query = _context.Categories.AsQueryable();
+        if (!User.IsInRole("SuperAdmin"))
+        {
+            var companyId = await GetUserCompanyIdAsync() ?? 0;
+            if (companyId > 0)
+                query = query.Where(c => c.CompanyId == companyId);
+            else
+                query = query.Where(c => c.CompanyId == null);
+        }
+        return await query
             .Select(c => new CategoryDto(c.Id, c.Name, c.Description, c.CompanyId))
             .ToListAsync(); 
     }
@@ -518,11 +527,18 @@ public class CourseController : ControllerBase
     {
         try
         {
+            var companyId = dto.CompanyId;
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                var cid = await GetUserCompanyIdAsync();
+                companyId = cid > 0 ? cid : null;
+            }
+
             var category = new Category
             {
                 Name = dto.Name,
                 Description = dto.Description,
-                CompanyId = dto.CompanyId
+                CompanyId = companyId
             };
             _context.Categories.Add(category);
             await _context.SaveChangesAsync();
@@ -539,6 +555,13 @@ public class CourseController : ControllerBase
         {
             var existing = await _context.Categories.FindAsync(id);
             if (existing == null) return NotFound();
+            
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                var companyId = await GetUserCompanyIdAsync();
+                if (existing.CompanyId != companyId) return StatusCode(403, "Không có quyền chỉnh sửa danh mục này.");
+            }
+
             existing.Name = dto.Name;
             existing.Description = dto.Description;
             await _context.SaveChangesAsync();
@@ -555,6 +578,13 @@ public class CourseController : ControllerBase
         {
             var category = await _context.Categories.FindAsync(id);
             if (category == null) return NotFound();
+
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                var companyId = await GetUserCompanyIdAsync();
+                if (category.CompanyId != companyId) return StatusCode(403, "Không có quyền xóa danh mục này.");
+            }
+
             var name = category.Name;
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();

@@ -26,8 +26,35 @@ public class AuditController : ControllerBase
         [FromQuery] int pageSize = 50)
     {
         var query = _context.AuditLogs.AsQueryable();
+
+        if (!User.IsInRole("SuperAdmin"))
+        {
+            var companyIdClaim = User.FindFirst("CompanyId")?.Value;
+            int companyId = 0;
+            if (!int.TryParse(companyIdClaim, out companyId))
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var userRow = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                companyId = userRow?.CompanyId ?? 0;
+            }
+
+            if (companyId > 0)
+            {
+                var companyUserIds = await _context.Users
+                    .Where(u => u.CompanyId == companyId)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                query = query.Where(a => a.UserId != null && companyUserIds.Contains(a.UserId));
+            }
+            else
+            {
+                query = query.Where(a => false); // no results if no company identified
+            }
+        }
+
         if (!string.IsNullOrEmpty(action)) query = query.Where(a => a.Action == action);
         if (!string.IsNullOrEmpty(entityType)) query = query.Where(a => a.EntityType == entityType);
+        
         var total = await query.CountAsync();
         var list = await query
             .OrderByDescending(a => a.CreatedAt)
@@ -55,6 +82,29 @@ public class AuditController : ControllerBase
     {
         var log = await _context.AuditLogs.FindAsync(id);
         if (log == null) return NotFound();
+
+        if (!User.IsInRole("SuperAdmin"))
+        {
+            var companyIdClaim = User.FindFirst("CompanyId")?.Value;
+            int companyId = 0;
+            if (!int.TryParse(companyIdClaim, out companyId))
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var userRow = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                companyId = userRow?.CompanyId ?? 0;
+            }
+
+            if (companyId > 0)
+            {
+                var logUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == log.UserId);
+                if (logUser == null || logUser.CompanyId != companyId) return StatusCode(403, "Không có quyền xóa bản ghi này.");
+            }
+            else
+            {
+                return StatusCode(403, "Không xác định được công ty.");
+            }
+        }
+
         _context.AuditLogs.Remove(log);
         await _context.SaveChangesAsync();
         return NoContent();

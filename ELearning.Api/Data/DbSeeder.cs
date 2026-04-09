@@ -59,16 +59,60 @@ public static class DbSeeder
                 await userManager.AddToRoleAsync(user, "SuperAdmin");
         }
 
-        // 3. Gói dịch vụ mặc định (Chỉ thêm nếu trống)
-        if (!await context.ServicePlans.AnyAsync())
+        // 3. Gói dịch vụ mặc định (Basic / Plus / Pro) - Upsert để không cần xóa DB
         {
-            var plans = new List<ServicePlan>
+            var existing = await context.ServicePlans.ToListAsync();
+
+            ServicePlan? FindByName(string name) =>
+                existing.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            var basic = FindByName("Basic");
+            var plus = FindByName("Plus");
+            var pro = FindByName("Pro");
+
+            // Nếu DB cũ có Enterprise mà chưa có Plus -> đổi tên Enterprise thành Plus
+            if (plus == null)
             {
-                new ServicePlan { Name = "Basic", Description = "Gói cơ bản cho doanh nghiệp nhỏ", MaxUsers = 50, StorageLimitGB = 10, PriceMonthly = 500000, PriceYearly = 5000000, SortOrder = 1 },
-                new ServicePlan { Name = "Pro", Description = "Gói chuyên nghiệp", MaxUsers = 200, StorageLimitGB = 50, PriceMonthly = 1500000, PriceYearly = 15000000, SortOrder = 2 },
-                new ServicePlan { Name = "Enterprise", Description = "Gói doanh nghiệp lớn", MaxUsers = 1000, StorageLimitGB = 500, PriceMonthly = 5000000, PriceYearly = 50000000, SortOrder = 3 }
-            };
-            context.ServicePlans.AddRange(plans);
+                var enterprise = existing.FirstOrDefault(p => string.Equals(p.Name, "Enterprise", StringComparison.OrdinalIgnoreCase));
+                if (enterprise != null)
+                {
+                    enterprise.Name = "Plus";
+                    plus = enterprise;
+                }
+            }
+
+            basic ??= new ServicePlan { Name = "Basic" };
+            plus ??= new ServicePlan { Name = "Plus" };
+            pro ??= new ServicePlan { Name = "Pro" };
+
+            basic.Description = "Gói cơ bản cho doanh nghiệp nhỏ";
+            basic.MaxUsers = 50;
+            basic.StorageLimitGB = 10;
+            basic.PriceMonthly = 132000;
+            basic.PriceYearly = 132000 * 12;
+            basic.SortOrder = 1;
+            basic.IsActive = true;
+
+            plus.Description = "Tận hưởng trải nghiệm đầy đủ";
+            plus.MaxUsers = 200;
+            plus.StorageLimitGB = 50;
+            plus.PriceMonthly = 522500;
+            plus.PriceYearly = 522500 * 12;
+            plus.SortOrder = 2;
+            plus.IsActive = true;
+
+            pro.Description = "Tối đa hóa năng suất của bạn";
+            pro.MaxUsers = 1000;
+            pro.StorageLimitGB = 500;
+            pro.PriceMonthly = 5225000;
+            pro.PriceYearly = 5225000 * 12;
+            pro.SortOrder = 3;
+            pro.IsActive = true;
+
+            if (basic.Id == 0) context.ServicePlans.Add(basic);
+            if (plus.Id == 0) context.ServicePlans.Add(plus);
+            if (pro.Id == 0) context.ServicePlans.Add(pro);
+
             await context.SaveChangesAsync();
         }
 

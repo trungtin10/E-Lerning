@@ -78,6 +78,30 @@ public class AdminController : ControllerBase
         return Ok(new { Message = "Tạo nhân viên thành công!" });
     }
 
+    [HttpPut("users/{id}")]
+    public async Task<IActionResult> UpdateUser(string id, [FromBody] AdminUpdateUserDto dto)
+    {
+        int companyId = GetAdminCompanyId();
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null || user.CompanyId != companyId) return NotFound();
+
+        user.FullName = dto.FullName;
+        user.Email = dto.Email;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
+
+        var currentRoles = await _userManager.GetRolesAsync(user);
+        if (!currentRoles.Contains(dto.Role))
+        {
+            await _userManager.RemoveFromRolesAsync(user, currentRoles);
+            if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
+            await _userManager.AddToRoleAsync(user, dto.Role);
+        }
+
+        await _audit.LogAsync("Update", "User", id, user.UserName, null, $"Cập nhật nhân viên {user.FullName} ({user.UserName})");
+        return Ok();
+    }
+
     [HttpDelete("users/{id}")]
     public async Task<IActionResult> DeleteUser(string id)
     {
@@ -89,5 +113,39 @@ public class AdminController : ControllerBase
         await _userManager.DeleteAsync(user);
         await _audit.LogAsync("Delete", "User", id, userName, null, $"Xóa nhân viên {fullName}");
         return Ok();
+    }
+
+    [HttpGet("subscription-info")]
+    public async Task<ActionResult<CompanySubscriptionInfoDto>> GetSubscriptionInfo()
+    {
+        int companyId = GetAdminCompanyId();
+        var company = await _context.Companies.Include(c => c.Plan).FirstOrDefaultAsync(c => c.Id == companyId);
+        if (company == null) return NotFound();
+
+        var userCount = await _context.Users.CountAsync(u => u.CompanyId == companyId);
+
+        var transactions = await _context.Transactions
+            .Include(t => t.ServicePlan)
+            .Where(t => t.CompanyId == companyId)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new CompanyTransactionDto
+            {
+                Id = t.Id,
+                PlanName = t.ServicePlan.Name,
+                Amount = t.Amount,
+                Status = t.Status,
+                CreatedAt = t.CreatedAt,
+                PaymentGateway = t.PaymentGateway
+            })
+            .ToListAsync();
+
+        return Ok(new CompanySubscriptionInfoDto
+        {
+            CurrentPlan = company.Plan?.Name ?? company.ServicePlan,
+            PlanExpiryDate = company.PlanExpiresAt,
+            UserCount = userCount,
+            MaxUsers = company.Plan?.MaxUsers ?? company.MaxUsers ?? 0,
+            Transactions = transactions
+        });
     }
 }

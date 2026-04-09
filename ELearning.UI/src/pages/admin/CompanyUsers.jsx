@@ -6,7 +6,7 @@ import { useNotify } from '../../context/NotifyContext';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Search, UserPlus, Mail, Eye, EyeOff,
-  Trash2, Loader2, UserCircle, ShieldCheck, Users, RefreshCw, AlertCircle, XCircle
+  Trash2, Loader2, UserCircle, ShieldCheck, Users, RefreshCw, AlertCircle, XCircle, MoreVertical, Edit2
 } from 'lucide-react';
 
 const CompanyUsers = () => {
@@ -25,6 +25,19 @@ const CompanyUsers = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAddPassword, setShowAddPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit Employee States
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    id: '',
+    fullName: '',
+    email: '',
+    role: ''
+  });
+
+  // Account Details Modal
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
     fullName: '',
     account: '',
@@ -138,6 +151,41 @@ const CompanyUsers = () => {
     }
   };
 
+  const openAccountDetails = (user) => {
+    setSelectedUser(user);
+    setShowAccountModal(true);
+  };
+
+  const handeEditUser = (user) => {
+    setEditFormData({
+      id: user.id,
+      fullName: user.fullName || '',
+      email: user.email || '',
+      role: user.role || 'User'
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const endpoint = isSuperAdmin ? `/superadmin/users/${editFormData.id}` : `/admin/users/${editFormData.id}`;
+      await api.put(endpoint, {
+        fullName: editFormData.fullName,
+        email: editFormData.email,
+        role: editFormData.role
+      });
+      toast('Cập nhật nhân viên thành công!', 'success');
+      setShowEditModal(false);
+      fetchCompanyUsers();
+    } catch (err) {
+      toast(err.response?.data || err.message || 'Lỗi khi cập nhật nhân viên.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const filteredUsers = users.filter(u =>
     u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.account.toLowerCase().includes(searchTerm.toLowerCase())
@@ -197,8 +245,8 @@ const CompanyUsers = () => {
         </div>
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div className="table-responsive admin-table-framed-wrapper">
+      <div className="card border-0 shadow-sm rounded-4" style={{ overflow: 'visible' }}>
+        <div className="table-responsive admin-table-framed-wrapper" style={{ overflow: 'visible' }}>
           <table className="table table-hover align-middle mb-0 admin-table-framed">
             <thead className="bg-light border-bottom">
               <tr>
@@ -221,7 +269,13 @@ const CompanyUsers = () => {
                       <motion.div whileHover={{ x: 5 }} className="fw-bold text-dark">{user.fullName}</motion.div>
                     </td>
                     <td className="py-3">
-                      <div className="text-primary fw-bold small">{user.account}</div>
+                      <div 
+                        className="text-primary fw-bold small text-decoration-underline" 
+                        onClick={() => openAccountDetails(user)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {user.account}
+                      </div>
                       <div className="text-muted small d-flex align-items-center gap-1 mt-1">
                         <Mail size={12} /> {user.email || 'Chưa cập nhật'}
                       </div>
@@ -253,13 +307,28 @@ const CompanyUsers = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-end">
-                      <button 
-                        className="btn btn-white btn-sm p-2 rounded-3 text-danger border shadow-sm hover-bg-danger-subtle transition-all"
-                        onClick={(e) => handleDeleteUser(user.id, user.role, e)}
-                        title="Xóa nhân viên"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="dropdown">
+                        <button
+                          className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                          type="button"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                        <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                          <li>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => handeEditUser(user)}>
+                              <Edit2 size={16} className="text-primary" /> Chỉnh sửa
+                            </button>
+                          </li>
+                          <li>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" onClick={(e) => handleDeleteUser(user.id, user.role, e)}>
+                              <Trash2 size={16} /> Xóa
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -324,6 +393,109 @@ const CompanyUsers = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header border-bottom-0 pb-0">
+                <h5 className="fw-bold mb-0">Chỉnh sửa nhân viên</h5>
+                <button type="button" className="btn-close" onClick={() => setShowEditModal(false)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <form onSubmit={handleEditSubmit}>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold text-secondary small">Họ và tên</label>
+                    <input type="text" className="form-control rounded-3" value={editFormData.fullName} onChange={e => setEditFormData({ ...editFormData, fullName: e.target.value })} required />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold text-secondary small">Email</label>
+                    <input type="email" className="form-control rounded-3" value={editFormData.email} onChange={e => setEditFormData({ ...editFormData, email: e.target.value })} required />
+                  </div>
+                  <div className="mb-4">
+                    <label className="form-label fw-bold text-secondary small">Vai trò</label>
+                    <select className="form-select rounded-3" value={editFormData.role} onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}>
+                      {subDomain === 'system' ? (
+                        <>
+                          <option value="SuperAdmin">SuperAdmin</option>
+                          <option value="Admin">Admin</option>
+                          <option value="User">User</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="Admin">Admin</option>
+                          <option value="User">User</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                  <div className="d-flex justify-content-end gap-2">
+                    <button type="button" className="btn btn-light fw-bold rounded-3" onClick={() => setShowEditModal(false)}>Hủy</button>
+                    <button type="submit" className="btn btn-primary fw-bold rounded-3" disabled={submitting}>
+                      {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Lưu thay đổi'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Account Info Modal */}
+      {showAccountModal && selectedUser && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4">
+              <div className="modal-header border-bottom-0 pb-0">
+                <h5 className="fw-bold mb-0">Thông tin tài khoản</h5>
+                <button type="button" className="btn-close" onClick={() => setShowAccountModal(false)}></button>
+              </div>
+              <div className="modal-body p-4 text-center">
+                <div className="mb-4">
+                  <div className="d-inline-flex align-items-center justify-content-center bg-primary-subtle text-primary rounded-circle mb-3" style={{ width: '80px', height: '80px' }}>
+                    <UserCircle size={48} />
+                  </div>
+                  <h4 className="fw-bold mb-1">{selectedUser.fullName}</h4>
+                  <p className="text-muted small mb-0 d-flex align-items-center justify-content-center gap-2">
+                    <ShieldCheck size={16} className="text-secondary" />
+                    {selectedUser.role} 
+                    {selectedUser.companyName && ` - ${selectedUser.companyName}`}
+                  </p>
+                </div>
+                
+                <div className="card border shadow-sm rounded-4 text-start">
+                  <div className="list-group list-group-flush rounded-4">
+                    <div className="list-group-item p-3">
+                      <div className="small text-muted mb-1 fw-bold">Tài khoản đăng nhập</div>
+                      <div className="fw-bold text-dark">{selectedUser.account}</div>
+                    </div>
+                    <div className="list-group-item p-3">
+                      <div className="small text-muted mb-1 fw-bold">Email (Gmail)</div>
+                      <div className="d-flex align-items-center gap-2">
+                        <Mail size={16} className="text-primary" />
+                        <span className="fw-medium text-dark">{selectedUser.email || 'Chưa cập nhật'}</span>
+                      </div>
+                    </div>
+                    <div className="list-group-item p-3">
+                      <div className="small text-muted mb-1 fw-bold">Trạng thái xác thực</div>
+                      {selectedUser.emailConfirmed ? (
+                         <span className="badge bg-success-subtle text-success px-2 py-1 rounded-pill">Đã xác minh</span>
+                      ) : (
+                         <span className="badge bg-warning-subtle text-warning px-2 py-1 rounded-pill">Chưa xác minh</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer border-top-0 d-flex justify-content-center">
+                <button type="button" className="btn btn-light fw-bold rounded-3 px-4" onClick={() => setShowAccountModal(false)}>Đóng</button>
               </div>
             </div>
           </div>

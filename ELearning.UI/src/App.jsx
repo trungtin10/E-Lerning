@@ -17,7 +17,6 @@ const pathTitles = {
   '/admin/dashboard': 'Dashboard',
   '/admin/companies': 'Quản lý công ty',
   '/admin/companies/create': 'Tạo công ty mới',
-  '/admin/companies/checkout-success': 'Xác nhận thanh toán',
   '/admin/users': 'Quản lý người dùng',
   '/admin/company-users': 'Nhân viên công ty',
   '/admin/learners': 'Theo dõi học viên',
@@ -109,7 +108,6 @@ import AdminDashboard from './pages/admin/Dashboard';
 import Companies from './pages/admin/companies/index';
 import CreateCompany from './pages/admin/companies/CreateCompany';
 import EditCompany from './pages/admin/companies/EditCompany';
-import CheckoutSuccess from './pages/admin/companies/CheckoutSuccess';
 import Users from './pages/admin/Users';
 import PlanManagement from './pages/admin/plans/PlanManagement';
 import Transactions from './pages/admin/plans/Transactions';
@@ -146,7 +144,6 @@ function AppRoutes() {
         <Route path="/admin/companies" element={<Companies />} />
         <Route path="/admin/companies/create" element={<CreateCompany />} />
         <Route path="/admin/companies/edit/:id" element={<EditCompany />} />
-        <Route path="/admin/companies/checkout-success" element={<CheckoutSuccess />} />
         <Route path="/admin/users" element={<Users />} />
         {/* SỬA ROUTE: Thêm tham số :subDomain */}
         <Route path="/admin/company-users/:subDomain" element={<CompanyUsers />} />
