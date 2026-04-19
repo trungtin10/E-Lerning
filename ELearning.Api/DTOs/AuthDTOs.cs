@@ -29,13 +29,14 @@ public record UserProfileDto(
     string? CompanyName,
     string? SubDomain,
     string? CompanyLogoUrl,
-    string? JobTitle
+    string? AvatarUrl = null,
+    string? CoverPhotoUrl = null
 );
 
 public record UpdateMyProfileDto(
     string FullName,
-    string? PhoneNumber,
-    string? JobTitle
+    string? Email,
+    string? PhoneNumber
 );
 
 public record RegisterDto(

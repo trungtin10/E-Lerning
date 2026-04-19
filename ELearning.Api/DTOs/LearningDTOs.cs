@@ -14,7 +14,8 @@ public record UserCourseProgressDto(
     bool ShowIntroVideo = false,
     string? IntroVideoUrl = null,
     string? IntroExternalVideoUrl = null,
-    string? Description = null
+    string? Description = null,
+    string? IntroSectionsJson = null
 );
 
 public record UserLessonProgressDto(

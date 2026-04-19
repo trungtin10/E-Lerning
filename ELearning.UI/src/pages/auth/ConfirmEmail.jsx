@@ -23,7 +23,7 @@ const ConfirmEmail = () => {
 
   const activateAccount = async (userId, token) => {
     try {
-    const response = await api.get(`/superadmin/confirm-activation?userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`);
+      const response = await api.get(`/superadmin/confirm-activation?userId=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`);
       setStatus('success');
       setMessage(response.data);
     } catch (err) {
@@ -33,21 +33,21 @@ const ConfirmEmail = () => {
   };
 
   return (
-    <div className="container-fluid vh-100 d-flex align-items-center justify-content-center bg-light">
-      <div className="card shadow-lg border-0 rounded-4 p-5 text-center" style={{ maxWidth: '500px' }}>
+    <div className="min-vh-100 d-flex align-items-center justify-content-center bg-light">
+      <div className="card shadow-lg border-0 rounded-4 p-5 text-center" style={{ maxWidth: '420px' }}>
         {status === 'loading' && (
           <div className="py-4">
-            <Loader2 className="animate-spin text-primary mb-3" size={48} />
-            <h4 className="fw-bold">Đang xác thực tài khoản...</h4>
-            <p className="text-muted">Vui lòng đợi trong giây lát.</p>
+            <Loader2 className="animate-spin text-primary mb-3 mx-auto" size={48} />
+            <h4 className="fw-bold">Đang xác thực...</h4>
+            <p className="text-muted small">Vui lòng đợi giây lát.</p>
           </div>
         )}
 
         {status === 'success' && (
           <div className="py-4">
-            <CheckCircle2 className="text-success mb-3" size={64} />
+            <CheckCircle2 className="text-success mb-3 mx-auto" size={64} />
             <h3 className="fw-bold text-success">Thành công!</h3>
-            <p className="text-muted mb-4">{message}</p>
+            <p className="text-muted small mb-4">{message}</p>
             <button className="btn btn-primary px-5 py-2 fw-bold rounded-3 d-flex align-items-center gap-2 mx-auto" onClick={() => navigate('/login')}>
               <LogIn size={20} /> Đăng nhập ngay
             </button>
@@ -56,10 +56,10 @@ const ConfirmEmail = () => {
 
         {status === 'error' && (
           <div className="py-4">
-            <XCircle className="text-danger mb-3" size={64} />
+            <XCircle className="text-danger mb-3 mx-auto" size={64} />
             <h3 className="fw-bold text-danger">Lỗi kích hoạt</h3>
-            <p className="text-muted mb-4">{message}</p>
-            <button className="btn btn-outline-secondary px-5 py-2 fw-bold rounded-3" onClick={() => navigate('/login')}>
+            <p className="text-muted small mb-4">{message}</p>
+            <button className="btn btn-outline-secondary px-5 py-2 rounded-3" onClick={() => navigate('/login')}>
               Quay lại trang chủ
             </button>
           </div>

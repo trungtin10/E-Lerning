@@ -10,6 +10,7 @@ public interface IEmailService
     Task SendEmailAsync(string toEmail, string subject, string htmlBody);
     Task SendExpiryReminderAsync(string toEmail, string companyName, DateTime expiresAt, int daysLeft);
     Task SendPasswordResetEmailAsync(string toEmail, string fullName, string resetLink);
+    Task SendTicketNotificationAsync(string toEmail, string subject, string message, string ticketId, string ticketSubject);
 }
 
 public class EmailService : IEmailService
@@ -99,5 +100,21 @@ public class EmailService : IEmailService
                 <p style='font-size: 13px; color: #94a3b8; text-align: center;'>Đây là email tự động, vui lòng không trả lời.</p>
             </div>";
         await SendEmailAsync(toEmail, "[E-Learning] Đặt lại mật khẩu", htmlBody);
+    }
+
+    public async Task SendTicketNotificationAsync(string toEmail, string subject, string message, string ticketId, string ticketSubject)
+    {
+        var htmlBody = $@"
+            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 40px; color: #1e293b; background-color: #ffffff; border: 1px solid #f6d155;'>
+                <h2 style='color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px;'>Thông báo Ticket mới [#{ticketId}]</h2>
+                <p style='font-size: 16px; margin-top: 20px;'><strong>Tiêu đề:</strong> {ticketSubject}</p>
+                <div style='background-color: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f6d155;'>
+                    <p style='margin: 0; line-height: 1.6; white-space: pre-wrap;'>{message}</p>
+                </div>
+                <p style='font-size: 14px; color: #64748b;'>Vui lòng đăng nhập hệ thống để phản hồi.</p>
+                <hr style='border: none; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
+                <p style='font-size: 12px; color: #94a3b8; text-align: center;'>Hệ thống Hỗ trợ E-Learning</p>
+            </div>";
+        await SendEmailAsync(toEmail, $"[Hỗ trợ Ticket] {subject}", htmlBody);
     }
 }

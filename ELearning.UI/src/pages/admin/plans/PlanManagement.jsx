@@ -69,15 +69,7 @@ const PlanManagement = () => {
           <p className="text-muted small mb-0">Định nghĩa Basic, Pro, Enterprise với giới hạn tài nguyên và giá</p>
         </div>
         <button
-          className="btn d-flex align-items-center gap-2 px-4 py-2 fw-bold border"
-          style={{
-            background: 'linear-gradient(to bottom, #7ec8e3, #3498db)',
-            borderColor: '#1a5276',
-            color: '#fff',
-            borderRadius: 2,
-            textShadow: '0 1px 1px rgba(255,255,255,0.4)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
-          }}
+          className="btn btn-admin-create d-flex align-items-center gap-2"
           onClick={() => { setForm({ name: '', description: '', maxUsers: 50, storageLimitGB: 10, priceMonthly: 500000, priceYearly: 5000000, sortOrder: plans.length }); setModal({ show: true, plan: null }); }}
         >
           <Plus size={18} /> Tạo mới

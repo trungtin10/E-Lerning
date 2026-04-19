@@ -51,6 +51,12 @@ const AddCompanyModal = ({ isOpen, onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.contactEmail)) {
+      toast('Địa chỉ Email không đúng định dạng. Vui lòng kiểm tra lại.', 'error');
+      return;
+    }
+
     setSubmitting(true);
     setErrors({});
 

@@ -132,6 +132,18 @@ const QuizBuilder = () => {
     return <AdminLayout><div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={48} /></div></AdminLayout>;
   }
 
+  // Add Escape key listener to close modals
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setShowLearningTimes(false);
+        setAttemptDetail(null);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
   return (
     <AdminLayout>
       <div className="mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
@@ -264,7 +276,7 @@ const QuizBuilder = () => {
                     <>
                       <div className="d-flex align-items-center gap-3 mb-4 p-3 rounded-3" style={{ backgroundColor: attemptDetail.isPassed ? 'rgba(25,135,84,0.1)' : 'rgba(220,53,69,0.1)' }}>
                         <span className={`fw-bold fs-4 ${attemptDetail.isPassed ? 'text-success' : 'text-danger'}`}>
-                          {attemptDetail.score}% - {attemptDetail.correctAnswers}/{attemptDetail.totalQuestions} đúng
+                          {(attemptDetail.score / 10).toFixed(1)} - {attemptDetail.correctAnswers}/{attemptDetail.totalQuestions} đúng
                         </span>
                         <span className="badge bg-secondary">{attemptDetail.quizTitle}</span>
                         <span className="text-muted small">

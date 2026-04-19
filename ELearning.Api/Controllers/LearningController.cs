@@ -176,7 +176,7 @@ public class LearningController : ControllerBase
 
     /// <summary>Danh sách tổng thời gian học của học viên trong khóa (cho Admin) - chỉ hiện user thuộc công ty của khóa học</summary>
     [HttpGet("learning-times/{courseId}")]
-    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Editor,Instructor,SuperAdmin")]
     public async Task<ActionResult<List<LearningTimeSummaryDto>>> GetCourseLearningTimes(int courseId)
     {
         var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == courseId);
@@ -280,8 +280,10 @@ public class LearningController : ControllerBase
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
+        var course = await _context.Courses.FirstOrDefaultAsync(c => c.Id == courseId);
+        if (course == null) return NotFound("Không tìm thấy khóa học.");
+
         var enrollment = await _context.CourseEnrollments
-            .Include(e => e.Course)
             .FirstOrDefaultAsync(e => e.UserId == userId && e.CourseId == courseId);
 
         // Auto-enroll: khóa học thuộc công ty của user thì vào học ngay (không cần bấm đăng ký)
@@ -353,7 +355,7 @@ public class LearningController : ControllerBase
                         var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0)
                             ? s.VideoUrls
                             : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
-                        return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl, urls);
+                        return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.ShowDocs, s.VideoUrl, urls, s.DocUrls);
                     }).ToList();
                 }
                 catch { }
@@ -365,17 +367,17 @@ public class LearningController : ControllerBase
                 var hasQuiz = lesson.ShowQuiz1 || lesson.ShowQuiz2 || lesson.ShowQuiz3 || lesson.ShowQuiz4 || lesson.ShowQuiz5;
                 if (!hasContent && !hasMedia && !hasQuiz)
                 {
-                    sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, null) };
+                    sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, false) };
                 }
                 else
                 {
                     sections = new List<LessonSectionDto>
                     {
-                        new(lesson.Section1Title ?? "1. Giới thiệu bài học", lesson.Overview, lesson.ShowVideo1, lesson.ShowQuiz1, lesson.VideoUrl1),
-                        new(lesson.Section2Title ?? "2. Bài giảng chi tiết", lesson.Content, lesson.ShowVideo2, lesson.ShowQuiz2, lesson.VideoUrl2),
-                        new(lesson.Section3Title ?? "3. Phần ôn tập", lesson.ReviewContent, lesson.ShowVideo3, lesson.ShowQuiz3, lesson.VideoUrl3),
-                        new(lesson.Section4Title ?? "4. Câu hỏi tự luận", lesson.EssayQuestion, lesson.ShowVideo4, lesson.ShowQuiz4, lesson.VideoUrl4),
-                        new(lesson.Section5Title ?? "5. Tổng kết bài học", null, lesson.ShowVideo5, lesson.ShowQuiz5, lesson.VideoUrl5)
+                        new(lesson.Section1Title ?? "1. Giới thiệu bài học", lesson.Overview, lesson.ShowVideo1, lesson.ShowQuiz1, false, lesson.VideoUrl1),
+                        new(lesson.Section2Title ?? "2. Bài giảng chi tiết", lesson.Content, lesson.ShowVideo2, lesson.ShowQuiz2, false, lesson.VideoUrl2),
+                        new(lesson.Section3Title ?? "3. Phần ôn tập", lesson.ReviewContent, lesson.ShowVideo3, lesson.ShowQuiz3, false, lesson.VideoUrl3),
+                        new(lesson.Section4Title ?? "4. Câu hỏi tự luận", lesson.EssayQuestion, lesson.ShowVideo4, lesson.ShowQuiz4, false, lesson.VideoUrl4),
+                        new(lesson.Section5Title ?? "5. Tổng kết bài học", null, lesson.ShowVideo5, lesson.ShowQuiz5, false, lesson.VideoUrl5)
                     };
                 }
             }
@@ -418,7 +420,6 @@ public class LearningController : ControllerBase
         );
         }).ToList();
 
-        var course = enrollment.Course;
         var introVideoUrl = course.IntroVideoUrl != null
             ? (course.IntroVideoUrl.StartsWith("http") ? course.IntroVideoUrl : course.IntroVideoUrl)
             : null;
@@ -434,16 +435,17 @@ public class LearningController : ControllerBase
 
         return Ok(new UserCourseProgressDto(
             courseId,
-            enrollment.Course.Title,
-            enrollment.Course.CourseCode,
-            enrollment.Course.StartDate,
-            enrollment.Course.EndDate,
+            course.Title,
+            course.CourseCode,
+            course.StartDate,
+            course.EndDate,
             progressPct,
             lessonDtos,
             course.ShowIntroVideo,
             introVideoUrl,
             course.IntroExternalVideoUrl,
-            course.Description
+            course.Description,
+            course.IntroSectionsJson
         ));
     }
 }

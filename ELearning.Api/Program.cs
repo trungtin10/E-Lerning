@@ -13,6 +13,8 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 
+var h = new Microsoft.AspNetCore.Identity.PasswordHasher<ELearning.Api.Models.ApplicationUser>();
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Cấu hình để nhận diện đúng domain khi chạy qua proxy/ngrok
@@ -43,7 +45,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
 });
 
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.User.RequireUniqueEmail = false; // Cho phép một Email tạo nhiều tài khoản
+})
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
@@ -74,7 +79,21 @@ builder.Services.AddAuthentication(options =>
             var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
             var dbUser = await userManager.FindByIdAsync(userId);
             if (dbUser == null || !dbUser.IsActive)
+            {
                 context.Fail("Tài khoản đã bị tạm khóa hoặc không còn tồn tại.");
+                return;
+            }
+
+            if (dbUser.CompanyId.HasValue)
+            {
+                var dbContext = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+                var company = await dbContext.Companies.FindAsync(dbUser.CompanyId.Value);
+                if (company != null && !company.IsActive)
+                {
+                    context.Fail("Công ty của bạn đã bị khóa.");
+                    return;
+                }
+            }
         }
     };
 });
@@ -89,131 +108,9 @@ builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Áp dụng migrations tự động
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await context.Database.MigrateAsync();
+// Áp dụng migrations tự động - Đã xóa để chuyển sang quản lý SQL thủ công
 
-    // Fallbacks giữ tương thích DB cũ
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync(
-            "IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CourseEnrollments') AND name = 'TotalLearningTimeMinutes') " +
-            "ALTER TABLE [CourseEnrollments] ADD [TotalLearningTimeMinutes] int NOT NULL DEFAULT 0");
-    }
-    catch { /* ignore */ }
-
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync(
-            "IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AuditLogs') " +
-            "CREATE TABLE [AuditLogs] ([Id] bigint NOT NULL IDENTITY(1,1), [UserId] nvarchar(450) NULL, [UserName] nvarchar(100) NULL, [Action] nvarchar(50) NOT NULL, " +
-            "[EntityType] nvarchar(100) NULL, [EntityId] nvarchar(100) NULL, [OldValue] nvarchar(max) NULL, [NewValue] nvarchar(max) NULL, " +
-            "[IpAddress] nvarchar(100) NULL, [Details] nvarchar(500) NULL, [CreatedAt] datetime2 NOT NULL, CONSTRAINT [PK_AuditLogs] PRIMARY KEY ([Id]))");
-    }
-    catch { /* ignore */ }
-
-    // Heal schema drift: bổ sung cột còn thiếu cho bảng AuditLogs nếu DB cũ chưa đồng bộ.
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync(
-            "IF COL_LENGTH('AuditLogs','UserId') IS NULL ALTER TABLE [AuditLogs] ADD [UserId] nvarchar(450) NULL;" +
-            "IF COL_LENGTH('AuditLogs','UserName') IS NULL ALTER TABLE [AuditLogs] ADD [UserName] nvarchar(100) NULL;" +
-            "IF COL_LENGTH('AuditLogs','EntityType') IS NULL ALTER TABLE [AuditLogs] ADD [EntityType] nvarchar(100) NULL;" +
-            "IF COL_LENGTH('AuditLogs','EntityId') IS NULL ALTER TABLE [AuditLogs] ADD [EntityId] nvarchar(100) NULL;" +
-            "IF COL_LENGTH('AuditLogs','OldValue') IS NULL ALTER TABLE [AuditLogs] ADD [OldValue] nvarchar(max) NULL;" +
-            "IF COL_LENGTH('AuditLogs','NewValue') IS NULL ALTER TABLE [AuditLogs] ADD [NewValue] nvarchar(max) NULL;" +
-            "IF COL_LENGTH('AuditLogs','IpAddress') IS NULL ALTER TABLE [AuditLogs] ADD [IpAddress] nvarchar(100) NULL;" +
-            "IF COL_LENGTH('AuditLogs','Details') IS NULL ALTER TABLE [AuditLogs] ADD [Details] nvarchar(500) NULL;");
-    }
-    catch { /* ignore */ }
-
-    // DB đôi khi lệch migration (đã ghi __EFMigrationsHistory nhưng thiếu bảng) — tạo UserNotifications nếu chưa có.
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync("""
-            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'UserNotifications' AND schema_id = SCHEMA_ID('dbo'))
-            BEGIN
-                CREATE TABLE [dbo].[UserNotifications] (
-                    [Id] bigint NOT NULL IDENTITY(1,1),
-                    [UserId] nvarchar(450) NOT NULL,
-                    [Title] nvarchar(200) NOT NULL,
-                    [Content] nvarchar(max) NULL,
-                    [Type] nvarchar(30) NOT NULL,
-                    [Severity] nvarchar(20) NOT NULL,
-                    [IsRead] bit NOT NULL CONSTRAINT [DF_UserNotifications_IsRead] DEFAULT (0),
-                    [ReadAt] datetime2 NULL,
-                    [LinkUrl] nvarchar(max) NULL,
-                    [PayloadJson] nvarchar(max) NULL,
-                    [CreatedAt] datetime2 NOT NULL,
-                    CONSTRAINT [PK_UserNotifications] PRIMARY KEY ([Id]),
-                    CONSTRAINT [FK_UserNotifications_AspNetUsers_UserId] FOREIGN KEY ([UserId]) REFERENCES [AspNetUsers] ([Id]) ON DELETE CASCADE
-                );
-                CREATE NONCLUSTERED INDEX [IX_UserNotifications_UserId_IsRead_CreatedAt]
-                    ON [dbo].[UserNotifications] ([UserId], [IsRead], [CreatedAt]);
-            END
-            """);
-    }
-    catch { /* ignore */ }
-
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync("""
-            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AnnouncementUserStates' AND schema_id = SCHEMA_ID('dbo'))
-            BEGIN
-                CREATE TABLE [dbo].[AnnouncementUserStates] (
-                    [Id] bigint NOT NULL IDENTITY(1,1),
-                    [AnnouncementId] int NOT NULL,
-                    [UserId] nvarchar(450) NOT NULL,
-                    [DismissedAt] datetime2 NULL,
-                    [AcknowledgedAt] datetime2 NULL,
-                    [CreatedAt] datetime2 NOT NULL,
-                    CONSTRAINT [PK_AnnouncementUserStates] PRIMARY KEY ([Id]),
-                    CONSTRAINT [FK_AnnouncementUserStates_Announcements_AnnouncementId] FOREIGN KEY ([AnnouncementId]) REFERENCES [Announcements]([Id]) ON DELETE CASCADE,
-                    CONSTRAINT [FK_AnnouncementUserStates_AspNetUsers_UserId] FOREIGN KEY ([UserId]) REFERENCES [AspNetUsers]([Id]) ON DELETE CASCADE
-                );
-                CREATE UNIQUE INDEX [IX_AnnouncementUserStates_AnnouncementId_UserId] ON [dbo].[AnnouncementUserStates] ([AnnouncementId], [UserId]);
-            END
-            """);
-    }
-    catch { /* ignore */ }
-
-    try
-    {
-        await context.Database.ExecuteSqlRawAsync("""
-            IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LearnerBehaviorEvents' AND schema_id = SCHEMA_ID('dbo'))
-            BEGIN
-                CREATE TABLE [dbo].[LearnerBehaviorEvents] (
-                    [Id] bigint NOT NULL IDENTITY(1,1),
-                    [UserId] nvarchar(450) NOT NULL,
-                    [CourseId] int NOT NULL,
-                    [EnrollmentId] int NULL,
-                    [EventType] nvarchar(50) NOT NULL,
-                    [EntityType] nvarchar(50) NULL,
-                    [EntityId] nvarchar(100) NULL,
-                    [Metadata] nvarchar(500) NULL,
-                    [CreatedAt] datetime2 NOT NULL,
-                    CONSTRAINT [PK_LearnerBehaviorEvents] PRIMARY KEY ([Id]),
-                    CONSTRAINT [FK_LearnerBehaviorEvents_AspNetUsers_UserId] FOREIGN KEY ([UserId]) REFERENCES [AspNetUsers]([Id]) ON DELETE NO ACTION,
-                    CONSTRAINT [FK_LearnerBehaviorEvents_CourseEnrollments_EnrollmentId] FOREIGN KEY ([EnrollmentId]) REFERENCES [CourseEnrollments]([Id]) ON DELETE SET NULL,
-                    CONSTRAINT [FK_LearnerBehaviorEvents_Courses_CourseId] FOREIGN KEY ([CourseId]) REFERENCES [Courses]([Id]) ON DELETE NO ACTION
-                );
-                CREATE INDEX [IX_LearnerBehaviorEvents_EnrollmentId] ON [dbo].[LearnerBehaviorEvents] ([EnrollmentId]);
-                CREATE INDEX [IX_LearnerBehaviorEvents_UserId] ON [dbo].[LearnerBehaviorEvents] ([UserId]);
-                CREATE INDEX [IX_LearnerBehaviorEvents_CourseId] ON [dbo].[LearnerBehaviorEvents] ([CourseId]);
-            END
-            """);
-    }
-    catch { /* ignore */ }
-}
-
-// Seed dữ liệu mặc định (roles, superadmin, danh mục chuyên ngành)
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    await DbSeeder.SeedAsync(services);
-}
+// Seed dữ liệu mặc định - Đã gỡ bỏ theo yêu cầu: Quản lý SQL thủ công 100%
 
 app.UseForwardedHeaders();
 

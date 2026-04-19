@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layout/AdminLayout';
 import api from '../../api/axios';
 import { motion } from 'framer-motion';
-import { Search, Building2, Shield, Mail, Loader2, Info, X, Filter } from 'lucide-react';
+import { Search, Building2, Shield, Mail, Loader2, Info, X, Filter, Trash2, Lock, Unlock, MoreVertical, Edit2 } from 'lucide-react';
+import { useNotify } from '../../context/NotifyContext';
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -11,7 +12,68 @@ const Users = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState({});
+  const [actionLoading, setActionLoading] = useState(false);
+  const { toast, confirm } = useNotify();
   const navigate = useNavigate();
+
+  const handleToggleActive = async (user) => {
+    try {
+      setActionLoading(true);
+      await api.patch(`/superadmin/users/${user.id}/active`, { isActive: !user.isActive });
+      toast(`Đã ${!user.isActive ? 'mở khóa' : 'tạm khóa'} tài khoản ${user.account}`, 'success');
+      fetchUsers();
+    } catch (err) {
+      toast(err.response?.data || 'Không thể cập nhật trạng thái.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const ok = await confirm({ title: 'Xóa tài khoản', message: 'Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản này?', confirmText: 'Xóa' });
+    if (!ok) return;
+    try {
+      setActionLoading(true);
+      await api.delete(`/superadmin/users/${id}`);
+      toast('Đã xóa tài khoản.', 'success');
+      fetchUsers();
+      setSelectedIds(prev => { const n = {...prev}; delete n[id]; return n; });
+    } catch (err) {
+      toast(err.response?.data || 'Lỗi khi xóa tài khoản.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+  
+  const handleBulkDelete = async () => {
+    const ids = Object.keys(selectedIds).filter(k => selectedIds[k]);
+    if (ids.length === 0) return;
+    const ok = await confirm({ title: 'Xóa tài khoản hàng loạt', message: `Bạn chuẩn bị xóa ${ids.length} tài khoản. Dữ liệu sẽ mất vĩnh viễn?`, confirmText: 'Xóa tất cả' });
+    if (!ok) return;
+    setActionLoading(true);
+    let successCount = 0;
+    for (const id of ids) {
+      try { await api.delete(`/superadmin/users/${id}`); successCount++; } catch(e) { console.error(e); }
+    }
+    toast(`Đã xóa thành công ${successCount}/${ids.length} tài khoản.`, 'success');
+    setSelectedIds({});
+    fetchUsers();
+    setActionLoading(false);
+  };
+
+  const handleBulkLock = async (isActive) => {
+    const ids = Object.keys(selectedIds).filter(k => selectedIds[k]);
+    if (ids.length === 0) return;
+    setActionLoading(true);
+    let successCount = 0;
+    for (const id of ids) {
+      try { await api.patch(`/superadmin/users/${id}/active`, { isActive }); successCount++; } catch(e) { console.error(e); }
+    }
+    toast(`Đã ${isActive ? 'mở khóa' : 'khóa'} thành công ${successCount}/${ids.length} tài khoản.`, 'success');
+    setSelectedIds({});
+    fetchUsers();
+    setActionLoading(false);
+  };
 
   useEffect(() => {
     fetchUsers();
@@ -104,8 +166,21 @@ const Users = () => {
             </div>
           </div>
           {anyChecked && (
-            <div className="mt-2 small text-muted">
-              Đã chọn <strong className="text-dark">{Object.values(selectedIds).filter(Boolean).length}</strong> mục.
+            <div className="mt-3 p-2 bg-white border rounded-3 d-flex align-items-center justify-content-between animation-fade-in shadow-sm">
+              <div className="small text-muted ms-2">
+                Đã chọn <strong className="text-dark">{Object.values(selectedIds).filter(Boolean).length}</strong> tài khoản
+              </div>
+              <div className="d-flex gap-2">
+                <button className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1 bg-white" onClick={handleBulkDelete} disabled={actionLoading}>
+                  {actionLoading ? <Loader2 size={14} className="animate-spin"/> : <Trash2 size={14} />} Xóa tất cả
+                </button>
+                <button className="btn btn-sm btn-outline-warning d-flex align-items-center gap-1 bg-white text-dark" onClick={() => handleBulkLock(false)} disabled={actionLoading}>
+                  <Lock size={14} /> Khóa tất cả
+                </button>
+                <button className="btn btn-sm btn-outline-success d-flex align-items-center gap-1 bg-white" onClick={() => handleBulkLock(true)} disabled={actionLoading}>
+                  <Unlock size={14} /> Mở khóa tất cả
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -123,7 +198,7 @@ const Users = () => {
                 <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Đơn vị / Tài khoản</th>
                 <th className="py-3 border-0 text-secondary small fw-bold text-uppercase" style={{ width: 150 }}>Vai trò</th>
                 <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center" style={{ width: 140 }}>Trạng thái</th>
-                <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end" style={{ width: 96 }}>View</th>
+                <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end" style={{ width: 160 }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -186,20 +261,53 @@ const Users = () => {
                           style={{
                             width: 8,
                             height: 8,
-                            background: user.emailConfirmed ? '#16a34a' : '#f59e0b',
+                            background: user.status === 'Hoạt động' ? '#16a34a' : (user.status === 'Chưa kích hoạt' ? '#f59e0b' : '#ef4444'),
                           }}
                         />
-                        <span className="text-muted">{user.emailConfirmed ? 'Đã kích hoạt' : 'Chờ xác nhận'}</span>
+                        <span className={user.status === 'Hoạt động' ? 'text-success' : (user.status === 'Chưa kích hoạt' ? 'text-warning' : 'text-danger')}>
+                          {user.status}
+                        </span>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-end">
-                      <button
-                        className="btn btn-white btn-sm p-2 rounded-3 border"
-                        onClick={() => navigate(`/admin/company-users/${user.subDomain || 'system'}`)}
-                        title="Xem danh sách nhân viên"
-                      >
-                        <Info size={16} />
-                      </button>
+                      <div className="dropdown">
+                        <button
+                          className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                          type="button"
+                          data-bs-toggle="dropdown"
+                          data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
+                          data-bs-boundary="viewport"
+                          data-bs-offset="0,8"
+                          aria-expanded="false"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                        <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                          <li>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => handleToggleActive(user)} disabled={actionLoading}>
+                              {user.isActive ? (
+                                <><Lock size={16} className="text-warning" /> Tạm khóa</>
+                              ) : (
+                                <><Unlock size={16} className="text-success" /> Mở khóa</>
+                              )}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              className="dropdown-item d-flex align-items-center gap-2 py-2"
+                              onClick={() => navigate(`/admin/company-users/${user.subDomain || 'system'}`)}
+                            >
+                              <Info size={16} className="text-info" /> Xem chi tiết
+                            </button>
+                          </li>
+                          <li><hr className="dropdown-divider" /></li>
+                          <li>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" onClick={() => handleDelete(user.id)} disabled={actionLoading}>
+                              <Trash2 size={16} /> Xóa tài khoản
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -208,6 +316,8 @@ const Users = () => {
           </table>
         </div>
       </div>
+
+
     </AdminLayout>
   );
 };

@@ -41,7 +41,7 @@ const pathTitles = {
   '/admin/announcements': 'Thông báo',
   '/admin/profile': 'Hồ sơ',
   '/profile': 'Hồ sơ',
-  '/dashboard': 'Dashboard',
+  '/dashboard': 'Trang chủ',
   '/courses': 'Khám phá khóa học',
   '/course': 'Chi tiết khóa học',
   '/learning': 'Học tập',
@@ -78,8 +78,8 @@ function useFaviconSync() {
   useEffect(() => {
     const publicPaths = ['/login', '/forgot-password', '/reset-password', '/confirm-email'];
     const isPublic = publicPaths.some(p => pathname.startsWith(p));
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+    const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
     let faviconUrl = DEFAULT_FAVICON;
     if (!isPublic && token && userStr) {
       try {
@@ -139,11 +139,38 @@ import UserDashboard from './pages/user/Dashboard';
 import LearningView from './pages/user/LearningView';
 import CourseOverview from './pages/user/CourseOverview';
 import CourseList from './pages/user/CourseList';
+import MyCourses from './pages/user/MyCourses';
+import Resources from './pages/user/Resources';
+import Community from './pages/user/Community';
 import MyProfile from './pages/account/MyProfile';
+
+function ProtectedRoute({ children, allowedRoles }) {
+  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+  const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
+  const location = useLocation();
+
+  if (!token || !userStr) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  try {
+    const user = JSON.parse(userStr);
+    if (allowedRoles && !allowedRoles.some(role => user.roles?.includes(role))) {
+      // Nếu là học viên (không có quyền admin), chuyển về dashboard học viên
+      return <Navigate to="/dashboard" replace />;
+    }
+  } catch {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
 
 function AppRoutes() {
   usePageTitle();
   useFaviconSync();
+
+  const adminRoles = ['SuperAdmin', 'Admin', 'Editor'];
   return (
     <Routes>
         <Route path="/login" element={<Login />} />
@@ -152,52 +179,53 @@ function AppRoutes() {
         <Route path="/confirm-email" element={<ConfirmEmail />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
 
-        {/* Admin Routes */}
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
-        <Route path="/admin/home-config/header" element={<HomeConfig />} />
-        <Route path="/admin/home-config/slider-vi" element={<HomeConfig />} />
-        <Route path="/admin/home-config/slider-en" element={<HomeConfig />} />
-        <Route path="/admin/home-config/small-banner" element={<HomeConfig />} />
-        <Route path="/admin/home-config/testimonials" element={<HomeConfig />} />
-        <Route path="/admin/home-config/footer" element={<HomeConfig />} />
-        <Route path="/admin/home-config/policy" element={<HomeConfig />} />
-        <Route path="/admin/home-config/social-links" element={<HomeConfig />} />
-        <Route path="/admin/companies" element={<Companies />} />
-        <Route path="/admin/companies/create" element={<CreateCompany />} />
-        <Route path="/admin/companies/edit/:id" element={<EditCompany />} />
-        <Route path="/admin/users" element={<Users />} />
-        {/* SỬA ROUTE: Thêm tham số :subDomain */}
-        <Route path="/admin/company-users/:subDomain" element={<CompanyUsers />} />
-        <Route path="/admin/learners" element={<Learners />} />
-        <Route path="/admin/courses" element={<Courses />} />
-        <Route path="/admin/company-courses" element={<Courses />} />
-        <Route path="/admin/courses/:id" element={<CourseDetail />} />
-        <Route path="/admin/courses/:id/quiz" element={<QuizBuilder />} />
-        <Route path="/admin/categories" element={<Categories />} />
-        <Route path="/admin/categories/:categoryId/courses" element={<CategoryCourses />} />
-        <Route path="/admin/plans" element={<PlanManagement />} />
-        <Route path="/admin/subscription" element={<Subscription />} />
-        <Route path="/checkout/vnpay-return" element={<CheckoutReturn />} />
-        <Route path="/admin/transactions" element={<Transactions />} />
-        <Route path="/admin/audit-logs" element={<AuditLogs />} />
-        <Route path="/admin/tickets/new" element={<CreateTicket />} />
-        <Route path="/admin/tickets/:ticketId?" element={<Tickets />} />
-        <Route path="/admin/announcements" element={<Announcements />} />
-        <Route path="/admin/profile" element={<MyProfile />} />
+        {/* Admin Routes - Protected */}
+        <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={adminRoles}><AdminDashboard /></ProtectedRoute>} />
+        <Route path="/admin/home-config/header" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/slider-vi" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/slider-en" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/small-banner" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/testimonials" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/footer" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/policy" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/home-config/social-links" element={<ProtectedRoute allowedRoles={adminRoles}><HomeConfig /></ProtectedRoute>} />
+        <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={adminRoles}><Companies /></ProtectedRoute>} />
+        <Route path="/admin/companies/create" element={<ProtectedRoute allowedRoles={adminRoles}><CreateCompany /></ProtectedRoute>} />
+        <Route path="/admin/companies/edit/:id" element={<ProtectedRoute allowedRoles={adminRoles}><EditCompany /></ProtectedRoute>} />
+        <Route path="/admin/users" element={<ProtectedRoute allowedRoles={adminRoles}><Users /></ProtectedRoute>} />
+        <Route path="/admin/company-users/:subDomain" element={<ProtectedRoute allowedRoles={adminRoles}><CompanyUsers /></ProtectedRoute>} />
+        <Route path="/admin/learners" element={<ProtectedRoute allowedRoles={adminRoles}><Learners /></ProtectedRoute>} />
+        <Route path="/admin/courses" element={<ProtectedRoute allowedRoles={adminRoles}><Courses /></ProtectedRoute>} />
+        <Route path="/admin/company-courses" element={<ProtectedRoute allowedRoles={adminRoles}><Courses /></ProtectedRoute>} />
+        <Route path="/admin/courses/:id" element={<ProtectedRoute allowedRoles={adminRoles}><CourseDetail /></ProtectedRoute>} />
+        <Route path="/admin/courses/:id/quiz" element={<ProtectedRoute allowedRoles={adminRoles}><QuizBuilder /></ProtectedRoute>} />
+        <Route path="/admin/categories" element={<ProtectedRoute allowedRoles={adminRoles}><Categories /></ProtectedRoute>} />
+        <Route path="/admin/categories/:categoryId/courses" element={<ProtectedRoute allowedRoles={adminRoles}><CategoryCourses /></ProtectedRoute>} />
+        <Route path="/admin/plans" element={<ProtectedRoute allowedRoles={adminRoles}><PlanManagement /></ProtectedRoute>} />
+        <Route path="/admin/subscription" element={<ProtectedRoute allowedRoles={adminRoles}><Subscription /></ProtectedRoute>} />
+        <Route path="/checkout/vnpay-return" element={<ProtectedRoute allowedRoles={adminRoles}><CheckoutReturn /></ProtectedRoute>} />
+        <Route path="/admin/transactions" element={<ProtectedRoute allowedRoles={adminRoles}><Transactions /></ProtectedRoute>} />
+        <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={adminRoles}><AuditLogs /></ProtectedRoute>} />
+        <Route path="/admin/tickets/new" element={<ProtectedRoute allowedRoles={adminRoles}><CreateTicket /></ProtectedRoute>} />
+        <Route path="/admin/tickets/:ticketId?" element={<ProtectedRoute allowedRoles={adminRoles}><Tickets /></ProtectedRoute>} />
+        <Route path="/admin/announcements" element={<ProtectedRoute allowedRoles={adminRoles}><Announcements /></ProtectedRoute>} />
+        <Route path="/admin/profile" element={<ProtectedRoute allowedRoles={adminRoles}><MyProfile /></ProtectedRoute>} />
 
         {/* User Routes */}
-        <Route path="/dashboard" element={<UserDashboard />} />
+        <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
         <Route path="/course" element={<Navigate to="/courses" replace />} />
-        <Route path="/courses" element={<CourseList />} />
-        <Route path="/course/:id" element={<CourseOverview />} />
-        <Route path="/learning/:courseId" element={<LearningView />} />
-        <Route path="/my-courses" element={<UserDashboard />} />
-        <Route path="/certificates" element={<UserDashboard />} />
-        <Route path="/settings" element={<UserDashboard />} />
-        <Route path="/profile" element={<MyProfile />} />
+        <Route path="/courses" element={<ProtectedRoute><CourseList /></ProtectedRoute>} />
+        <Route path="/course/:id" element={<ProtectedRoute><CourseOverview /></ProtectedRoute>} />
+        <Route path="/learning/:courseId" element={<ProtectedRoute><LearningView /></ProtectedRoute>} />
+        <Route path="/my-courses" element={<ProtectedRoute><MyCourses /></ProtectedRoute>} />
+        <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
+        <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
+        <Route path="/certificates" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
 
         {/* Placeholder */}
-        <Route path="/admin/settings" element={<AdminDashboard />} />
+        <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={adminRoles}><AdminDashboard /></ProtectedRoute>} />
     </Routes>
   );
 }

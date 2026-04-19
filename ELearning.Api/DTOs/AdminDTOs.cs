@@ -22,6 +22,7 @@ public record CompanyDto(
     string? ContactEmail,
     bool IsActive,
     int UserCount,
+    string? Status,
     DateTime CreatedAt,
     DateTime UpdatedAt
 );
@@ -85,7 +86,7 @@ public class RegisterTenantFormDto
     public IFormFile? LogoFile { get; set; }
     public int? ServicePlanId { get; set; }
     public string? ServicePlan { get; set; } // Tên gói (giữ để tương thích)
-    public int ServicePlanDurationDays { get; set; } = 7; // mặc định 7 ngày dùng thử
+    public int ServicePlanDurationDays { get; set; } = 0; // Mặc định là 0 để phân biệt với gói dùng thử
     public int BillingCycleMonths { get; set; } = 1;
     public string? PaymentMethod { get; set; } // Cash, BankTransfer, VnPay, Direct
     public decimal? AmountPaid { get; set; }
@@ -111,6 +112,7 @@ public class UpdateCompanyFormDto
     // Nếu set (3/7/30), cập nhật hạn dùng thử từ thời điểm hiện tại
     public int? TrialDays { get; set; }
     public IFormFile? LogoFile { get; set; }
+    public bool? IsActive { get; set; }
 }
 
 public class CreateUserByAdminDto
@@ -124,9 +126,9 @@ public class CreateUserByAdminDto
 
 public class AdminUpdateUserDto
 {
-    public string FullName { get; set; } = null!;
-    public string Email { get; set; } = null!;
-    public string Role { get; set; } = null!;
+    public string? FullName { get; set; }
+    public string? Email { get; set; }
+    public string? Role { get; set; }
 }
 
 public class CompanySubscriptionInfoDto

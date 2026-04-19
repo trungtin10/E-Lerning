@@ -49,19 +49,22 @@ public class TicketController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly INotificationService _notification;
+    private readonly IEmailService _email;
 
     public TicketController(
         ApplicationDbContext context,
         IAuditService audit,
         IWebHostEnvironment env,
         UserManager<ApplicationUser> userManager,
-        INotificationService notification)
+        INotificationService notification,
+        IEmailService email)
     {
         _context = context;
         _audit = audit;
         _env = env;
         _userManager = userManager;
         _notification = notification;
+        _email = email;
     }
 
     private string? CurrentUserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -84,7 +87,7 @@ public class TicketController : ControllerBase
     private async Task<bool> CanAccessTicketAsync(SupportTicket ticket, string userId)
     {
         if (User.IsInRole("SuperAdmin")) return true;
-        if (!User.IsInRole("Admin")) return false;
+        if (!User.IsInRole("Admin") && !User.IsInRole("Editor")) return false;
         var companyId = await GetCompanyIdFromClaimsAsync();
         return companyId > 0 && ticket.CompanyId == companyId;
     }
@@ -228,6 +231,41 @@ public class TicketController : ControllerBase
                 "Ticket",
                 "Info",
                 "/admin/tickets/" + ticket.Id);
+
+            foreach (var super in superIds)
+            {
+                if (!string.IsNullOrEmpty(super.Email))
+                {
+                    await _email.SendTicketNotificationAsync(super.Email, $"Yêu cầu hỗ trợ từ {user.Company.CompanyName}", body, ticket.Id.ToString(), ticket.Subject);
+                }
+            }
+        }
+
+        // --- GỬI THÔNG BÁO CHO ADMIN CÔNG TY ---
+        var companyAdmins = (await _userManager.GetUsersInRoleAsync("Admin"))
+            .Concat(await _userManager.GetUsersInRoleAsync("Editor"))
+            .Where(u => u.CompanyId == user.CompanyId && u.IsActive)
+            .DistinctBy(u => u.Id)
+            .ToList();
+
+        if (companyAdmins.Count > 0)
+        {
+            var adminUserIds = companyAdmins.Select(u => u.Id).ToList();
+            await _notification.NotifyUsersAsync(
+                adminUserIds,
+                $"Học viên gửi hỗ trợ: {ticket.Subject}",
+                $"Học viên {displayName} thuộc công ty bạn vừa yêu cầu hỗ trợ mới.",
+                "Ticket",
+                "Info",
+                "/admin/tickets/" + ticket.Id);
+
+            foreach (var admin in companyAdmins)
+            {
+                if (!string.IsNullOrEmpty(admin.Email))
+                {
+                    await _email.SendTicketNotificationAsync(admin.Email, $"Học viên gửi hỗ trợ: {ticket.Subject}", body, ticket.Id.ToString(), ticket.Subject);
+                }
+            }
         }
 
         await _audit.LogAsync("Create", "SupportTicket", ticket.Id.ToString(), null, ticket.Subject, "User gửi yêu cầu hỗ trợ");
@@ -281,7 +319,7 @@ public class TicketController : ControllerBase
 
     /// <summary>Admin công ty: tạo ticket kèm ảnh (multipart).</summary>
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Editor")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<SupportTicketListItemDto>> Create(
         [FromForm] string subject,
@@ -348,6 +386,14 @@ public class TicketController : ControllerBase
                 "Ticket",
                 "Info",
                 "/admin/tickets/" + ticket.Id);
+
+            foreach (var super in superIds)
+            {
+                if (!string.IsNullOrEmpty(super.Email))
+                {
+                    await _email.SendTicketNotificationAsync(super.Email, $"Ticket mới: {ticket.Subject}", content, ticket.Id.ToString(), ticket.Subject);
+                }
+            }
         }
 
         await _audit.LogAsync("Create", "SupportTicket", ticket.Id.ToString(), null, ticket.Subject, "Tạo ticket hỗ trợ (diễn đàn)");
@@ -369,7 +415,7 @@ public class TicketController : ControllerBase
 
     /// <summary>Admin công ty: mọi ticket của công ty. SuperAdmin không dùng endpoint này.</summary>
     [HttpGet("my")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Editor")]
     public async Task<ActionResult<IEnumerable<SupportTicketListItemDto>>> GetCompanyTickets()
     {
         var companyId = await GetCompanyIdFromClaimsAsync();
@@ -445,7 +491,7 @@ public class TicketController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "SuperAdmin,Admin,Editor")]
     public async Task<ActionResult<SupportTicketThreadDto>> GetThread(int id)
     {
         var userId = CurrentUserId;
@@ -463,7 +509,7 @@ public class TicketController : ControllerBase
 
     /// <summary>Thêm bài trong luồng (Admin công ty hoặc SuperAdmin), có thể đính kèm ảnh.</summary>
     [HttpPost("{id:int}/posts")]
-    [Authorize(Roles = "SuperAdmin,Admin")]
+    [Authorize(Roles = "SuperAdmin,Admin,Editor")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<SupportTicketThreadDto>> AddPost(
         int id,
@@ -493,8 +539,8 @@ public class TicketController : ControllerBase
         if (ticket == null) return NotFound();
         if (!await CanAccessTicketAsync(ticket, userId)) return Forbid();
 
-        var isSuper = User.IsInRole("SuperAdmin");
-        if (!string.IsNullOrWhiteSpace(status) && isSuper)
+        var canChangeStatus = isSuper || User.IsInRole("Admin") || User.IsInRole("Editor");
+        if (!string.IsNullOrWhiteSpace(status) && canChangeStatus)
         {
             var s = status.Trim();
             if (s is "Open" or "InProgress" or "Resolved" or "Closed")
@@ -542,19 +588,34 @@ public class TicketController : ControllerBase
                 "Ticket",
                 "Info",
                 "/admin/tickets/" + ticket.Id);
+
+            var originalAuthor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == ticket.UserId);
+            if (originalAuthor != null && !string.IsNullOrEmpty(originalAuthor.Email))
+            {
+                await _email.SendTicketNotificationAsync(originalAuthor.Email, $"Phản hồi từ Ban Quản Trị: {ticket.Subject}", post.Body, ticket.Id.ToString(), ticket.Subject);
+            }
         }
         else
         {
-            var superIds = (await _userManager.GetUsersInRoleAsync("SuperAdmin")).Select(u => u.Id).ToList();
-            if (superIds.Count > 0)
+            var superUsers = await _userManager.GetUsersInRoleAsync("SuperAdmin");
+            var superUserIds = superUsers.Select(u => u.Id).ToList();
+            if (superUserIds.Count > 0)
             {
                 await _notification.NotifyUsersAsync(
-                    superIds,
+                    superUserIds,
                     $"Cập nhật ticket: {ticket.Subject}",
                     $"{ticket.Company.CompanyName}: {(post.Body.Length > 200 ? post.Body[..200] + "…" : post.Body)}",
                     "Ticket",
                     "Info",
                     "/admin/tickets/" + ticket.Id);
+
+                foreach (var super in superUsers)
+                {
+                    if (!string.IsNullOrEmpty(super.Email))
+                    {
+                        await _email.SendTicketNotificationAsync(super.Email, $"Cập nhật Ticket: {ticket.Subject}", post.Body, ticket.Id.ToString(), ticket.Subject);
+                    }
+                }
             }
         }
 
@@ -612,12 +673,25 @@ public class TicketController : ControllerBase
     }
 
     [HttpPatch("{id:int}/status")]
-    [Authorize(Roles = "SuperAdmin")]
+    [Authorize(Roles = "SuperAdmin,Admin,Editor")]
     public async Task<ActionResult<SupportTicketListItemDto>> SetStatus(int id, [FromBody] TicketStatusPatchDto dto)
     {
+        var userId = CurrentUserId;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
         var ticket = await _context.SupportTickets.Include(t => t.Company).Include(t => t.Author).FirstOrDefaultAsync(t => t.Id == id);
         if (ticket == null) return NotFound();
+        
+        if (!await CanAccessTicketAsync(ticket, userId)) return Forbid();
+
+        var isSuper = User.IsInRole("SuperAdmin");
+        var isAdmin = User.IsInRole("Admin") || User.IsInRole("Editor");
         var s = dto.Status?.Trim() ?? "";
+        
+        // Cả SuperAdmin và Admin công ty đều có quyền đổi trạng thái nếu có quyền truy cập ticket
+        if (!isSuper && !isAdmin)
+             return BadRequest("Bạn không có quyền thay đổi trạng thái yêu cầu hỗ trợ này.");
+
         if (s is not ("Open" or "InProgress" or "Resolved" or "Closed"))
             return BadRequest("Status không hợp lệ.");
         ticket.Status = s;

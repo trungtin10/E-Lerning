@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Security.Claims;
 using System.Web;
 
@@ -68,16 +69,20 @@ public class SuperAdminController : ControllerBase
         return $"{Request.Scheme}://{host}";
     }
 
-    private async Task<bool> TableExistsAsync(string tableName)
+    private async Task<bool> TableExistsAsync(string tableName, IDbContextTransaction? transaction = null)
     {
         var connection = _context.Database.GetDbConnection();
+        var currentTransaction = _context.Database.CurrentTransaction;
+
+        bool wasOpen = connection.State == System.Data.ConnectionState.Open;
+        if (!wasOpen) await connection.OpenAsync();
+
         try
         {
-            if (connection.State != System.Data.ConnectionState.Open)
-                await connection.OpenAsync();
-
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tableName";
+            command.Transaction = transaction?.GetDbTransaction();
+
             var param = command.CreateParameter();
             param.ParameterName = "@tableName";
             param.Value = tableName;
@@ -88,7 +93,8 @@ public class SuperAdminController : ControllerBase
         }
         finally
         {
-            if (connection.State == System.Data.ConnectionState.Open)
+            // Chỉ đóng kết nối nếu chúng ta tự mở nó và KHÔNG có transaction nào đang chạy
+            if (!wasOpen && currentTransaction == null && connection.State == System.Data.ConnectionState.Open)
                 await connection.CloseAsync();
         }
     }
@@ -144,7 +150,8 @@ public class SuperAdminController : ControllerBase
                 SubDomain = user.Company?.SubDomain,
                 IsActive = user.IsActive,
                 EmailConfirmed = user.EmailConfirmed,
-                IsExpired = isExpired
+                IsExpired = isExpired,
+                Status = !user.IsActive ? "Đã khóa" : (!user.EmailConfirmed ? "Chưa kích hoạt" : "Hoạt động")
             });
         }
         return Ok(userSummaries);
@@ -216,7 +223,11 @@ public class SuperAdminController : ControllerBase
 
             return Ok(new { Message = "Thành công!" });
         }
-        catch (Exception ex) { return StatusCode(500, ex.Message); }
+        catch (Exception ex) 
+        { 
+            var detailedMsg = ex.InnerException != null ? $"{ex.Message} -> {ex.InnerException.Message}" : ex.Message;
+            return StatusCode(500, detailedMsg); 
+        }
     }
 
     [HttpGet("dashboard-stats")]
@@ -308,6 +319,8 @@ public class SuperAdminController : ControllerBase
                 return Conflict("Công ty/subdomain này đã kích hoạt rồi.");
             if (await _userManager.FindByNameAsync(form.Account) != null)
                 return Conflict("Tài khoản admin này đã kích hoạt rồi.");
+            if (!string.IsNullOrEmpty(form.ContactEmail) && await _userManager.FindByEmailAsync(form.ContactEmail) != null)
+                return Conflict("Địa chỉ Email này đã được sử dụng bởi một tài khoản khác.");
 
             string? logoUrl = null;
             if (form.LogoFile != null && form.LogoFile.Length > 0)
@@ -325,7 +338,7 @@ public class SuperAdminController : ControllerBase
             await _context.SaveChangesAsync();
 
             // Dùng thử: set gói + hết hạn theo ngày (KHÔNG tạo giao dịch)
-            var trialDays = form.ServicePlanDurationDays > 0 ? form.ServicePlanDurationDays : 7;
+            var trialDays = form.ServicePlanDurationDays;
             if (trialDays > 0)
             {
                 // Nếu không truyền ServicePlanId thì default Basic
@@ -339,7 +352,7 @@ public class SuperAdminController : ControllerBase
                 {
                     var expiresAt = DateTime.UtcNow.AddDays(trialDays);
                     company.ServicePlanId = plan.Id;
-                    company.ServicePlan = plan.Name;
+                    company.ServicePlan = $"Free ({trialDays} ngày dùng thử)";
                     company.MaxUsers = plan.MaxUsers;
                     company.PlanExpiresAt = expiresAt;
                 }
@@ -485,7 +498,6 @@ public class SuperAdminController : ControllerBase
         var baseUrl = GetBaseUrl();
         var now = DateTime.UtcNow;
         return await _context.Companies
-            .Where(c => c.SubDomain != "admin" && !c.CompanyName.Contains("Hệ Thống"))
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new CompanyDto(
                 c.Id,
@@ -500,6 +512,7 @@ public class SuperAdminController : ControllerBase
                 c.ContactEmail,
                 c.IsActive,
                 c.Users.Count,
+                c.IsActive ? "Đang hoạt động" : "Chưa kích hoạt",
                 c.CreatedAt,
                 c.UpdatedAt))
             .ToListAsync();
@@ -518,6 +531,15 @@ public class SuperAdminController : ControllerBase
             company.ContactEmail = form.ContactEmail;
             company.ServicePlan = form.ServicePlan;
             company.UpdatedAt = DateTime.UtcNow;
+
+            if (form.IsActive.HasValue) 
+            {
+                company.IsActive = form.IsActive.Value;
+                // Khóa/Mở khóa toàn bộ user của công ty này
+                await _context.Users
+                    .Where(u => u.CompanyId == company.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.IsActive, form.IsActive.Value));
+            }
 
             if (form.TrialDays.HasValue && form.TrialDays.Value > 0)
             {
@@ -555,9 +577,12 @@ public class SuperAdminController : ControllerBase
     {
         var user = await _userManager.FindByIdAsync(id);
         if (user == null) return NotFound();
-        if (user.UserName == "superadmin") return BadRequest("Không thể sửa SuperAdmin.");
+        
+        // Chỉ ngăn chặn việc xóa hoặc đổi Role của chính mình nếu là SuperAdmin duy nhất (optional), 
+        // nhưng ở đây người dùng muốn SỬA được Gmail nên ta bỏ chặn.
+        // if (user.UserName == "superadmin") return BadRequest("Không thể sửa SuperAdmin."); 
 
-        user.FullName = dto.FullName;
+        if (!string.IsNullOrWhiteSpace(dto.FullName)) user.FullName = dto.FullName;
         var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
         user.Email = email;
         user.NormalizedEmail = _userManager.NormalizeEmail(email);
@@ -565,11 +590,15 @@ public class SuperAdminController : ControllerBase
         if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
 
         var currentRoles = await _userManager.GetRolesAsync(user);
-        if (!currentRoles.Contains(dto.Role))
+        if (!string.IsNullOrWhiteSpace(dto.Role) && !currentRoles.Contains(dto.Role))
         {
-            await _userManager.RemoveFromRolesAsync(user, currentRoles);
-            if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
-            await _userManager.AddToRoleAsync(user, dto.Role);
+            // Bảo vệ: Không cho phép đổi Role của tài khoản 'superadmin' gốc để tránh mất quyền quản trị tối cao
+            if (user.UserName?.ToLower() != "superadmin")
+            {
+                await _userManager.RemoveFromRolesAsync(user, currentRoles);
+                if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
+                await _userManager.AddToRoleAsync(user, dto.Role);
+            }
         }
 
         await _audit.LogAsync("Update", "User", id, user.UserName, null, $"Cập nhật user {user.FullName} ({user.UserName})");
@@ -593,6 +622,24 @@ public class SuperAdminController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Không thể cập nhật trạng thái.");
 
+        // Nếu người dùng là Admin của một công ty, khóa/mở khóa công ty và toàn bộ tài khoản user thuộc công ty đó
+        if (user.CompanyId.HasValue && await _userManager.IsInRoleAsync(user, "Admin"))
+        {
+            var company = await _context.Companies.FindAsync(user.CompanyId.Value);
+            if (company != null)
+            {
+                company.IsActive = dto.IsActive;
+                company.UpdatedAt = DateTime.UtcNow;
+                
+                // Khóa/mở khóa tất cả user (kể cả admin)
+                await _context.Users
+                    .Where(u => u.CompanyId == company.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.IsActive, dto.IsActive));
+                    
+                await _context.SaveChangesAsync();
+            }
+        }
+
         var detail = dto.IsActive ? "Mở khóa" : "Tạm khóa";
         await _audit.LogAsync("Update", "User", id, user.UserName, null, $"{detail} tài khoản {user.FullName} ({user.UserName})");
         return Ok(new { isActive = user.IsActive });
@@ -605,13 +652,64 @@ public class SuperAdminController : ControllerBase
         if (user == null) return NotFound();
         if (user.UserName == "superadmin") return BadRequest("Không thể xóa SuperAdmin.");
         
-        var result = await _userManager.DeleteAsync(user);
-        if (!result.Succeeded)
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Lỗi khi xóa người dùng.");
+            if (await TableExistsAsync("LearnerBehaviorEvents", transaction))
+            {
+                var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => e.UserId == userId).ToListAsync();
+                _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
+            }
+
+            if (await TableExistsAsync("AnnouncementUserStates", transaction))
+            {
+                var announcementStates = await _context.AnnouncementUserStates.Where(s => s.UserId == userId).ToListAsync();
+                _context.AnnouncementUserStates.RemoveRange(announcementStates);
+            }
+
+            var quizAttempts = await _context.QuizAttempts.Where(qa => qa.UserId == userId).ToListAsync();
+            _context.QuizAttempts.RemoveRange(quizAttempts);
+
+            var progress = await _context.LessonProgresses.Where(lp => lp.Enrollment.UserId == userId).ToListAsync();
+            _context.LessonProgresses.RemoveRange(progress);
+
+            var certificates = await _context.Certificates.Where(cert => cert.UserId == userId).ToListAsync();
+            _context.Certificates.RemoveRange(certificates);
+
+            var enrollments = await _context.CourseEnrollments.Where(ce => ce.UserId == userId).ToListAsync();
+            _context.CourseEnrollments.RemoveRange(enrollments);
+
+            var userPosts = await _context.SupportTicketPosts.Where(p => p.UserId == userId).ToListAsync();
+            _context.SupportTicketPosts.RemoveRange(userPosts);
+
+            var userTickets = await _context.SupportTickets.Where(t => t.UserId == userId).ToListAsync();
+            var ticketIds = userTickets.Select(t => t.Id).ToList();
+            if (ticketIds.Any())
+            {
+                var ticketsPosts = await _context.SupportTicketPosts.Where(p => ticketIds.Contains(p.SupportTicketId)).ToListAsync();
+                _context.SupportTicketPosts.RemoveRange(ticketsPosts);
+            }
+            _context.SupportTickets.RemoveRange(userTickets);
+            
+            await _context.SaveChangesAsync();
+
+            var result = await _userManager.DeleteAsync(user);
+            if (!result.Succeeded)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Lỗi khi xóa người dùng.");
+            }
+            
+            await _audit.LogAsync("Delete", "User", userId, user.UserName, null, $"Xóa user {user.FullName} ({user.UserName})");
+            
+            await transaction.CommitAsync();
+            return Ok();
         }
-        await _audit.LogAsync("Delete", "User", userId, user.UserName, null, $"Xóa user {user.FullName} ({user.UserName})");
-        return Ok();
+        catch (Exception ex)
+        {
+            try { await transaction.RollbackAsync(); } catch { /* Ignore if already completed */ }
+            return StatusCode(500, $"Lỗi hệ thống khi xóa user: {ex.Message} {(ex.InnerException != null ? " -> " : "")}{ex.InnerException?.Message}"); 
+        }
     }
 
     [HttpDelete("companies/{id}")]
@@ -624,6 +722,7 @@ public class SuperAdminController : ControllerBase
                 .Include(c => c.Courses).ThenInclude(crs => crs.Lessons).ThenInclude(l => l.Quizzes)
                 .Include(c => c.Categories)
                 .Include(c => c.Departments)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(c => c.Id == id);
                 
             if (company == null) return NotFound();
@@ -634,13 +733,13 @@ public class SuperAdminController : ControllerBase
             var quizIds = company.Courses.SelectMany(c => c.Lessons).SelectMany(l => l.Quizzes).Select(q => q.Id).ToList();
 
             // 1. Dọn dẹp dữ liệu tương tác của Users (Foreign Key: NoAction)
-            if (await TableExistsAsync("LearnerBehaviorEvents"))
+            if (await TableExistsAsync("LearnerBehaviorEvents", null))
             {
                 var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => userIds.Contains(e.UserId!) || courseIds.Contains(e.CourseId)).ToListAsync();
                 _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
             }
 
-            if (await TableExistsAsync("AnnouncementUserStates"))
+            if (await TableExistsAsync("AnnouncementUserStates", null))
             {
                 var announcementStates = await _context.AnnouncementUserStates.Where(s => userIds.Contains(s.UserId)).ToListAsync();
                 _context.AnnouncementUserStates.RemoveRange(announcementStates);

@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
 using System.Security.Claims;
+using System.Web;
 
 namespace ELearning.Api.Controllers;
 
@@ -19,13 +21,35 @@ public class AdminController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IAuditService _audit;
+    private readonly IEmailService _emailService;
+    private readonly IConfiguration _config;
+    private readonly IWebHostEnvironment _env;
 
-    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IAuditService audit)
+    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IAuditService audit, IEmailService emailService, IConfiguration config, IWebHostEnvironment env)
     {
         _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
         _audit = audit;
+        _emailService = emailService;
+        _config = config;
+        _env = env;
+    }
+
+    private string GetBaseUrl()
+    {
+        var configuredDomain = _config["AppSettings:AppDomain"];
+        if (!string.IsNullOrEmpty(configuredDomain)) return configuredDomain.TrimEnd('/');
+        
+        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
+        {
+            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
+            return $"{proto}://{forwardedHost}";
+        }
+
+        var host = Request.Host.Value ?? string.Empty;
+        if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
+        return $"{Request.Scheme}://{host}";
     }
 
     private int GetAdminCompanyId()
@@ -75,22 +99,37 @@ public class AdminController : ControllerBase
         var user = new ApplicationUser
         {
             UserName = dto.Account,
-            Email = dto.Email, // SỬA: Dùng email khách nhập
+            Email = dto.Email,
             FullName = dto.FullName,
-            CompanyId = companyId, // Tự động gán vào công ty của Admin
+            CompanyId = companyId,
             IsActive = true,
-            EmailConfirmed = true,
+            EmailConfirmed = false,
             CreatedAt = DateTime.UtcNow
         };
 
         var result = await _userManager.CreateAsync(user, dto.Password);
         if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
 
-        // Gán Role (Student hoặc Instructor)
+        if (!await _roleManager.RoleExistsAsync(dto.Role)) 
+            await _roleManager.CreateAsync(new IdentityRole(dto.Role));
         await _userManager.AddToRoleAsync(user, dto.Role);
 
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var encodedToken = HttpUtility.UrlEncode(token);
+        var activationLink = $"{GetBaseUrl()}/confirm-email?userId={user.Id}&token={encodedToken}";
+
+        try 
+        {
+            await _emailService.SendActivationEmailAsync(user.Email!, user.FullName, user.UserName!, dto.Password, activationLink);
+        } 
+        catch (Exception ex) 
+        {
+            await _userManager.DeleteAsync(user);
+            return BadRequest("Email không hợp lệ hoặc lỗi gửi thư. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
+        }
+
         await _audit.LogAsync("Create", "User", user.Id, null, $"{user.FullName} ({user.UserName})", $"Tạo nhân viên {dto.Role}");
-        return Ok(new { Message = "Tạo nhân viên thành công!" });
+        return Ok(new { Message = "Đã gửi yêu cầu xác nhận kích hoạt tài khoản!" });
     }
 
     [HttpPut("users/{id}")]
@@ -100,7 +139,7 @@ public class AdminController : ControllerBase
         var user = await _userManager.FindByIdAsync(id);
         if (user == null || user.CompanyId != companyId) return NotFound();
 
-        user.FullName = dto.FullName;
+        user.FullName = dto.FullName ?? user.FullName;
         var email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim();
         user.Email = email;
         user.NormalizedEmail = _userManager.NormalizeEmail(email);
@@ -108,7 +147,7 @@ public class AdminController : ControllerBase
         if (!result.Succeeded) return BadRequest(result.Errors.FirstOrDefault()?.Description);
 
         var currentRoles = await _userManager.GetRolesAsync(user);
-        if (!currentRoles.Contains(dto.Role))
+        if (dto.Role != null && !currentRoles.Contains(dto.Role))
         {
             await _userManager.RemoveFromRolesAsync(user, currentRoles);
             if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
@@ -159,12 +198,23 @@ public class AdminController : ControllerBase
     public async Task<ActionResult<CompanySubscriptionInfoDto>> GetSubscriptionInfo()
     {
         int companyId = GetAdminCompanyId();
-        var company = await _context.Companies.Include(c => c.Plan).FirstOrDefaultAsync(c => c.Id == companyId);
+        // Use AsNoTracking to get fresh data from database (bypass EF cache)
+        var company = await _context.Companies
+            .AsNoTracking()
+            .Include(c => c.Plan)
+            .FirstOrDefaultAsync(c => c.Id == companyId);
         if (company == null) return NotFound();
+
+        // If Plan navigation property is not loaded, try to load it explicitly
+        if (company.Plan == null && company.ServicePlanId.HasValue)
+        {
+            company.Plan = await _context.ServicePlans.AsNoTracking().FirstOrDefaultAsync(p => p.Id == company.ServicePlanId.Value);
+        }
 
         var userCount = await _context.Users.CountAsync(u => u.CompanyId == companyId);
 
         var transactions = await _context.Transactions
+            .AsNoTracking()
             .Include(t => t.ServicePlan)
             .Where(t => t.CompanyId == companyId)
             .OrderByDescending(t => t.CreatedAt)
@@ -179,13 +229,50 @@ public class AdminController : ControllerBase
             })
             .ToListAsync();
 
+        // Determine current plan: prefer descriptive string field first (since it may contain trial info), then Plan object name, then "Free"
+        string currentPlanName = company.ServicePlan ?? company.Plan?.Name ?? "Free";
+
         return Ok(new CompanySubscriptionInfoDto
         {
-            CurrentPlan = company.Plan?.Name ?? company.ServicePlan,
+            CurrentPlan = currentPlanName,
             PlanExpiryDate = company.PlanExpiresAt,
             UserCount = userCount,
             MaxUsers = company.Plan?.MaxUsers ?? company.MaxUsers ?? 0,
             Transactions = transactions
         });
+    }
+
+    /// <summary>Admin công ty cập nhật logo (chỉ role Admin).</summary>
+    [HttpPost("company-logo")]
+    public async Task<IActionResult> UploadCompanyLogo(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("Không có file nào được chọn.");
+
+        int companyId = GetAdminCompanyId();
+        if (companyId <= 0)
+            return BadRequest("Không xác định được công ty.");
+
+        var company = await _context.Companies.FindAsync(companyId);
+        if (company == null)
+            return NotFound();
+
+        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
+        if (!Directory.Exists(uploadDir))
+            Directory.CreateDirectory(uploadDir);
+
+        var fileName = "company_logo_" + companyId + "_" + Guid.NewGuid().ToString("N") + Path.GetExtension(file.FileName);
+        var filePath = Path.Combine(uploadDir, fileName);
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        company.LogoUrl = $"/uploads/{fileName}";
+        company.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        await _audit.LogAsync("Update", "Company", companyId.ToString(), null, $"{company.CompanyName} ({company.SubDomain})", "Cập nhật logo công ty");
+        return Ok(new { url = company.LogoUrl });
     }
 }

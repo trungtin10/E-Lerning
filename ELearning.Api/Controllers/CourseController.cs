@@ -29,6 +29,9 @@ public class CourseController : ControllerBase
         _logger = logger;
     }
 
+    private bool IsContentStaff() =>
+        User.IsInRole("SuperAdmin") || User.IsInRole("Admin") || User.IsInRole("Editor");
+
     private async Task<int?> GetUserCompanyIdAsync()
     {
         var claim = User.FindFirst("CompanyId")?.Value
@@ -59,41 +62,67 @@ public class CourseController : ControllerBase
         return $"{Request.Scheme}://{host}";
     }
 
+    [AllowAnonymous]
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CourseSummaryDto>>> GetCourses()
     {
         try
         {
             var query = _context.Courses.Include(c => c.Category).Include(c => c.Company).AsQueryable();
+            var baseUrl = GetBaseUrl();
+
+            if (User.IsInRole("SuperAdmin"))
+            {
+                // SuperAdmin thấy toàn bộ khóa học (cả draft và mọi công ty)
+                return await query.OrderByDescending(c => c.CreatedAt)
+                    .Select(c => new CourseSummaryDto(
+                        c.Id, c.CourseCode, c.Title, 
+                        c.ThumbnailUrl != null ? (c.ThumbnailUrl.StartsWith("http") ? c.ThumbnailUrl : baseUrl + c.ThumbnailUrl) : null, 
+                        c.CategoryId, c.Category != null ? c.Category.Name : "Chưa phân loại", 
+                        c.CompanyId, c.Company != null ? c.Company.CompanyName : "Hệ thống tổng", 
+                        null, c.IsPublished, c.CreatedAt, c.StartDate, c.EndDate))
+                    .ToListAsync();
+            }
+
             // Người học/nhân viên: chỉ xem khóa học đã công khai
-            if (!User.IsInRole("SuperAdmin") && !User.IsInRole("Admin"))
+            if (!IsContentStaff())
             {
                 query = query.Where(c => c.IsPublished);
             }
-            if (!User.IsInRole("SuperAdmin"))
-            {
-                var companyId = await GetUserCompanyIdAsync() ?? 0;
-                if (companyId > 0)
-                    query = query.Where(c => c.CompanyId == companyId || c.CompanyId == null);
-                else
-                    query = query.Where(c => c.CompanyId == null);
-            }
-            var baseUrl = GetBaseUrl();
-            return await query.OrderByDescending(c => c.CreatedAt).Select(c => new CourseSummaryDto(c.Id, c.CourseCode, c.Title, c.ThumbnailUrl != null ? (c.ThumbnailUrl.StartsWith("http") ? c.ThumbnailUrl : baseUrl + c.ThumbnailUrl) : null, c.CategoryId, c.Category != null ? c.Category.Name : "Chưa phân loại", c.CompanyId, c.Company != null ? c.Company.CompanyName : "Hệ thống tổng", null, c.IsPublished, c.CreatedAt, c.StartDate, c.EndDate)).ToListAsync();
+            
+            // Lọc theo Company
+            var companyId = await GetUserCompanyIdAsync() ?? 0;
+            if (companyId > 0)
+                query = query.Where(c => c.CompanyId == companyId || c.CompanyId == null);
+            else
+                query = query.Where(c => c.CompanyId == null);
+
+            return await query.OrderByDescending(c => c.CreatedAt)
+                .Select(c => new CourseSummaryDto(
+                    c.Id, c.CourseCode, c.Title, 
+                    c.ThumbnailUrl != null ? (c.ThumbnailUrl.StartsWith("http") ? c.ThumbnailUrl : baseUrl + c.ThumbnailUrl) : null, 
+                    c.CategoryId, c.Category != null ? c.Category.Name : "Chưa phân loại", 
+                    c.CompanyId, c.Company != null ? c.Company.CompanyName : "Hệ thống tổng", 
+                    null, c.IsPublished, c.CreatedAt, c.StartDate, c.EndDate))
+                .ToListAsync();
         }
         catch (Exception ex) { return StatusCode(500, $"Lỗi: {ex.Message}"); }
     }
 
+    [AllowAnonymous]
     [HttpGet("{id}")]
+    [HttpGet("detail/{id}")]
     public async Task<ActionResult<CourseDetailDto>> GetCourseDetail(int id)
     {
         try
         {
             var course = await _context.Courses.Include(c => c.Lessons).Include(c => c.Category).FirstOrDefaultAsync(c => c.Id == id);
-            if (course == null) return NotFound();
+            if (course == null) return NotFound(new { message = $"Không tìm thấy khóa học với ID {id}" });
+
             // Người học/nhân viên không được xem khóa học bản nháp
-            if (!course.IsPublished && !User.IsInRole("SuperAdmin") && !User.IsInRole("Admin"))
-                return NotFound();
+            if (!course.IsPublished && !IsContentStaff())
+                return NotFound(new { message = "Khóa học này đang ở trạng thái bản nháp và chưa được công khai." });
+
             var lessons = course.Lessons.OrderBy(l => l.OrderIndex).ToList();
 
             var lessonDtos = lessons.Select(l =>
@@ -107,10 +136,11 @@ public class CourseController : ControllerBase
                         var list = JsonSerializer.Deserialize<List<JsonSection>>(l.SectionsJson, jsonOpts);
                         sections = list?.Select(s =>
                         {
-                            var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0)
+                            var videoUrls = (s.VideoUrls != null && s.VideoUrls.Count > 0)
                                 ? s.VideoUrls
                                 : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
-                            return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.VideoUrl, urls);
+                            var docUrls = s.DocUrls ?? new List<string>();
+                            return new LessonSectionDto(s.Title ?? "", s.Content, s.ShowVideo, s.ShowQuiz, s.ShowDocs, s.VideoUrl, videoUrls, docUrls);
                         }).ToList();
                     }
                     catch { }
@@ -122,17 +152,13 @@ public class CourseController : ControllerBase
                     var hasQuiz = l.ShowQuiz1 || l.ShowQuiz2 || l.ShowQuiz3 || l.ShowQuiz4 || l.ShowQuiz5;
                     if (!hasContent && !hasMedia && !hasQuiz)
                     {
-                        sections = new List<LessonSectionDto> { new("1. Phần nội dung", null, false, false, null) };
-                    }
-                    else
-                    {
                         sections = new List<LessonSectionDto>
                         {
-                            new(l.Section1Title ?? "1. Giới thiệu bài học", l.Overview, l.ShowVideo1, l.ShowQuiz1, l.VideoUrl1),
-                            new(l.Section2Title ?? "2. Bài giảng chi tiết", l.Content, l.ShowVideo2, l.ShowQuiz2, l.VideoUrl2),
-                            new(l.Section3Title ?? "3. Phần ôn tập", l.ReviewContent, l.ShowVideo3, l.ShowQuiz3, l.VideoUrl3),
-                            new(l.Section4Title ?? "4. Câu hỏi tự luận", l.EssayQuestion, l.ShowVideo4, l.ShowQuiz4, l.VideoUrl4),
-                            new(l.Section5Title ?? "5. Tổng kết bài học", null, l.ShowVideo5, l.ShowQuiz5, l.VideoUrl5)
+                            new(l.Section1Title ?? "1. Giới thiệu bài học", l.Overview, l.ShowVideo1, l.ShowQuiz1, false, l.VideoUrl1),
+                            new(l.Section2Title ?? "2. Bài giảng chi tiết", l.Content, l.ShowVideo2, l.ShowQuiz2, false, l.VideoUrl2),
+                            new(l.Section3Title ?? "3. Phần ôn tập", l.ReviewContent, l.ShowVideo3, l.ShowQuiz3, false, l.VideoUrl3),
+                            new(l.Section4Title ?? "4. Câu hỏi tự luận", l.EssayQuestion, l.ShowVideo4, l.ShowQuiz4, false, l.VideoUrl4),
+                            new(l.Section5Title ?? "5. Tổng kết bài học", null, l.ShowVideo5, l.ShowQuiz5, false, l.VideoUrl5)
                         };
                     }
                 }
@@ -151,13 +177,27 @@ public class CourseController : ControllerBase
                 );
             }).ToList();
 
+            List<string>? introDocUrls = null;
+            if (!string.IsNullOrEmpty(course.IntroDocUrlsJson))
+            {
+                try
+                {
+                    introDocUrls = JsonSerializer.Deserialize<List<string>>(course.IntroDocUrlsJson);
+                }
+                catch { }
+            }
+
             return Ok(new CourseDetailDto(
                 course.Id, course.CourseCode, course.Title, course.Description,
                 course.ThumbnailUrl != null ? (course.ThumbnailUrl.StartsWith("http") ? course.ThumbnailUrl : course.ThumbnailUrl) : null,
                 course.CategoryId, course.Category != null ? course.Category.Name : null, course.StartDate, course.EndDate, lessonDtos,
                 course.ShowIntroVideo,
                 course.IntroVideoUrl != null ? (course.IntroVideoUrl.StartsWith("http") ? course.IntroVideoUrl : course.IntroVideoUrl) : null,
-                course.IntroExternalVideoUrl
+                course.IntroExternalVideoUrl,
+                course.IntroSectionsJson,
+                introDocUrls ?? new List<string>(),
+                course.IsPublished,
+                course.ShowIntroDocs
             ));
         }
         catch (Exception ex)
@@ -178,6 +218,24 @@ public class CourseController : ControllerBase
         return $"/uploads/videos/{fileName}";
     }
 
+    private async Task<string?> SaveDocFile(IFormFile? file)
+    {
+        if (file == null || file.Length == 0) return null;
+        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads/documents");
+        if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
+        
+        string originalName = Path.GetFileNameWithoutExtension(file.FileName);
+        // Only replace truly invalid characters, keep spaces and other valid chars
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var nameParts = originalName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries);
+        originalName = string.Join("-", nameParts); // Use hyphen as a safer separator for invalid chars
+        
+        var fileName = $"{originalName}---{Guid.NewGuid().ToString("N")[..8]}{Path.GetExtension(file.FileName)}";
+        var filePath = Path.Combine(uploadDir, fileName);
+        using (var stream = new FileStream(filePath, FileMode.Create)) { await file.CopyToAsync(stream); }
+        return $"/uploads/documents/{fileName}";
+    }
+
     [HttpPut("{id}")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateCourse(int id, [FromForm] CreateCourseFormDto form)
@@ -186,22 +244,115 @@ public class CourseController : ControllerBase
         {
             var course = await _context.Courses.FindAsync(id);
             if (course == null) return NotFound();
-            course.CourseCode = form.CourseCode ?? course.CourseCode;
-            course.Title = form.Title ?? course.Title;
-            course.Description = form.Description ?? course.Description;
-            course.IsPublished = form.IsPublished;
-            course.CategoryId = form.CategoryId ?? course.CategoryId;
-            if (User.IsInRole("SuperAdmin"))
-                course.CompanyId = form.CompanyId.HasValue && form.CompanyId.Value > 0 ? form.CompanyId : null;
-            course.StartDate = form.StartDate ?? course.StartDate;
-            course.EndDate = form.EndDate;
-            course.ShowIntroVideo = form.ShowIntroVideo;
-            course.IntroExternalVideoUrl = form.IntroExternalVideoUrl;
+            
+            if (form.CourseCode != null) course.CourseCode = form.CourseCode;
+            if (form.Title != null) course.Title = form.Title;
+            if (form.Description != null) course.Description = form.Description;
+            if (form.StartDate.HasValue) course.StartDate = form.StartDate.Value;
+            if (form.EndDate.HasValue) course.EndDate = form.EndDate.Value;
+            if (form.ShowIntroVideo.HasValue) course.ShowIntroVideo = form.ShowIntroVideo.Value;
+            if (form.ShowIntroDocs.HasValue) course.ShowIntroDocs = form.ShowIntroDocs.Value;
+            if (form.CategoryId.HasValue) course.CategoryId = form.CategoryId.Value;
+            if (User.IsInRole("SuperAdmin") && Request.Form.ContainsKey("CompanyId"))
+            {
+                if (int.TryParse(Request.Form["CompanyId"], out int cid))
+                    course.CompanyId = cid > 0 ? cid : null;
+            }
+            if (Request.Form.ContainsKey("IsPublished"))
+            {
+                var pubStr = Request.Form["IsPublished"].ToString().ToLower();
+                if (bool.TryParse(pubStr, out bool pub))
+                    course.IsPublished = pub;
+                else if (pubStr == "1" || pubStr == "true")
+                    course.IsPublished = true;
+                else
+                    course.IsPublished = false;
+            }
+            
+            // IntroExternalVideoUrl and IntroSectionsJson are handled below
+            
+            // Xử lý tài liệu Intro tổng quan (nếu vẫn dùng)
+            List<string> introDocUrls = new List<string>();
+            try {
+                if (!string.IsNullOrEmpty(form.IntroDocUrlsJson)) {
+                    var existingDocs = JsonSerializer.Deserialize<List<string>>(form.IntroDocUrlsJson);
+                    if (existingDocs != null) introDocUrls.AddRange(existingDocs);
+                }
+            } catch { }
+
+            // Xử lý CÁC MỤC GIỚI THIỆU CHI TIẾT (Intro Sections)
+            var jsonOpts = new JsonSerializerOptions { 
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+            List<JsonSection>? introSections = null;
+            if (!string.IsNullOrEmpty(form.IntroSectionsJson)) {
+                try {
+                    introSections = JsonSerializer.Deserialize<List<JsonSection>>(form.IntroSectionsJson, jsonOpts);
+                } catch (Exception ex) { 
+                    _logger.LogError(ex, "Error deserializing IntroSectionsJson");
+                }
+            }
+            
+            // Nếu không gửi lên JSON mới, hãy lấy từ dữ liệu hiện tại để tránh bị ghi đè thành rỗng
+            if (introSections == null && !string.IsNullOrEmpty(course.IntroSectionsJson)) {
+                try {
+                    introSections = JsonSerializer.Deserialize<List<JsonSection>>(course.IntroSectionsJson, jsonOpts);
+                } catch { }
+            }
+            
+            if (introSections == null) introSections = new List<JsonSection>();
+
+            foreach (var file in Request.Form.Files)
+            {
+                var fName = file.Name ?? "";
+                // Tài liệu tổng quan
+                if (fName.StartsWith("IntroDocFile_"))
+                {
+                    var url = await SaveDocFile(file);
+                    if (url != null) introDocUrls?.Add(url);
+                }
+                
+                // Video theo từng mục: IntroSecVideo_{index}
+                if (fName.StartsWith("IntroSecVideo_"))
+                {
+                    var parts = fName.Split('_');
+                    if (parts.Length > 1 && int.TryParse(parts[1], out int sIdx) && sIdx < introSections.Count)
+                    {
+                        var url = await SaveVideoFile(file);
+                        if (url != null) introSections[sIdx].VideoUrl = url;
+                    }
+                }
+
+                // Tài liệu theo từng mục: IntroSecDoc_{sIdx}_{fIdx}
+                if (fName.StartsWith("IntroSecDoc_"))
+                {
+                    var parts = fName.Split('_');
+                    if (parts.Length > 1 && int.TryParse(parts[1], out int sIdx) && sIdx < introSections.Count)
+                    {
+                        var url = await SaveDocFile(file);
+                        if (url != null) 
+                        {
+                            if (introSections[sIdx].DocUrls == null) introSections[sIdx].DocUrls = new List<string>();
+                            introSections[sIdx].DocUrls?.Add(url);
+                        }
+                    }
+                }
+            }
+            
+            course.IntroDocUrlsJson = JsonSerializer.Serialize(introDocUrls, jsonOpts);
+            course.IntroSectionsJson = JsonSerializer.Serialize(introSections, jsonOpts);
+
             var introVid = await SaveVideoFile(form.IntroVideoFile);
             if (introVid != null) course.IntroVideoUrl = introVid;
             await _context.SaveChangesAsync();
             await _audit.LogAsync("Update", "Course", id.ToString(), null, course.Title, "Cập nhật khóa học");
-            return Ok();
+            
+            return Ok(new { 
+                introSectionsJson = course.IntroSectionsJson,
+                introDocUrlsJson = course.IntroDocUrlsJson,
+                introVideoUrl = course.IntroVideoUrl
+            });
         }
         catch (Exception ex) { return StatusCode(500, ex.Message); }
     }
@@ -220,8 +371,15 @@ public class CourseController : ControllerBase
 
             if (!string.IsNullOrEmpty(form.SectionsJson))
             {
-                var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var sections = JsonSerializer.Deserialize<List<JsonSection>>(form.SectionsJson, jsonOpts);
+                var jsonOpts = new JsonSerializerOptions { 
+                    PropertyNameCaseInsensitive = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                };
+                List<JsonSection>? sections = null;
+                try {
+                    sections = JsonSerializer.Deserialize<List<JsonSection>>(form.SectionsJson, jsonOpts);
+                } catch { }
+
                 if (sections != null && sections.Count > 0)
                 {
                     var formFiles = Request.Form.Files;
@@ -243,6 +401,16 @@ public class CourseController : ControllerBase
                                 if (url != null) sections[sectionIndex].VideoUrls!.Add(url);
                             }
                         }
+                        else if (name.StartsWith("DocFile_") && name.Length > 8)
+                        {
+                            var parts = name.Split('_');
+                            if (parts.Length >= 2 && int.TryParse(parts[1], out int sectionIndex) && sectionIndex >= 0 && sectionIndex < sections.Count)
+                            {
+                                sections[sectionIndex].DocUrls ??= new List<string>();
+                                var url = await SaveDocFile(file);
+                                if (url != null) sections[sectionIndex].DocUrls!.Add(url);
+                            }
+                        }
                     }
                     for (int i = 0; i < sections.Count; i++)
                     {
@@ -250,7 +418,7 @@ public class CourseController : ControllerBase
                         if (sec?.VideoUrls != null && sec.VideoUrls.Count > 0)
                             sec.VideoUrl = sec.VideoUrls[0];
                     }
-                    lesson.SectionsJson = JsonSerializer.Serialize(sections);
+                    lesson.SectionsJson = JsonSerializer.Serialize(sections, jsonOpts);
                     lesson.Overview = sections.Count > 0 ? sections[0]?.Content : null;
                     lesson.Content = sections.Count > 1 ? sections[1].Content : null;
                     lesson.ReviewContent = sections.Count > 2 ? sections[2].Content : null;
@@ -279,8 +447,16 @@ public class CourseController : ControllerBase
                 await _context.SaveChangesAsync();
                 var sectionDtos = (sections ?? new List<JsonSection>()).Select(s =>
                 {
-                    var urls = (s.VideoUrls != null && s.VideoUrls.Count > 0) ? s.VideoUrls : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
-                    return new { title = s.Title, content = s.Content, showVideo = s.ShowVideo, showQuiz = s.ShowQuiz, videoUrls = urls ?? new List<string>() };
+                    var vUrls = (s.VideoUrls != null && s.VideoUrls.Count > 0) ? s.VideoUrls : (!string.IsNullOrEmpty(s.VideoUrl) ? new List<string> { s.VideoUrl } : null);
+                    return new { 
+                        title = s.Title, 
+                        content = s.Content, 
+                        showVideo = s.ShowVideo, 
+                        showQuiz = s.ShowQuiz, 
+                        showDocs = s.ShowDocs,
+                        videoUrls = vUrls ?? new List<string>(),
+                        docUrls = s.DocUrls ?? new List<string>()
+                    };
                 }).ToList();
                 return Ok(new { sections = sectionDtos });
             }
@@ -485,14 +661,33 @@ public class CourseController : ControllerBase
                 CourseCode = form.CourseCode ?? "", 
                 Title = form.Title ?? "", 
                 Description = form.Description, 
-                CategoryId = form.CategoryId.Value, 
+                CategoryId = form.CategoryId ?? 0, 
                 CompanyId = companyId,
-                IsPublished = form.IsPublished,
+                IsPublished = false, 
+                ShowIntroDocs = form.ShowIntroDocs ?? false,
                 StartDate = form.StartDate ?? DateTime.UtcNow, 
                 EndDate = form.EndDate,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
+
+            // Ép kiểu IsPublished từ FormData (Vì FormData gửi qua là string "true"/"false")
+            if (Request.Form.ContainsKey("IsPublished"))
+            {
+                if (bool.TryParse(Request.Form["IsPublished"], out bool pub))
+                    course.IsPublished = pub;
+                else if (Request.Form["IsPublished"] == "1")
+                    course.IsPublished = true;
+            }
+            else if (form.IsPublished.HasValue)
+            {
+                course.IsPublished = form.IsPublished.Value;
+            }
+            
+            if (course.CategoryId == 0) {
+                var firstCat = await _context.Categories.FirstOrDefaultAsync();
+                if (firstCat != null) course.CategoryId = firstCat.Id;
+            }
             
             _context.Courses.Add(course);
             await _context.SaveChangesAsync();
@@ -605,11 +800,14 @@ public class CourseController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteCourse(int id)
     {
-        var course = await _context.Courses
-            .Include(c => c.Lessons)
-            .ThenInclude(l => l.Quizzes)
-            .FirstOrDefaultAsync(c => c.Id == id);
-        if (course == null) return NotFound();
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var course = await _context.Courses
+                .Include(c => c.Lessons)
+                .ThenInclude(l => l.Quizzes)
+                .FirstOrDefaultAsync(c => c.Id == id);
+            if (course == null) return NotFound();
 
         // Scoped: Admin chỉ xóa khóa học của công ty mình (SuperAdmin được xóa tất cả)
         if (!User.IsInRole("SuperAdmin"))
@@ -656,6 +854,13 @@ public class CourseController : ControllerBase
         var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => e.CourseId == id).ToListAsync();
         _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
 
+        // Xóa thảo luận và ghi chú
+        var discussions = await _context.CourseDiscussions.Where(d => d.CourseId == id).ToListAsync();
+        _context.CourseDiscussions.RemoveRange(discussions);
+
+        var notes = await _context.UserNotes.Where(n => n.CourseId == id).ToListAsync();
+        _context.UserNotes.RemoveRange(notes);
+
         if (quizIds.Count > 0)
         {
             var questions = await _context.Questions.Where(q => quizIds.Contains(q.QuizId)).ToListAsync();
@@ -675,7 +880,15 @@ public class CourseController : ControllerBase
         _context.Courses.Remove(course);
 
         await _context.SaveChangesAsync();
-        await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học (kèm dữ liệu liên quan)");
-        return Ok();
+            await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học (kèm dữ liệu liên quan)");
+            
+            await transaction.CommitAsync();
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Lỗi khi xóa khóa học: {ex.Message} {(ex.InnerException != null ? " -> " + ex.InnerException.Message : "")}");
+        }
     }
 }

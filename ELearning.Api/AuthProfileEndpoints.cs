@@ -20,7 +20,64 @@ public static class AuthProfileEndpoints
         g.MapGet("/profile", GetProfileAsync);
         g.MapPut("/me", PutProfileAsync);
         g.MapPut("/profile", PutProfileAsync);
+        g.MapPost("/avatar", UploadAvatarAsync).DisableAntiforgery();
+        g.MapPost("/cover", UploadCoverAsync).DisableAntiforgery();
         return app;
+    }
+
+    private static async Task<IResult> UploadAvatarAsync(
+        IFormFile file,
+        ClaimsPrincipal principal,
+        UserManager<ApplicationUser> userManager,
+        IWebHostEnvironment env,
+        IAuditService audit)
+    {
+        return await HandleFileUpload(file, principal, userManager, env, audit, "avatar");
+    }
+
+    private static async Task<IResult> UploadCoverAsync(
+        IFormFile file,
+        ClaimsPrincipal principal,
+        UserManager<ApplicationUser> userManager,
+        IWebHostEnvironment env,
+        IAuditService audit)
+    {
+        return await HandleFileUpload(file, principal, userManager, env, audit, "cover");
+    }
+
+    private static async Task<IResult> HandleFileUpload(
+        IFormFile file,
+        ClaimsPrincipal principal,
+        UserManager<ApplicationUser> userManager,
+        IWebHostEnvironment env,
+        IAuditService audit,
+        string type)
+    {
+        if (file == null || file.Length == 0) return Results.BadRequest("Không có file nào được chọn.");
+        
+        var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var user = await userManager.FindByIdAsync(userId!);
+        if (user == null) return Results.NotFound();
+
+        var uploads = Path.Combine(env.ContentRootPath, "uploads");
+        if (!Directory.Exists(uploads)) Directory.CreateDirectory(uploads);
+
+        var fileName = $"{type}_{user.Id}_{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
+        var filePath = Path.Combine(uploads, fileName);
+
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        var url = $"/uploads/{fileName}";
+        if (type == "avatar") user.AvatarUrl = url;
+        else user.CoverPhotoUrl = url;
+
+        await userManager.UpdateAsync(user);
+        await audit.LogAsync("UpdatePhoto", "User", user.Id, null, null, $"Cập nhật {type}");
+
+        return Results.Ok(new { url });
     }
 
     private static async Task<IResult> GetProfileAsync(
@@ -51,8 +108,6 @@ public static class AuthProfileEndpoints
             return Results.BadRequest(new { message = "Họ tên tối đa 100 ký tự." });
         if (!string.IsNullOrEmpty(dto.PhoneNumber) && dto.PhoneNumber.Length > 50)
             return Results.BadRequest(new { message = "Số điện thoại tối đa 50 ký tự." });
-        if (!string.IsNullOrEmpty(dto.JobTitle) && dto.JobTitle.Length > 100)
-            return Results.BadRequest(new { message = "Chức danh tối đa 100 ký tự." });
 
         var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId))
@@ -61,9 +116,19 @@ public static class AuthProfileEndpoints
         if (user == null)
             return Results.NotFound();
 
+        // Cập nhật Email nếu có
+        if (!string.IsNullOrWhiteSpace(dto.Email) && !string.Equals(user.Email, dto.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await userManager.FindByEmailAsync(dto.Email.Trim());
+            if (existing != null && existing.Id != user.Id)
+                return Results.BadRequest(new { message = "Email này đã được sử dụng bởi người dùng khác." });
+            
+            user.Email = dto.Email.Trim();
+            user.NormalizedEmail = userManager.NormalizeEmail(user.Email);
+        }
+
         user.FullName = dto.FullName.Trim();
         user.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
-        user.JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim();
 
         var result = await userManager.UpdateAsync(user);
         if (!result.Succeeded)
@@ -91,7 +156,8 @@ public static class AuthProfileEndpoints
             companyName,
             subDomain,
             companyLogoUrl,
-            user.JobTitle);
+            user.AvatarUrl,
+            user.CoverPhotoUrl);
     }
 
     private static async Task<(string? LogoUrl, string? SubDomain, string? CompanyName)> GetCompanyBrandingAsync(

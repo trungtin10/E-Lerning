@@ -2,23 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api, { getUploadUrl } from '../../../api/axios';
-import {
-  MessageCircle, Plus, Loader2, Send, ImagePlus, ChevronLeft, Building2, Pin, Paperclip, X
-} from 'lucide-react';
+import { Loader2, Paperclip, ChevronLeft, Building2, HelpCircle, User, Phone, Undo, Redo, ListTodo, List, XCircle, Mail, Save } from 'lucide-react';
+import TiptapEditor from '../../../components/common/TiptapEditor';
 
-const statusLabel = (s) => {
-  const m = { Open: 'Mở', InProgress: 'Đang xử lý', Resolved: 'Đã xử lý', Closed: 'Đóng' };
-  return m[s] || s;
-};
-
-const statusBadgeClass = (s) => {
-  if (s === 'Resolved') return 'bg-success-subtle text-success-emphasis';
-  if (s === 'Closed') return 'bg-secondary-subtle text-secondary-emphasis';
-  if (s === 'InProgress') return 'bg-primary-subtle text-primary-emphasis';
-  return 'bg-warning-subtle text-dark';
-};
-
-/** Hiển thị giờ theo múi Việt Nam (API trả UTC có hậu tố Z). */
 const formatVnDateTime = (value) => {
   if (value == null) return '';
   const d = new Date(value);
@@ -26,11 +12,10 @@ const formatVnDateTime = (value) => {
   return d.toLocaleString('vi-VN', {
     timeZone: 'Asia/Ho_Chi_Minh',
     day: '2-digit',
-    month: 'numeric',
+    month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false
   });
 };
@@ -46,18 +31,16 @@ const Tickets = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const [replyBody, setReplyBody] = useState('');
-  const [replyFiles, setReplyFiles] = useState([]);
-  const [replyPreviews, setReplyPreviews] = useState([]);
+  const [files, setFiles] = useState([null, null, null]);
+  const [previews, setPreviews] = useState([null, null, null]);
+  const [selectedImageUrl, setSelectedImageUrl] = useState(null);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const roles = Array.isArray(user?.roles)
-    ? user.roles
-    : String(user?.roles ?? user?.role ?? '')
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const roles = Array.isArray(user?.roles) ? user.roles : String(user?.roles ?? user?.role ?? '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
   const isSuperAdmin = roles.includes('SuperAdmin');
   const isCompanyAdmin = roles.includes('Admin');
+  const isEditor = roles.includes('Editor');
+  const canModifyStatus = isSuperAdmin || isCompanyAdmin || isEditor;
 
   const fetchList = useCallback(async () => {
     setListLoading(true);
@@ -74,18 +57,13 @@ const Tickets = () => {
     } catch (err) {
       setTickets([]);
       setTotal(0);
-      const msg = err?.response?.data;
-      alert(typeof msg === 'string' ? msg : (msg?.message || 'Không tải được danh sách ticket.'));
     } finally {
       setListLoading(false);
     }
   }, [isSuperAdmin]);
 
   const fetchThread = useCallback(async (id) => {
-    if (!id) {
-      setThread(null);
-      return;
-    }
+    if (!id) { setThread(null); return; }
     setThreadLoading(true);
     try {
       const r = await api.get(`/ticket/${id}`);
@@ -98,53 +76,30 @@ const Tickets = () => {
     }
   }, [navigate]);
 
-  useEffect(() => {
-    fetchList();
-  }, [fetchList]);
+  useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { if (ticketId) fetchThread(ticketId); else setThread(null); }, [ticketId, fetchThread]);
 
-  useEffect(() => {
-    if (ticketId) fetchThread(ticketId);
-    else setThread(null);
-  }, [ticketId, fetchThread]);
-
-  const openThread = (id) => navigate(`/admin/tickets/${id}`);
-
-  const isImageUrl = (url) => {
-    const u = (url || '').toLowerCase();
-    return u.endsWith('.jpg') || u.endsWith('.jpeg') || u.endsWith('.png') || u.endsWith('.gif') || u.endsWith('.webp');
-  };
-
-  const isImageFile = (file) => {
-    const t = (file?.type || '').toLowerCase();
-    return t.startsWith('image/');
-  };
-
-  const addFiles = (filesSetter, previewsSetter, incoming) => {
-    const arr = Array.from(incoming || []);
-    filesSetter((prev) => [...prev, ...arr].slice(0, 8));
-    previewsSetter((prev) => {
-      const next = [...prev];
-      for (const f of arr) {
-        if (next.length >= 8) break;
-        const img = isImageFile(f);
-        next.push({ name: f.name, isImage: img, url: img ? URL.createObjectURL(f) : null });
+  const handleFileChange = (index, e) => {
+    const newFiles = [...files];
+    const newPreviews = [...previews];
+    
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      newFiles[index] = file;
+      
+      if (file.type.startsWith('image/')) {
+        newPreviews[index] = URL.createObjectURL(file);
+      } else {
+        newPreviews[index] = null;
       }
-      return next.slice(0, 8);
-    });
-  };
-
-  const removeFileAt = (idx, filesSetter, previewsSetter) => {
-    filesSetter((prev) => prev.filter((_, i) => i !== idx));
-    previewsSetter((prev) => {
-      const item = prev[idx];
-      if (item?.url) URL.revokeObjectURL(item.url);
-      return prev.filter((_, i) => i !== idx);
-    });
-  };
-
-  const handleReplyFiles = (e) => {
-    addFiles(setReplyFiles, setReplyPreviews, e.target.files);
-    e.target.value = '';
+    } else {
+      newFiles[index] = null;
+      if (newPreviews[index]) URL.revokeObjectURL(newPreviews[index]);
+      newPreviews[index] = null;
+    }
+    
+    setFiles(newFiles);
+    setPreviews(newPreviews);
   };
 
   const handleReply = async (e) => {
@@ -154,32 +109,27 @@ const Tickets = () => {
     try {
       const fd = new FormData();
       fd.append('body', replyBody);
-      if (isSuperAdmin && thread?.status === 'Open') {
-        fd.append('status', 'InProgress');
-      }
-      replyFiles.forEach((f) => fd.append('files', f));
+      if (canModifyStatus && thread?.status === 'Open') fd.append('status', 'InProgress');
+      files.forEach(f => { if (f) fd.append('files', f); });
       const r = await api.post(`/ticket/${ticketId}/posts`, fd);
       setThread(r.data);
       setReplyBody('');
-      setReplyFiles([]);
-      setReplyPreviews((prev) => {
-        prev.forEach((p) => p.url && URL.revokeObjectURL(p.url));
-        return [];
-      });
+      setFiles([null, null, null]);
+      previews.forEach(p => { if (p) URL.revokeObjectURL(p); });
+      setPreviews([null, null, null]);
+      document.querySelectorAll('.file-input').forEach(el => el.value = '');
       fetchList();
     } catch (err) {
-      const msg = err.response?.data;
-      alert(typeof msg === 'string' ? msg : (msg?.message || 'Không gửi được'));
+      alert('Lỗi: ' + (err.response?.data || 'Không gửi được'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleStatusChange = async (e) => {
-    const next = e.target.value;
-    if (!ticketId || !next) return;
+  const handleStatusChange = async (newStatus) => {
+    if (!ticketId) return;
     try {
-      await api.patch(`/ticket/${ticketId}/status`, { status: next });
+      await api.patch(`/ticket/${ticketId}/status`, { status: newStatus });
       await fetchThread(ticketId);
       fetchList();
     } catch {
@@ -187,365 +137,323 @@ const Tickets = () => {
     }
   };
 
-  const list = Array.isArray(tickets) ? tickets : [];
+  const TopBar = () => (
+    <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between p-3 gap-3" style={{ backgroundColor: '#0f172a' }}>
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        <input type="text" className="form-control border-secondary text-white shadow-none" style={{ backgroundColor: '#1e293b', minWidth: '220px' }} placeholder="Nhập từ khóa tìm kiếm" />
+        <select className="form-select border-0 shadow-none" style={{ minWidth: '160px', height: '38px' }}>
+          <option>Tìm dịch vụ</option>
+        </select>
+        <button className="btn text-white px-4 border-0" style={{ backgroundColor: '#3b82f6', fontWeight: 600, height: '38px' }}>TÌM KIẾM</button>
+      </div>
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', height: '38px', padding: '0 16px' }}>
+          <span className="d-flex align-items-center gap-2">1900 9477 <Phone size={16} /></span>
+        </button>
+        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', opacity: 0.9, height: '38px', padding: '0 16px' }}>
+          THAN PHIỀN GÓP Ý
+        </button>
+        {isCompanyAdmin && !isSuperAdmin && (
+          <button className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0" style={{ backgroundColor: '#10b981', height: '38px', padding: '0 16px' }} onClick={() => navigate('/admin/tickets/new')}>
+            GỬI YÊU CẦU 
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
-  return (
-    <AdminLayout>
-      <div className="container-fluid px-4 py-3">
-        <div className="mb-3 d-flex align-items-center justify-content-between gap-2">
-          <div className="d-flex align-items-center gap-2">
-            <MessageCircle size={18} className="text-muted" />
-            <h2 className="fw-bold mb-0">{isSuperAdmin ? 'Hỗ trợ từ công ty' : 'Gửi hỗ trợ'}</h2>
-            <span className="text-muted small">({total})</span>
-          </div>
-          {isCompanyAdmin && !isSuperAdmin && (
-            <button type="button" className="btn btn-sm btn-primary d-flex align-items-center gap-2 px-3" onClick={() => navigate('/admin/tickets/new')}>
-              <Plus size={16} />
-              Tạo yêu cầu hỗ trợ
-            </button>
+  const renderBadge = (status) => {
+    switch (status) {
+      case 'Resolved': return <span className="badge px-3 py-1 bg-success-subtle text-success border border-success-subtle">Đã trả lời</span>;
+      case 'Closed': return <span className="badge px-3 py-1 bg-secondary-subtle text-secondary border border-secondary-subtle">Đóng</span>;
+      case 'InProgress': return <span className="badge px-3 py-1 bg-warning-subtle text-warning border border-warning-subtle">Đang xử lý</span>;
+      default: return <span className="badge px-3 py-1 bg-danger-subtle text-danger border border-danger-subtle">Đang chờ</span>;
+    }
+  };
+
+  const listView = (
+    <div className="w-100 bg-white" style={{ minHeight: '100vh' }}>
+      <TopBar />
+      <div className="px-3 pt-4 pb-3 border-bottom">
+        <h4 className="fw-bold mb-0 text-uppercase" style={{ color: '#0f172a', letterSpacing: '0.5px', fontSize: '1.25rem' }}>MY SUPPORT :: Danh sách yêu cầu</h4>
+      </div>
+      <div className="px-3 pb-4 pt-3">
+        <div className="bg-white table-responsive">
+          <table className="table table-bordered table-hover align-middle mb-0" style={{ minWidth: '950px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f3f4f6' }}>
+                <th className="text-center text-secondary fw-bold py-3" style={{ width: '130px', fontSize: '0.85rem' }}>Mã câu hỏi</th>
+                <th className="text-secondary fw-bold py-3" style={{ fontSize: '0.85rem' }}>Lĩnh vực</th>
+                <th className="text-secondary fw-bold py-3" style={{ width: '180px', fontSize: '0.85rem' }}>Gửi đến</th>
+                <th className="text-center text-secondary fw-bold py-3" style={{ width: '180px', fontSize: '0.85rem' }}>Thời gian</th>
+                <th className="text-center text-secondary fw-bold py-3" style={{ width: '130px', fontSize: '0.85rem' }}>Trạng thái</th>
+                <th className="text-center text-secondary fw-bold py-3" style={{ width: '180px', fontSize: '0.85rem' }}>Dịch vụ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {listLoading ? (
+                <tr><td colSpan="6" className="text-center py-5"><Loader2 className="animate-spin text-muted mx-auto" /></td></tr>
+              ) : tickets.length === 0 ? (
+                <tr><td colSpan="6" className="text-center py-5 text-muted">Chưa có ticket nào.</td></tr>
+              ) : (
+                tickets.map((t, idx) => (
+                  <tr key={t.id} style={{ cursor: 'pointer', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa' }} onClick={() => navigate(`/admin/tickets/${t.id}`)}>
+                    <td className="text-center fw-medium" style={{ color: '#3b82f6', fontSize: '0.88rem' }}>{t.id}Y{(t.id * 7).toString().padStart(4, '0')}</td>
+                    <td>
+                      <span className="text-danger fw-medium" style={{ fontSize: '0.88rem' }}>( {t.subject} )</span>
+                    </td>
+                    <td className="text-muted" style={{ fontSize: '0.88rem' }}>Kỹ Thuật (Software)</td>
+                    <td className="text-center text-muted" style={{ fontSize: '0.88rem' }}>
+                      {formatVnDateTime(t.createdAt).replace(',', ' -')}
+                    </td>
+                    <td className="text-center">{renderBadge(t.status)}</td>
+                    <td className="text-center text-muted" style={{ fontSize: '0.88rem' }}>{t.companyName || 'Windows: hethong'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  const detailView = (
+    <div className="w-100 bg-white" style={{ minHeight: '100vh', paddingBottom: '40px' }}>
+      <TopBar />
+      <div className="container-fluid pt-4 px-3" style={{ maxWidth: '1200px' }}>
+        <div className="d-flex align-items-center justify-content-between mb-3">
+          <button className="btn btn-outline-secondary mb-0 d-flex align-items-center gap-2" onClick={() => navigate('/admin/tickets')}>
+            <ChevronLeft size={16} /> Quay lại danh sách
+          </button>
+          
+          {canModifyStatus && thread && (
+            <div className="d-flex align-items-center gap-2">
+              <span className="text-secondary small fw-medium">Trạng thái:</span>
+              <select
+                className="form-select form-select-sm border-secondary shadow-none"
+                style={{ width: '140px' }}
+                value={thread.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+              >
+                <option value="Open">Mở</option>
+                <option value="InProgress">Đang xử lý</option>
+                <option value="Resolved">Đã trả lời</option>
+                <option value="Closed">Đóng</option>
+              </select>
+            </div>
           )}
         </div>
 
-        <div className="ticket-forum d-flex flex-column flex-lg-row gap-3" style={{ minHeight: '70vh' }}>
-        {/* Enhanced Ticket List Sidebar */}
-        <aside
-          className={`ticket-forum-list flex-shrink-0 rounded-4 border bg-white shadow-sm overflow-hidden ${
-            ticketId ? 'd-none d-lg-block' : ''
-          }`}
-          style={{ width: '100%', maxWidth: '420px' }}
-        >
-          <div className="p-3 border-bottom bg-light">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <div>
-                <h3 className="h6 fw-bold mb-1 text-dark">Danh sách ticket</h3>
-                <p className="small text-muted mb-0" style={{ fontSize: '0.8rem' }}>
-                  {isSuperAdmin ? `${total} yêu cầu hỗ trợ từ tất cả công ty` : `${total} yêu cầu hỗ trợ của công ty bạn`}
-                </p>
-              </div>
-            </div>
+        {threadLoading ? (
+          <div className="text-center py-5"><Loader2 className="animate-spin mx-auto text-primary" size={32} /></div>
+        ) : thread ? (
+          <div className="bg-white" style={{ minHeight: '600px' }}>
+            <table className="table table-bordered align-middle text-center mb-4">
+              <thead style={{ backgroundColor: '#f3f4f6' }}>
+                <tr>
+                  <th className="py-3 text-secondary small fw-bold" style={{ width: '20%' }}>Mã câu hỏi</th>
+                  <th className="py-3 text-secondary small fw-bold" style={{ width: '30%' }}>Dịch vụ</th>
+                  <th className="py-3 text-secondary small fw-bold" style={{ width: '25%' }}>Phòng xử lý</th>
+                  <th className="py-3 text-secondary small fw-bold" style={{ width: '25%' }}>Nhân viên</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="fw-bold text-dark">{thread.id}Y{(thread.id * 7).toString().padStart(4, '0')}</td>
+                  <td className="text-muted small">Windows: {thread.companyName || 'Hệ thống'}</td>
+                  <td className="text-muted small">Kỹ Thuật (Software)</td>
+                  <td className="fw-bold" style={{ color: '#d9534f' }}>
+                    {thread.posts?.find(p => p.authorRole === 'SuperAdmin')?.authorName || 'Đang chờ...'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-            <div className="text-muted small" style={{ fontSize: '0.8rem' }}>
-              Mở: <strong className="text-dark">{list.filter(t => t.status === 'Open').length}</strong> · Đang xử lý:{' '}
-              <strong className="text-dark">{list.filter(t => t.status === 'InProgress').length}</strong> · Đã xử lý:{' '}
-              <strong className="text-dark">{list.filter(t => t.status === 'Resolved').length}</strong>
-            </div>
-          </div>
-
-          <div className="overflow-auto" style={{ maxHeight: 'calc(70vh - 200px)' }}>
-            {listLoading ? (
-              <div className="text-center py-5">
-                <Loader2 className="animate-spin text-primary mb-3" size={32} />
-                <div className="text-muted">Đang tải danh sách ticket...</div>
-              </div>
-            ) : list.length === 0 ? (
-              <div className="p-5 text-center">
-                <MessageCircle size={48} className="text-muted mb-3 opacity-50" />
-                <h6 className="text-muted mb-2">Chưa có ticket nào</h6>
-                <p className="small text-muted mb-0">
-                  {isCompanyAdmin && !isSuperAdmin && 'Hãy tạo ticket đầu tiên để được hỗ trợ từ SuperAdmin.'}
-                </p>
-              </div>
-            ) : (
-              <div className="list-group list-group-flush">
-                {list.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`list-group-item list-group-item-action border-0 border-bottom px-4 py-3 hover-bg-light cursor-pointer ${
-                      String(ticketId) === String(t.id) ? 'bg-primary bg-opacity-5 border-primary border-start border-4' : ''
-                    }`}
-                    onClick={() => openThread(t.id)}
-                  >
-                    <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
-                      <h6 className="mb-0 text-dark fw-semibold text-truncate flex-grow-1">{t.subject}</h6>
-                      <span className={`badge rounded-pill small flex-shrink-0 ${statusBadgeClass(t.status)} fw-medium px-2 py-1`}>
-                        {statusLabel(t.status)}
-                      </span>
-                    </div>
-
-                    {isSuperAdmin && (
-                      <div className="d-flex align-items-center gap-1 mb-2">
-                        <Building2 size={14} className="text-muted" />
-                        <span className="small text-muted fw-medium">{t.companyName}</span>
-                      </div>
-                    )}
-
-                    <div className="d-flex justify-content-between align-items-center">
-                      <span className="small text-muted">
-                        {t.postCount || 0} bài viết
-                      </span>
-                      <span className="small text-muted">
-                        {formatVnDateTime(t.lastActivityAt || t.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* Enhanced Thread View */}
-        <main
-          className={`ticket-forum-thread flex-grow-1 rounded-4 border bg-white shadow-sm d-flex flex-column min-h-0 ${
-            !ticketId ? 'd-none d-lg-flex' : 'd-flex'
-          }`}
-          style={{ minHeight: '500px' }}
-        >
-          {!ticketId ? (
-            <div className="d-none d-lg-flex flex-grow-1 align-items-center justify-content-center p-5">
-              <div className="text-center">
-                <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style={{ width: '80px', height: '80px' }}>
-                  <MessageCircle size={40} className="text-muted" />
-                </div>
-                <h4 className="text-muted mb-2">Chọn một ticket để xem</h4>
-                <p className="text-muted mb-0">Nhấp vào ticket bên trái để xem chi tiết và trao đổi</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Enhanced Thread Header */}
-              <div className="p-3 border-bottom bg-light">
-                <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                  <div className="d-flex align-items-center gap-3">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary btn-sm rounded-3 d-lg-none d-flex align-items-center gap-2"
-                      onClick={() => navigate('/admin/tickets')}
-                    >
-                      <ChevronLeft size={16} />
-                      Danh sách
-                    </button>
-                    <Link
-                      to="/admin/tickets"
-                      className="btn btn-outline-secondary btn-sm rounded-3 d-none d-lg-inline-flex align-items-center gap-2"
-                    >
-                      <ChevronLeft size={16} />
-                      Quay lại
-                    </Link>
-                  </div>
-
-                  {threadLoading ? (
-                    <div className="d-flex align-items-center gap-2">
-                      <Loader2 className="animate-spin text-primary" size={20} />
-                      <span className="text-muted">Đang tải...</span>
-                    </div>
-                  ) : thread ? (
-                    <div className="d-flex align-items-center gap-3 flex-grow-1">
-                      <div className="flex-grow-1">
-                        <h2 className="h5 fw-bold mb-1 text-dark" style={{ fontSize: '1.05rem' }}>{thread.subject}</h2>
-                        <div className="d-flex align-items-center gap-3">
-                          {isSuperAdmin && (
-                            <div className="d-flex align-items-center gap-1">
-                              <Building2 size={16} className="text-muted" />
-                              <span className="small text-muted fw-medium">{thread.companyName}</span>
-                            </div>
-                          )}
-                          <span className={`badge rounded-pill px-3 py-1 ${statusBadgeClass(thread.status)} fw-medium`}>
-                            {statusLabel(thread.status)}
-                          </span>
-                          <span className="small text-muted">
-                            {thread.posts?.length || 0} bài viết
-                          </span>
-                        </div>
-                      </div>
-
-                      {isSuperAdmin && (
-                        <select
-                          className="form-select form-select-sm rounded-3 border-0 bg-light"
-                          style={{ width: 'auto', minWidth: '160px' }}
-                          value={thread.status}
-                          onChange={handleStatusChange}
-                        >
-                          <option value="Open">🔓 Mở</option>
-                          <option value="InProgress">⏳ Đang xử lý</option>
-                          <option value="Resolved">✅ Đã xử lý</option>
-                          <option value="Closed">🔒 Đóng</option>
-                        </select>
-                      )}
-                    </div>
-                  ) : null}
+            {/* Original question */}
+            <div className="mb-4 bg-white" style={{ border: '1px solid #f6d155', padding: '4px' }}>
+              <div className="p-2 border-bottom" style={{ backgroundColor: '#fff' }}>
+                <div className="d-flex align-items-center gap-2 fw-bold" style={{ color: '#d9534f', fontSize: '0.9rem' }}>
+                  <HelpCircle size={16} className="text-secondary" /> NỘI DUNG YÊU CẦU - {thread.subject}
                 </div>
               </div>
-
-              {/* Enhanced Messages Area */}
-              <div className="flex-grow-1 overflow-auto p-3" style={{ background: '#f8fafc' }}>
-                {threadLoading ? (
-                  <div className="text-center py-5">
-                    <Loader2 className="animate-spin text-primary mb-3" size={32} />
-                    <div className="text-muted">Đang tải cuộc trò chuyện...</div>
-                  </div>
-                ) : thread ? (
-                  <div className="d-flex flex-column gap-3">
-                    {thread.posts?.map((p, index) => {
-                      const isStaff = p.authorRole === 'SuperAdmin';
-                      const isFirst = index === 0;
-                      return (
-                        <article
-                          key={`${p.id}-${p.createdAt}`}
-                          className={`rounded-4 p-3 border ${
-                            isStaff ? 'ms-0 me-lg-5 bg-white' : 'me-0 ms-lg-5 bg-white'
-                          }`}
-                          style={isStaff ? { borderColor: 'rgba(37,99,235,0.22)', background: 'rgba(37,99,235,0.06)' } : { borderColor: 'rgba(17,24,39,0.10)' }}
-                        >
-                          <header className="d-flex justify-content-between align-items-center mb-2">
-                            <div className="d-flex align-items-center gap-3">
-                              <div
-                                className="rounded-circle d-flex align-items-center justify-content-center fw-bold"
-                                style={{
-                                  width: 34,
-                                  height: 34,
-                                  background: isStaff ? 'rgba(37,99,235,0.18)' : 'rgba(17,24,39,0.10)',
-                                  color: isStaff ? '#1d4ed8' : '#111827',
-                                }}
-                              >
-                                {p.authorName.charAt(0).toUpperCase()}
+              <hr className="m-0" style={{ borderTop: '2px solid #d9534f', opacity: 1 }} />
+              <div className="p-3 bg-white text-dark" style={{ minHeight: '140px', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                <div dangerouslySetInnerHTML={{ __html: thread.posts?.[0]?.body }} />
+                
+                {thread.posts?.[0]?.attachmentUrls?.length > 0 && (
+                  <div className="mt-3 pt-3 border-top">
+                    <div className="fw-bold mb-2 small text-secondary">Tệp đính kèm:</div>
+                    <div className="d-flex flex-wrap gap-3">
+                      {thread.posts[0].attachmentUrls.map((url, i) => {
+                        const isImg = /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(url);
+                        return (
+                          <div key={i} className="d-flex flex-column gap-1">
+                            {isImg ? (
+                              <div onClick={() => setSelectedImageUrl(getUploadUrl(url))} style={{ cursor: 'zoom-in' }}>
+                                <img src={getUploadUrl(url)} alt="attachment" className="rounded shadow-sm border hover-opacity-75 transition-all" style={{ maxWidth: '300px', maxHeight: '200px', objectFit: 'contain' }} />
                               </div>
-                              <div>
-                                <strong className="text-dark" style={{ fontSize: '0.92rem' }}>{p.authorName}</strong>
-                                <div className="small text-muted" style={{ fontSize: '0.78rem' }}>
-                                  {isStaff ? 'Super Admin' : 'Khách hàng'}
-                                  {isFirst && <span className="ms-2">• Người tạo ticket</span>}
-                                </div>
-                              </div>
-                            </div>
-                            <time dateTime={p.createdAt} className="small text-muted" style={{ fontSize: '0.78rem' }}>
-                              {formatVnDateTime(p.createdAt)}
-                            </time>
-                          </header>
-
-                          <div className="text-break mb-2 text-dark" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55, fontSize: '0.9rem' }}>
-                            {p.body}
+                            ) : (
+                              <a href={getUploadUrl(url)} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+                                <Paperclip size={14} /> Tệp {i + 1}
+                              </a>
+                            )}
                           </div>
-
-                          {p.attachmentUrls?.length > 0 && (
-                            <div className="d-flex flex-wrap gap-3 mt-3">
-                              {p.attachmentUrls.map((url, idx) => {
-                                const full = getUploadUrl(url);
-                                if (isImageUrl(url)) {
-                                  return (
-                                    <a
-                                      key={idx}
-                                      href={full}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="d-block rounded-4 overflow-hidden border shadow-sm"
-                                      style={{ maxWidth: '220px' }}
-                                    >
-                                      <img
-                                        src={full}
-                                        alt={`Attachment ${idx + 1}`}
-                                        className="w-100 h-auto d-block"
-                                        style={{ maxHeight: '200px', objectFit: 'cover' }}
-                                      />
-                                    </a>
-                                  );
-                                }
-
-                                const name = (url || '').split('/').pop();
-                                return (
-                                  <a
-                                    key={idx}
-                                    href={full}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={`btn btn-sm rounded-3 d-inline-flex align-items-center gap-2 ${
-                                      isStaff ? 'btn-outline-light' : 'btn-outline-secondary'
-                                    }`}
-                                  >
-                                    <Paperclip size={16} />
-                                    <span className="text-truncate" style={{ maxWidth: 220 }}>{name}</span>
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-5">
-                    <div className="text-muted">Không thể tải cuộc trò chuyện này</div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Enhanced Reply Form */}
-              <footer className="p-3 border-top bg-white rounded-bottom-4">
-                <form onSubmit={handleReply} className="d-flex flex-column gap-3">
-                  <div className="bg-light rounded-4 p-2 border">
-                    <textarea
-                      className="form-control border-0 bg-transparent shadow-none"
-                      rows={3}
-                      placeholder={isSuperAdmin ? 'Nhập phản hồi cho khách hàng...' : 'Nhập nội dung bổ sung hoặc đính kèm ảnh...'}
-                      value={replyBody}
-                      onChange={(e) => setReplyBody(e.target.value)}
-                      style={{ resize: 'none' }}
+            {/* Replies */}
+            {thread.posts?.slice(1).map((p, idx) => {
+              const isStaff = p.authorRole === 'SuperAdmin';
+              return (
+                <div key={p.id} className="mb-4 bg-white" style={{ border: '1px solid #f6d155', padding: '4px' }}>
+                  <div className="p-2 text-white d-inline-flex align-items-center gap-2 rounded-t" style={{ backgroundColor: isStaff ? '#d9534f' : '#6c757d', fontSize: '0.85rem' }}>
+                    <Mail size={16} /> {p.authorName} [{formatVnDateTime(p.createdAt).replace(',', ' -')}]
+                  </div>
+                  <div className="p-3 bg-white text-dark border border-top-0" style={{ borderColor: '#f6d155', minHeight: '140px', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>
+                      {isStaff && <div className="mb-2">Kính thưa quý khách!</div>}
+                      <div dangerouslySetInnerHTML={{ __html: p.body }} />
+                      {isStaff && <div className="mt-3">Trân trọng,<br/>{p.authorName} - Phòng Kỹ Thuật</div>}
+                    </div>
+                    
+                    {p.attachmentUrls?.length > 0 && (
+                      <div className="mt-4 pt-3 border-top">
+                        <div className="fw-bold mb-2 small text-secondary">Tệp đính kèm:</div>
+                        <div className="d-flex flex-wrap gap-3">
+                          {p.attachmentUrls.map((url, i) => {
+                            const isImg = /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/i.test(url);
+                            return (
+                              <div key={i} className="d-flex flex-column gap-1">
+                                {isImg ? (
+                                  <div onClick={() => setSelectedImageUrl(getUploadUrl(url))} style={{ cursor: 'zoom-in' }}>
+                                    <img src={getUploadUrl(url)} alt="attachment" className="rounded shadow-sm border hover-opacity-75 transition-all" style={{ maxWidth: '300px', maxHeight: '200px', objectFit: 'contain' }} />
+                                  </div>
+                                ) : (
+                                  <a href={getUploadUrl(url)} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+                                    <Paperclip size={14} /> Tệp {i + 1}
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Reply Form */}
+            <div className="mt-4" style={{ border: '1px solid #f6d155', padding: '4px' }}>
+              <div className="p-2 fw-bold bg-white" style={{ color: '#d9534f', fontSize: '0.85rem' }}>
+                Nội dung phản hồi:
+              </div>
+              <div className="p-3 bg-white">
+                <form onSubmit={handleReply}>
+                  <div className="mb-4">
+                    <TiptapEditor 
+                      key="ticket-reply-editor"
+                      content={replyBody} 
+                      onChange={(html) => setReplyBody(html)} 
                     />
                   </div>
 
-                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                    <div className="d-flex align-items-center gap-3">
-                      <label className="btn btn-sm btn-outline-secondary rounded-3 mb-0 d-flex align-items-center gap-2">
-                        <ImagePlus size={16} />
-                        Thêm hình / file
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
-                          multiple
-                          className="d-none"
-                          onChange={handleReplyFiles}
-                        />
-                      </label>
+                  {[1, 2, 3].map((num, i) => (
+                    <div key={num} className="mb-3">
+                      <div className="small text-secondary mb-1" style={{ fontSize: '0.8rem' }}>
+                        Hình minh họa {num} (*.gif, *.jpg, *.jpeg, *.png, *.svg, *.bmp, *.pdf, *.zip, *.rar) và dung lượng tối đa 10Mb:
+                      </div>
+                      <div className="d-flex align-items-center gap-3">
+                        <input type="file" className="form-control form-control-sm file-input rounded-0 rounded-start border-secondary" style={{ maxWidth: '300px' }} onChange={(e) => handleFileChange(i, e)} />
+                        {previews[i] && (
+                          <div className="position-relative" style={{ width: '60px', height: '60px' }}>
+                            <img src={previews[i]} alt="Preview" className="w-100 h-100 object-fit-cover border" />
+                            <button 
+                              type="button" 
+                              className="btn btn-sm p-0 position-absolute top-0 end-0 bg-white border rounded-circle d-flex align-items-center justify-content-center" 
+                              style={{ width: '20px', height: '20px', marginTop: '-10px', marginRight: '-10px' }}
+                              onClick={() => {
+                                const newFiles = [...files];
+                                const newPreviews = [...previews];
+                                if (newPreviews[i]) URL.revokeObjectURL(newPreviews[i]);
+                                newFiles[i] = null;
+                                newPreviews[i] = null;
+                                setFiles(newFiles);
+                                setPreviews(newPreviews);
+                                const inputs = document.querySelectorAll('.file-input');
+                                if (inputs[i]) inputs[i].value = '';
+                              }}
+                            >
+                              <XCircle size={14} className="text-danger" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {num < 3 && <hr className="my-3 text-muted opacity-25" />}
                     </div>
+                  ))}
 
-                    <button
-                      type="submit"
-                      className="btn btn-sm btn-primary rounded-3 px-3 d-flex align-items-center gap-2"
-                      disabled={submitting || (!replyBody.trim() && replyFiles.length === 0)}
-                    >
-                      {submitting ? (
-                        <Loader2 className="animate-spin" size={16} />
-                      ) : (
-                        <Send size={16} />
-                      )}
-                      {submitting ? 'Đang gửi...' : 'Gửi'}
+                  <div className="text-center mt-5 mb-3">
+                    <button type="submit" className="btn text-white px-4 py-2 border-0 fw-medium" style={{ backgroundColor: '#e11d48', minWidth: '100px' }} disabled={submitting}>
+                      {submitting ? 'ĐANG GỬI...' : 'Gửi Đi'}
+                    </button>
+                    <button type="button" className="btn text-white px-4 py-2 border-0 fw-medium ms-2" style={{ backgroundColor: '#6c757d', minWidth: '130px' }} onClick={() => handleStatusChange('Closed')}>
+                      Đóng câu hỏi
                     </button>
                   </div>
-
-                  {replyPreviews.length > 0 && (
-                    <div className="d-flex flex-wrap gap-2">
-                      {replyPreviews.map((p, idx) => (
-                        <div key={p.name + idx} className="border rounded-3 bg-white p-2 d-flex align-items-center gap-2" style={{ maxWidth: 260 }}>
-                          {p.isImage && p.url ? (
-                            <img src={p.url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 8 }} />
-                          ) : (
-                            <Paperclip size={16} className="text-muted flex-shrink-0" />
-                          )}
-                          <div className="min-w-0">
-                            <div className="small text-truncate" title={p.name} style={{ maxWidth: 180 }}>{p.name}</div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-sm p-0 border-0 ms-auto"
-                            onClick={() => removeFileAt(idx, setReplyFiles, setReplyPreviews)}
-                            aria-label="Remove"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="text-center small mt-2" style={{ color: '#10b981', fontSize: '0.85rem' }}>
+                    Nếu quý khách có câu hỏi hay vấn đề Mới, vui lòng Không phản hồi, xin hãy Gửi Yêu Cầu Mới sẽ giúp chúng tôi hỗ trợ nhanh hơn
+                  </div>
                 </form>
-              </footer>
-            </>
-          )}
-        </main>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
+  );
 
+  return (
+    <AdminLayout>
+      <div style={{ margin: '-1.5rem', backgroundColor: '#fff' }}>
+        {ticketId ? detailView : listView}
+      </div>
+      <LightBox url={selectedImageUrl} onClose={() => setSelectedImageUrl(null)} />
     </AdminLayout>
+  );
+};
+
+const LightBox = ({ url, onClose }) => {
+  if (!url) return null;
+  return (
+    <div 
+      className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" 
+      style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.85)', padding: '20px' }}
+      onClick={onClose}
+    >
+      <button 
+        type="button" 
+        className="position-absolute top-0 end-0 m-4 btn border-0 text-white" 
+        style={{ fontSize: '2rem', backgroundColor: 'transparent' }}
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+      >
+        <XCircle size={40} />
+      </button>
+      <img 
+        src={url} 
+        alt="Full Screen" 
+        className="img-fluid shadow-lg rounded-3" 
+        style={{ maxHeight: '95vh', objectFit: 'contain' }}
+        onClick={(e) => e.stopPropagation()} 
+      />
+    </div>
   );
 };
 

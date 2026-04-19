@@ -8,7 +8,7 @@ namespace ELearning.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "SuperAdmin,Admin,Instructor")]
+[Authorize(Roles = "SuperAdmin,Admin,Editor,Instructor")]
 public class AuditController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -115,6 +115,42 @@ public class AuditController : ControllerBase
     public async Task<IActionResult> ClearAll()
     {
         await _context.AuditLogs.ExecuteDeleteAsync();
+        return NoContent();
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDelete([FromBody] List<long> ids)
+    {
+        if (ids == null || !ids.Any()) return BadRequest("Danh sách rỗng.");
+
+        var logs = await _context.AuditLogs.Where(l => ids.Contains(l.Id)).ToListAsync();
+        if (!logs.Any()) return Ok();
+
+        if (!User.IsInRole("SuperAdmin"))
+        {
+            var companyIdClaim = User.FindFirst("CompanyId")?.Value;
+            int companyId = 0;
+            if (!int.TryParse(companyIdClaim, out companyId))
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var userRow = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                companyId = userRow?.CompanyId ?? 0;
+            }
+
+            if (companyId > 0)
+            {
+                var logUserIds = logs.Select(l => l.UserId).Distinct().ToList();
+                var validUserIds = await _context.Users.Where(u => logUserIds.Contains(u.Id) && u.CompanyId == companyId).Select(u => u.Id).ToListAsync();
+                logs = logs.Where(l => l.UserId != null && validUserIds.Contains(l.UserId)).ToList();
+            }
+            else
+            {
+                return StatusCode(403, "Không thể xác thực công ty.");
+            }
+        }
+
+        _context.AuditLogs.RemoveRange(logs);
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 }

@@ -10,9 +10,9 @@ import { startLoading, doneLoading } from '../utils/loadingStore';
 const BACKEND_NGROK_URL = 'https://glumpy-dyspeptically-felecia.ngrok-free.dev';
 
 // Tự động chọn link API phù hợp
-const API_URL = window.location.hostname.includes('ngrok-free.dev')
-  ? '/api'
-  : 'http://127.0.0.1:5211/api';
+const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://127.0.0.1:5211/api'
+  : (window.location.hostname.includes('ngrok-free.dev') ? '/api' : 'http://127.0.0.1:5211/api');
 
 // Base URL cho uploads (ảnh, video)
 // - localhost: dùng path tương đối /uploads/xxx → Vite proxy chuyển tiếp, tránh CORS
@@ -51,7 +51,9 @@ api.defaults.headers.common['Accept'] = 'application/json';
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Ưu tiên lấy token từ sessionStorage (dành cho đa tài khoản trên nhiều tab)
+    // Nếu không có mới lấy từ localStorage (duy trì đăng nhập)
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -77,7 +79,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      // Only redirect if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
     if (error.response?.status === 500) {
       const data = error.response?.data;

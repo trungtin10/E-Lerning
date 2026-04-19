@@ -197,7 +197,7 @@ public class QuizController : ControllerBase
 
     /// <summary>Danh sách TẤT CẢ bài trắc nghiệm trong khóa - đồng bộ từ cấu trúc bài học + quiz đã có trong DB</summary>
     [HttpGet("{courseId}/quizzes-with-results")]
-    [Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+    [Authorize(Roles = "Admin,Editor,Instructor,SuperAdmin")]
     public async Task<ActionResult<List<QuizWithResultsSummaryDto>>> GetQuizzesWithResults(int courseId)
     {
         var course = await _context.Courses.Include(c => c.Lessons).FirstOrDefaultAsync(c => c.Id == courseId);
@@ -242,7 +242,7 @@ public class QuizController : ControllerBase
     }
 
     [HttpGet("{courseId}/results")]
-    [Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+    [Authorize(Roles = "Admin,Editor,Instructor,SuperAdmin")]
     public async Task<ActionResult<List<QuizResultSummaryDto>>> GetQuizResults(int courseId, [FromQuery] int section = 0, [FromQuery] int? lessonId = null)
     {
         var quiz = await _context.Quizzes
@@ -293,7 +293,7 @@ public class QuizController : ControllerBase
     }
 
     [HttpGet("attempt/{attemptId}/detail")]
-    [Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+    [Authorize(Roles = "Admin,Editor,Instructor,SuperAdmin")]
     public async Task<ActionResult<QuizAttemptDetailDto>> GetAttemptDetail(int attemptId)
     {
         var attempt = await _context.QuizAttempts

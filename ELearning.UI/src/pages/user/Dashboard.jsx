@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import UserLayout from '../../components/layout/UserLayout';
 import api, { getUploadUrl } from '../../api/axios';
 import { useLanguage } from '../../context/LanguageContext';
-import { BookOpen, Loader2, ChevronRight, Calendar, Hash } from 'lucide-react';
+import { 
+  BookOpen, Loader2, ChevronRight, Calendar, Hash, Clock, 
+  CheckCircle, GraduationCap, PlayCircle, Star, Bell, 
+  Trophy, Medal, Award, ArrowRight, Zap, Flame 
+} from 'lucide-react';
 
 const UserDashboard = () => {
   const [courses, setCourses] = useState([]);
@@ -12,7 +16,6 @@ const UserDashboard = () => {
   const navigate = useNavigate();
   const { lang, t } = useLanguage();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const logoUrl = user?.companyLogoUrl ? getUploadUrl(user.companyLogoUrl) : '/h_logo.png';
 
   useEffect(() => {
     fetchCourses();
@@ -29,109 +32,123 @@ const UserDashboard = () => {
     }
   };
 
-  const filtered = courses.filter((c) => {
-    const pct = Math.round(c.progressPercentage || 0);
-    const isEnrolled = c.isEnrolled !== false;
-    if (filter === 'dang-hoc') return isEnrolled && pct < 100;
-    if (filter === 'da-hoan-thanh') return isEnrolled && pct >= 100;
-    return true;
-  });
-
-  const formatEndDate = (d) => {
-    if (!d) return t('noDeadline');
-    const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
-    return new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const getProgressColor = (pct) => {
-    if (pct >= 100) return '#10b981';
-    if (pct >= 50) return '#6366f1';
-    return '#f59e0b';
-  };
+  const inProgress = courses.filter(c => Math.round(c.progressPercentage || 0) > 0 && Math.round(c.progressPercentage || 0) < 100);
+  const completedCount = courses.filter(c => Math.round(c.progressPercentage || 0) >= 100).length;
 
   return (
     <UserLayout>
-      <div className="container-fluid px-4 px-md-5 pt-4 pb-5" style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div className="mb-5">
-          <h2 className="fw-bold mb-2" style={{ color: '#0f172a', fontSize: '1.75rem', letterSpacing: '-0.02em' }}>{t('myCoursesTitle')}</h2>
-          <p className="text-secondary small mb-0">{t('myCoursesDesc')}</p>
-          <div className="d-flex align-items-center gap-2 flex-wrap mt-3">
-            <button className={`btn btn-sm rounded-pill px-4 py-2 fw-medium ${filter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setFilter('all')}>{t('filterAll')}</button>
-            <button className={`btn btn-sm rounded-pill px-4 py-2 fw-medium ${filter === 'dang-hoc' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setFilter('dang-hoc')}>{t('filterInProgress')}</button>
-            <button className={`btn btn-sm rounded-pill px-4 py-2 fw-medium ${filter === 'da-hoan-thanh' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setFilter('da-hoan-thanh')}>{t('filterCompleted')}</button>
-            {filter !== 'all' && (
-              <button className="btn btn-link p-0 text-secondary small ms-2" onClick={() => setFilter('all')}>{t('clearFilter')}</button>
-            )}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-5"><Loader2 className="animate-spin text-primary" size={40} /></div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-5">
-            <div className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3" style={{ width: 80, height: 80, backgroundColor: '#f1f5f9' }}>
-              <BookOpen size={40} style={{ color: '#94a3b8' }} />
+      <div className="container-fluid px-0">
+        <div className="row g-4">
+          
+          {/* Main Content Column */}
+          <div className="col-12 col-xl-12">
+            
+            {/* Welcome Banner Card */}
+            <div className="card border-0 rounded-5 shadow-sm mb-4 overflow-hidden" style={{ background: '#fff' }}>
+              <div className="card-body p-4 p-md-5 d-flex flex-column flex-md-row justify-content-between align-items-center gap-4">
+                <div style={{ flex: 1 }}>
+                  <h1 className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color: '#0f172a', fontSize: '2.5rem', letterSpacing: '-0.02em' }}>
+                    Chào mừng {user.fullName || ""} trở lại! 👋
+                  </h1>
+                  <p className="text-secondary fs-5 mb-0" style={{ maxWidth: '600px', lineHeight: 1.6 }}>
+                    Hệ thống đã cập nhật những khóa học mới dành cho bạn. Hãy tiếp tục hành trình nâng cao kỹ năng ngay hôm nay.
+                  </p>
+                </div>
+                
+                {courses.length > 0 && (
+                  <div 
+                    className="d-flex flex-column align-items-center justify-content-center p-4 rounded-5 text-white shadow-lg cursor-pointer hover-scale transition-all" 
+                    style={{ background: 'linear-gradient(135deg, #4c49ed, #2e1065)', width: '200px', height: '140px' }}
+                    onClick={() => navigate(`/course/${courses[0].id}`)}
+                  >
+                     <div className="fw-bold fs-5 mb-2">Vào học ngay</div>
+                     <ArrowRight size={28} />
+                  </div>
+                )}
+              </div>
             </div>
-            <h5 className="fw-bold mb-2" style={{ color: '#475569' }}>{t('noCourses')}</h5>
-            <p className="text-secondary small">{t('noCoursesHint')}</p>
-          </div>
-        ) : null}
-        {!loading && filtered.length > 0 && (
-          <div className="d-flex flex-column gap-4">
-            {filtered.map((course) => {
-              const pct = Math.round(course.progressPercentage || 0);
-              const isEnrolled = course.isEnrolled !== false;
-              return (
-                <div
-                  key={course.id}
-                  className="card border-0 rounded-4 overflow-hidden bg-white shadow-sm position-relative"
-                  style={{
-                    transition: 'all 0.25s ease',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06)';
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  <div className="card-body p-5 d-flex flex-column flex-md-row align-items-stretch align-items-md-center justify-content-between gap-4">
-                    <div className="flex-grow-1 min-w-0 d-flex align-items-center gap-4">
-                      <div className="flex-shrink-0 d-flex align-items-center justify-content-center rounded-3 overflow-hidden bg-white border" style={{ width: 72, height: 72, padding: 8, borderColor: '#e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-                        <img src={logoUrl} alt="Logo" className="w-100 h-100 object-fit-contain" onError={(e) => { e.target.onerror = null; e.target.src = '/h_logo.png'; }} />
+
+            {/* Stats Row - Real Data */}
+            <div className="row g-3 mb-5">
+              {[
+                { label: 'KHÓA HỌC CỦA TÔI', val: courses.length || 0, icon: <BookOpen className="text-primary" size={20} />, bg: '#f5f3ff' },
+                { label: 'ĐANG HỌC', val: inProgress.length, icon: <PlayCircle className="text-info" size={20} />, bg: '#f0f7ff' },
+                { label: 'ĐÃ HOÀN THÀNH', val: completedCount, icon: <CheckCircle className="text-success" size={20} />, bg: '#f0fdf4' },
+              ].map((s, idx) => (
+                <div className="col-4" key={idx}>
+                  <div className="card border-0 rounded-4 shadow-sm p-4 h-100 border-start border-4" style={{ borderColor: s.bg }}>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="d-flex align-items-center justify-content-center rounded-circle shadow-sm" style={{ width: 50, height: 50, backgroundColor: s.bg }}>
+                        {s.icon}
                       </div>
-                      <div className="min-w-0 flex-grow-1">
-                        <h5 className="fw-bold mb-2" style={{ color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.4 }}>{course.title}</h5>
-                        <div className="d-flex flex-wrap align-items-center gap-3 small text-secondary mb-3">
-                          <span className="d-flex align-items-center gap-1">
-                            <Hash size={14} /> {course.courseCode}
-                          </span>
-                          <span className="d-flex align-items-center gap-1">
-                            <Calendar size={14} /> {t('endDate')}: {formatEndDate(course.endDate)}
-                          </span>
-                        </div>
+                      <div>
+                        <div className="text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem', letterSpacing: '1px' }}>{s.label}</div>
+                        <div className="fw-bold fs-3" style={{ color: '#0f172a' }}>{s.val}</div>
                       </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <button
-                        className="btn btn-primary rounded-3 px-5 py-3 fw-semibold d-flex align-items-center gap-2"
-                        style={{ fontSize: '0.95rem' }}
-                        onClick={() => navigate(isEnrolled ? (pct >= 100 ? `/course/${course.id}` : `/learning/${course.id}`) : `/learning/${course.id}`)}
-                      >
-                        {!isEnrolled ? t('startLearning') : (pct >= 100 ? t('viewCourse') : t('continueLearning'))}
-                        <ChevronRight size={18} />
-                      </button>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Course Section Header */}
+            <div className="d-flex justify-content-between align-items-end mb-4">
+               <h4 className="fw-bold m-0" style={{ fontSize: '1.6rem', color: '#0f172a' }}>Khóa học đang diễn ra</h4>
+               <Link to="/my-courses" className="text-decoration-none fw-bold small text-primary p-2 px-3 bg-primary bg-opacity-10 rounded-pill transition-all hover-bg-primary hover-text-white">Xem tất cả</Link>
+            </div>
+
+            {/* Courses Grid */}
+            <div className="row g-4 mb-5">
+              {loading ? (
+                <div className="col-12 py-5 text-center"><Loader2 className="animate-spin text-primary mx-auto" size={40} /></div>
+              ) : courses.length === 0 ? (
+                <div className="col-12 py-5 text-center text-muted card border-0 rounded-4 shadow-sm">
+                   Chưa có khóa học nào được đăng ký. <Link to="/my-courses" className="ms-1 fw-bold">Khám phá ngay</Link>
+                </div>
+              ) : (
+                courses.slice(0, 4).map((course, idx) => {
+                  return (
+                    <div className="col-12 col-md-6 col-lg-3" key={course.id}>
+                      <div className="card border-0 rounded-4 shadow-sm h-100 overflow-hidden bg-white hover-shadow transition-all" style={{ border: '1px solid #f1f5f9' }}>
+                        <div className="position-relative aspect-video overflow-hidden">
+                           <img 
+                              src={course.thumbnailUrl ? getUploadUrl(course.thumbnailUrl) : '/h_logo.png'} 
+                              className="w-100 h-100 object-fit-cover transition-all" 
+                              style={{ minHeight: '160px' }}
+                              alt={course.title} 
+                           />
+                           <div className="position-absolute top-0 start-0 m-3">
+                              <span className="badge bg-white shadow-sm text-primary fw-bold px-2 py-1 rounded-2" style={{ fontSize: '0.65rem' }}>KHÓA HỌC</span>
+                           </div>
+                        </div>
+                        <div className="card-body p-3 d-flex flex-column">
+                           <h6 className="fw-bold mb-3" style={{ fontSize: '0.95rem', minHeight: '2.8rem' }} title={course.title}>{course.title}</h6>
+                           <div className="mt-auto">
+                              {/* Removed progress bar as requested */}
+                              <button 
+                                className="btn w-100 py-2 rounded-3 fw-bold small transition-all" 
+                                style={{ backgroundColor: '#4c49ed', color: '#fff' }}
+                                onClick={() => navigate(`/course/${course.id}`)}
+                              >
+                                Vào học ngay
+                              </button>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
           </div>
-        )}
+        </div>
       </div>
+
+
+      <style>{`
+        .course-card-v2:hover { transform: translateY(-4px); transition: all 0.3s ease; }
+      `}</style>
     </UserLayout>
   );
 };

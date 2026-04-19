@@ -25,6 +25,7 @@ const EditCompany = () => {
     contactEmail: '',
     subDomain: '',
     isActive: false,
+    servicePlan: 'Free',
     trialDays: '',
     amountPaid: 0,
     billingCycleMonths: 1,
@@ -40,6 +41,7 @@ const EditCompany = () => {
         companyName: c.companyName || '',
         contactEmail: c.contactEmail || '',
         subDomain: c.subDomain || '',
+        servicePlan: c.servicePlan || 'Free',
         isActive: !!c.isActive,
       }));
       setPreviewUrl(c.logoUrl ? getUploadUrl(c.logoUrl) : null);
@@ -65,6 +67,7 @@ const EditCompany = () => {
         companyName: c.companyName || '',
         contactEmail: c.contactEmail || '',
         subDomain: c.subDomain || '',
+        servicePlan: c.servicePlan || 'Free',
         isActive: !!c.isActive,
       }));
       setPreviewUrl(c.logoUrl ? getUploadUrl(c.logoUrl) : null);
@@ -102,6 +105,8 @@ const EditCompany = () => {
     data.append('CompanyName', formData.companyName);
     data.append('ContactEmail', formData.contactEmail || '');
     data.append('SubDomain', formData.subDomain);
+    data.append('ServicePlan', formData.servicePlan);
+    data.append('IsActive', String(formData.isActive));
     if (formData.trialDays) data.append('TrialDays', String(formData.trialDays));
     if (logoFile) data.append('LogoFile', logoFile);
 
@@ -166,7 +171,31 @@ const EditCompany = () => {
                         <span className="input-group-text bg-white border-end-0"><Globe size={18} className="text-muted" /></span>
                         <input type="text" required className="form-control form-control-lg bg-light border-start-0" value={formData.subDomain} onChange={(e) => setFormData({ ...formData, subDomain: e.target.value })} />
                       </div>
-                      <p className="extra-small text-muted mt-1">Dùng làm định danh duy nhất cho hệ thống (VD: abc-group)</p>
+                      <p className="extra-small text-muted mt-1">Dùng làm định danh duy nhất cho hệ thống</p>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold text-secondary">Gói dịch vụ</label>
+                      <select 
+                        className="form-select form-select-lg bg-light border-0" 
+                        value={formData.servicePlan} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          let days = '';
+                          if (val.includes('3 ngày')) days = '3';
+                          else if (val.includes('7 ngày')) days = '7';
+                          else if (val.includes('30 ngày')) days = '30';
+                          
+                          setFormData({ ...formData, servicePlan: val, trialDays: days });
+                        }}
+                      >
+                        <option value="Free">Giao diện Miễn phí (Free)</option>
+                        <option value="Free (3 ngày dùng thử)">Free (3 ngày dùng thử)</option>
+                        <option value="Free (7 ngày dùng thử)">Free (7 ngày dùng thử)</option>
+                        <option value="Free (30 ngày dùng thử)">Free (30 ngày dùng thử)</option>
+                        <option value="Basic">Gói Mở rộng (Basic)</option>
+                        <option value="Plus">Gói Nâng cao (Plus)</option>
+                        <option value="Pro">Gói Doanh nghiệp (Pro)</option>
+                      </select>
                     </div>
                   </div>
                   <div className="col-md-5">
@@ -207,6 +236,7 @@ const EditCompany = () => {
                   <h6 className="fw-bold text-dark mb-4">TỔNG QUAN</h6>
                   <div className="d-flex justify-content-between mb-3 pb-3 border-bottom"><span className="text-muted">Tên doanh nghiệp:</span><span className="fw-bold">{formData.companyName || '—'}</span></div>
                   <div className="d-flex justify-content-between mb-3 pb-3 border-bottom"><span className="text-muted">Domain:</span><span className="fw-bold">{formData.subDomain || '—'}</span></div>
+                  <div className="d-flex justify-content-between mb-3 pb-3 border-bottom"><span className="text-muted">Gói cước:</span><span className="fw-bold">{formData.servicePlan || 'Free'}</span></div>
                   <div className="d-flex justify-content-between mb-3 pb-3 border-bottom"><span className="text-muted">Trạng thái:</span><span className="fw-bold">{formData.isActive ? 'Đã kích hoạt' : 'Chưa kích hoạt'}</span></div>
                   <button type="submit" className="btn btn-primary w-100 py-3 rounded-3 fw-bold" disabled={submitting}>{submitting ? <><Loader2 className="animate-spin" size={18} /> Đang lưu...</> : 'Lưu thay đổi'}</button>
                 </div>

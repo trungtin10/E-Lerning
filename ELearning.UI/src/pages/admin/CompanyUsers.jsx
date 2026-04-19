@@ -48,7 +48,9 @@ const CompanyUsers = () => {
   const navigate = useNavigate();
   const { toast, confirm } = useNotify();
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
-  const isSuperAdmin = user.roles?.includes('SuperAdmin');
+  const isSuperAdmin = Array.isArray(user?.roles)
+    ? user.roles.includes('SuperAdmin')
+    : String(user?.roles ?? user?.role ?? '').includes('SuperAdmin');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,7 +82,7 @@ const CompanyUsers = () => {
     account: '',
     email: '', // THÊM
     password: '',
-    role: subDomain === 'system' ? 'SuperAdmin' : 'Admin'
+    role: (subDomain === 'system' && isSuperAdmin) ? 'SuperAdmin' : 'Admin'
   });
   const [companies, setCompanies] = useState([]);
 
@@ -152,8 +154,13 @@ const CompanyUsers = () => {
 
   const handleDeleteUser = async (userId, userRole, e) => {
     e.stopPropagation();
-    if (userRole === 'SuperAdmin') {
-      toast('Không thể xóa tài khoản SuperAdmin!', 'warning');
+    if (userRole === 'SuperAdmin' && !isSuperAdmin) {
+      toast('Chỉ SuperAdmin mới có quyền xóa tài khoản này!', 'warning');
+      return;
+    }
+    const currentUserId = JSON.parse(localStorage.getItem('user') || '{}').id;
+    if (userId === currentUserId) {
+      toast('Bạn không thể tự xóa chính mình!', 'warning');
       return;
     }
     const ok = await confirm({ title: 'Xóa nhân viên', message: 'Bạn có chắc chắn muốn xóa nhân viên này khỏi hệ thống? Phép toán này không thể hoàn tác.', confirmText: 'Xóa' });
@@ -170,6 +177,14 @@ const CompanyUsers = () => {
 
   const handleAddSubmit = async (e) => {
     e.preventDefault();
+    
+    // Kiểm tra Gmail hợp lệ
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!formData.email || !emailRegex.test(formData.email)) {
+      toast('Vui lòng nhập địa chỉ Email đúng định dạng (VD: abc@gmail.com).', 'error');
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isSuperAdmin) {
@@ -292,7 +307,7 @@ const CompanyUsers = () => {
           </div>
         </div>
         <button
-          className="btn btn-primary fw-bold d-flex align-items-center gap-2 px-4 py-2"
+          className="btn btn-admin-create d-flex align-items-center gap-2"
           onClick={() => setShowAddModal(true)}
         >
           <UserPlus size={20} /> Tạo mới
@@ -421,7 +436,7 @@ const CompanyUsers = () => {
                               <Edit2 size={16} className="text-primary" /> Chỉnh sửa
                             </button>
                           </li>
-                          {user.role !== 'SuperAdmin' && (
+                          {(user.role !== 'SuperAdmin' || isSuperAdmin) && user.id !== JSON.parse(localStorage.getItem('user') || '{}').id && (
                             <li>
                               <button
                                 type="button"
@@ -491,15 +506,17 @@ const CompanyUsers = () => {
                   <div className="mb-4">
                     <label className="form-label fw-bold text-secondary small">Vai trò</label>
                     <select className="form-select rounded-3" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
-                      {subDomain === 'system' ? (
+                      {subDomain === 'system' && isSuperAdmin ? (
                         <>
                           <option value="SuperAdmin">SuperAdmin</option>
                           <option value="Admin">Admin</option>
+                          <option value="Editor">Biên tập</option>
                           <option value="User">User</option>
                         </>
                       ) : (
                         <>
                           <option value="Admin">Admin</option>
+                          <option value="Editor">Biên tập</option>
                           <option value="User">User</option>
                         </>
                       )}
@@ -540,15 +557,17 @@ const CompanyUsers = () => {
                   <div className="mb-4">
                     <label className="form-label fw-bold text-secondary small">Vai trò</label>
                     <select className="form-select rounded-3" value={editFormData.role} onChange={e => setEditFormData({ ...editFormData, role: e.target.value })}>
-                      {subDomain === 'system' ? (
+                      {subDomain === 'system' && isSuperAdmin ? (
                         <>
                           <option value="SuperAdmin">SuperAdmin</option>
                           <option value="Admin">Admin</option>
+                          <option value="Editor">Biên tập</option>
                           <option value="User">User</option>
                         </>
                       ) : (
                         <>
                           <option value="Admin">Admin</option>
+                          <option value="Editor">Biên tập</option>
                           <option value="User">User</option>
                         </>
                       )}

@@ -8,7 +8,7 @@ export function NotifyProvider({ children }) {
   const [confirmState, setConfirmState] = useState(null);
 
   const toast = useCallback((message, type = 'success', duration = 3200) => {
-    const id = Date.now();
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));

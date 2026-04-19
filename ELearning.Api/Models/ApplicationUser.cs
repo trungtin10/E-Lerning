@@ -1,19 +1,36 @@
 using Microsoft.AspNetCore.Identity;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ELearning.Api.Models;
 
+[Table("NguoiDung")]
 public class ApplicationUser : IdentityUser
 {
     [Required, MaxLength(100)]
+    [Column("HoTen")]
     public string FullName { get; set; } = string.Empty;
+
+    [Column("AvatarUrl")]
     public string? AvatarUrl { get; set; }
+
+    [Column("AnhBiaUrl")]
+    public string? CoverPhotoUrl { get; set; }
+
     [MaxLength(100)]
+    [Column("ChucDanh")]
     public string? JobTitle { get; set; }
+
+    [Column("TrangThaiHoatDong")]
     public bool IsActive { get; set; } = true;
+
+    [Column("NgayTao")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    [Column("PhongBanId")]
     public int? DepartmentId { get; set; }
+
+    [Column("CongTyId")]
     public int? CompanyId { get; set; }
 
     public virtual Company? Company { get; set; }

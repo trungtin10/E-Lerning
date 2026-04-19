@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useNotify } from '../../../context/NotifyContext';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { Search, Plus } from 'lucide-react';
 import CompanyTable from './CompanyTable';
 import AssignAdminModal from './AssignAdminModal';
 
@@ -13,9 +12,12 @@ const Companies = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [planFilter, setPlanFilter] = useState('');
 
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState(() => new Set());
 
   useEffect(() => {
     fetchCompanies();
@@ -39,6 +41,11 @@ const Companies = () => {
     try {
       await api.delete(`/superadmin/companies/${id}`);
       toast('Đã xóa công ty thành công.', 'success');
+      setSelectedCompanyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       fetchCompanies();
     } catch (err) {
       const errorMsg = err.response?.data || 'Lỗi không xác định khi xóa.';
@@ -55,60 +62,140 @@ const Companies = () => {
     setShowAssignModal(true);
   };
 
-  const filteredCompanies = companies.filter(c =>
-    c.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.subDomain && c.subDomain.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const normalizePlan = (c) => (c.servicePlan && String(c.servicePlan).trim()) || 'Basic';
+
+  const filteredCompanies = companies.filter((c) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (q) {
+      const name = (c.companyName || '').toLowerCase();
+      const sub = (c.subDomain || '').toLowerCase();
+      if (!name.includes(q) && !sub.includes(q)) return false;
+    }
+    if (statusFilter === 'active' && !c.isActive) return false;
+    if (statusFilter === 'inactive' && c.isActive) return false;
+    if (planFilter) {
+      if (normalizePlan(c).toLowerCase() !== planFilter.toLowerCase()) return false;
+    }
+    return true;
+  });
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
+    setPlanFilter('');
+  };
+
+  const toggleCompanyRowSelected = (id) => {
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const ids = filteredCompanies.map((c) => c.id);
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      const allOn = ids.length > 0 && ids.every((i) => next.has(i));
+      if (allOn) ids.forEach((i) => next.delete(i));
+      else ids.forEach((i) => next.add(i));
+      return next;
+    });
+  };
 
   return (
     <AdminLayout>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h2 className="fw-bold tracking-tight mb-1">Quản lý Công ty</h2>
-          <p className="text-muted small">Danh sách các đối tác và cấu hình hệ thống riêng biệt.</p>
+      {/* Header Bar */}
+      <div className="border-bottom border-danger border-2 mb-4">
+        <div className="d-flex align-items-center gap-2 pb-2">
+          <div className="rounded-circle bg-primary" style={{ width: 8, height: 8 }}></div>
+          <h4 className="fw-bold mb-0 text-primary">Danh sách công ty</h4>
         </div>
-        <button
-          className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 fw-bold"
-          onClick={() => navigate('/admin/companies/create')}
-        >
-          <Plus size={20} /> Tạo mới
-        </button>
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 mb-4">
-        <div className="card-body p-3">
-          <div className="row g-2 align-items-center">
-            <div className="col-12 col-lg-10">
-              <div className="input-group input-group-sm bg-light border-0 rounded-3 px-2">
-                <span className="input-group-text bg-transparent border-0 text-muted"><Search size={16} /></span>
-                <input
-                  type="text"
-                  className="form-control bg-transparent border-0"
-                  placeholder="Tìm kiếm công ty..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="col-12 col-lg-2 d-flex justify-content-lg-end">
+      {/* Filter Bar */}
+      <div className="bg-light p-3 border rounded-3 mb-3">
+        <div className="row g-3 align-items-center">
+          <div className="col-auto">
+            <select
+              className="form-select form-select-sm border-secondary-subtle"
+              style={{ minWidth: 150 }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">Chọn trạng thái</option>
+              <option value="active">Đang hoạt động</option>
+              <option value="inactive">Chưa kích hoạt</option>
+            </select>
+          </div>
+          <div className="col-auto">
+            <select
+              className="form-select form-select-sm border-secondary-subtle"
+              style={{ minWidth: 200 }}
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value)}
+            >
+              <option value="">Chọn gói dịch vụ</option>
+              <option value="Basic">Basic</option>
+              <option value="Plus">Plus</option>
+              <option value="Pro">Pro</option>
+            </select>
+          </div>
+          <div className="col ps-0">
+            <div className="d-flex gap-1 justify-content-center">
+              <input
+                type="text"
+                className="form-control form-control-sm border-secondary-subtle"
+                style={{ maxWidth: 200 }}
+                placeholder="Tìm kiếm công ty..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary px-3 rounded-3"
-                onClick={() => setSearchTerm('')}
-                disabled={!searchTerm.trim()}
+                className="btn btn-sm btn-primary px-3 shadow-sm d-flex align-items-center"
+                onClick={() => fetchCompanies()}
+                title="Tải lại danh sách từ máy chủ"
               >
-                Xóa
+                Tìm
               </button>
             </div>
+          </div>
+          <div className="col-auto d-flex gap-2">
+            <button type="button" className="btn btn-sm btn-danger px-3 shadow-sm" onClick={clearFilters}>
+              Xóa
+            </button>
+            <button 
+              className="btn btn-sm btn-primary px-3 shadow-sm fw-bold"
+              onClick={() => navigate('/admin/companies/create')}
+            >
+              Tạo mới
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="card border-0 shadow-sm rounded-4 overflow-visible">
-        <CompanyTable companies={filteredCompanies} loading={loading} onDelete={handleDelete} onEdit={handleEdit} onAssignAdmin={handleAssignAdmin} />
+      {/* Table Section */}
+      <div className="card shadow-sm border rounded-2 overflow-hidden bg-white">
+        <CompanyTable
+          companies={filteredCompanies}
+          loading={loading}
+          selectedCompanyIds={selectedCompanyIds}
+          onToggleRow={toggleCompanyRowSelected}
+          onToggleAllFiltered={toggleSelectAllFiltered}
+          onDelete={handleDelete}
+          onEdit={handleEdit}
+          onAssignAdmin={handleAssignAdmin}
+        />
       </div>
 
-      <AssignAdminModal isOpen={showAssignModal} company={selectedCompany} onClose={() => { setShowAssignModal(false); setSelectedCompany(null); }} />
+      <AssignAdminModal 
+        isOpen={showAssignModal} 
+        company={selectedCompany} 
+        onClose={() => { setShowAssignModal(false); setSelectedCompany(null); }} 
+      />
     </AdminLayout>
   );
 };

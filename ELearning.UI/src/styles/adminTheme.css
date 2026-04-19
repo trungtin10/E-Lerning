@@ -34,12 +34,12 @@
   font-weight: 750;
 }
 
-.admin-shell h1 { font-size: 1.65rem; }
-.admin-shell h2 { font-size: 1.35rem; }
-.admin-shell h3 { font-size: 1.15rem; }
-.admin-shell h4 { font-size: 1.02rem; }
-.admin-shell h5 { font-size: 0.98rem; }
-.admin-shell h6 { font-size: 0.9rem; }
+.admin-shell h1 { font-size: 1.4rem; }
+.admin-shell h2 { font-size: 1.2rem; }
+.admin-shell h3 { font-size: 1.05rem; }
+.admin-shell h4 { font-size: 0.95rem; }
+.admin-shell h5 { font-size: 0.9rem; }
+.admin-shell h6 { font-size: 0.85rem; }
 
 .admin-shell .text-muted {
   color: var(--admin-muted) !important;
@@ -56,7 +56,7 @@
   background: linear-gradient(180deg, rgba(37, 99, 235, 0.10) 0%, rgba(255, 255, 255, 0.92) 48%, rgba(255, 255, 255, 1) 100%);
   border-bottom: 1px solid var(--admin-border);
   box-shadow: 0 1px 0 rgba(17, 24, 39, 0.03);
-  min-height: 64px;
+  min-height: 56px;
 }
 
 /* subtle accent line like classic admin */
@@ -90,13 +90,42 @@
   line-height: 1.1;
 }
 .admin-brand__title {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 .admin-brand__subtitle {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--admin-muted);
+}
+
+/* ============================================================
+   Unified "Create" button (Tạo mới) across admin pages
+   Usage: className="btn btn-admin-create"
+   ============================================================ */
+.btn-admin-create{
+  background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
+  border: 1px solid rgba(15, 23, 42, 0.20);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+}
+.btn-admin-create:hover{
+  color: #fff;
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+.btn-admin-create:active{
+  transform: translateY(0);
+  filter: brightness(1.02);
+}
+.btn-admin-create:disabled{
+  opacity: 0.6;
+  box-shadow: none;
+  transform: none;
 }
 
 .admin-chip {
@@ -108,7 +137,7 @@
 .admin-sidebar {
   background: var(--admin-surface);
   border-right: 1px solid var(--admin-border);
-  padding: 10px;
+  padding: 8px;
 }
 
 .admin-sidebar__heading {
@@ -162,15 +191,15 @@
 .admin-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  padding: 8px 10px;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
 }
 
 .admin-nav-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -188,7 +217,7 @@
 .admin-nav-label {
   font-weight: 550;
   letter-spacing: -0.01em;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
 }
 
 .admin-nav-link.active::before {
@@ -219,26 +248,6 @@
   padding-right: 4px;
 }
 
-/* Hide scrollbars (keep scrolling) */
-.admin-sidebar-scroll {
-  -ms-overflow-style: none; /* IE/Edge legacy */
-  scrollbar-width: none; /* Firefox */
-}
-.admin-sidebar-scroll::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-.admin-shell .overflow-auto {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.admin-shell .overflow-auto::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
 
 /* Hide horizontal scrollbars in table wrappers (keep horizontal scroll) */
 .admin-shell .table-responsive,
@@ -321,6 +330,86 @@
 .admin-shell .course-card-actions__icon {
   width: 42px;
   flex: 0 0 42px;
+}
+
+/* Khóa học: placeholder khi chưa có ảnh bìa */
+.admin-shell .course-card-thumb-placeholder {
+  background: linear-gradient(155deg, #eff6ff 0%, #e0e7ff 38%, #f1f5f9 100%);
+}
+.admin-shell .course-card-thumb-placeholder__shine {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 85% 65% at 18% 12%, rgba(37, 99, 235, 0.18) 0%, transparent 58%),
+    radial-gradient(ellipse 75% 55% at 88% 82%, rgba(79, 70, 229, 0.14) 0%, transparent 55%);
+  pointer-events: none;
+}
+.admin-shell .course-card-thumb-placeholder__grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
+  background-size: 14px 14px;
+  pointer-events: none;
+}
+.admin-shell .course-card-thumb-placeholder__icon {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--admin-accent-border);
+  box-shadow:
+    0 10px 28px rgba(37, 99, 235, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+  color: var(--admin-accent);
+}
+.admin-shell .course-card-thumb-placeholder__icon svg {
+  opacity: 0.9;
+}
+
+/* Phân trang admin (nút vuông bo, chữ giữa) */
+.admin-shell .admin-pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.admin-shell .admin-pagination__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--admin-text);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.admin-shell .admin-pagination__btn:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.05);
+  color: var(--admin-accent);
+}
+.admin-shell .admin-pagination__btn:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+}
+.admin-shell .admin-pagination__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.admin-shell .admin-pagination__label {
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--admin-text);
+  letter-spacing: -0.01em;
+  min-width: 5.75rem;
+  text-align: center;
+  user-select: none;
 }
 
 /* Compact admin tables (classic) */

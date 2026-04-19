@@ -9,7 +9,7 @@ import { useNotify } from '../../../context/NotifyContext';
 import QuizSectionInline from '../../../components/admin/QuizSectionInline';
 import {
   Plus, Video, Loader2, ArrowLeft, Trash2, Minus,
-  Save, Upload, ClipboardCheck,
+  Save, Upload, ClipboardCheck, FileText,
   Info, BookOpen, RefreshCw, HelpCircle, GripVertical, Star, Eye, AlertCircle, CheckCircle2,
   ChevronDown, ChevronUp, MoreVertical, LayoutList, BarChart3
 } from 'lucide-react';
@@ -28,12 +28,14 @@ const CourseDetail = () => {
     { title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrls: [] }
   ];
   const [editData, setEditData] = useState({
-    title: '', scheduledDate: '', description: '',
+    title: '', description: '',
     sections: defaultSections(),
-    showIntroVideo: false, introVideoUrl: '', introExternalVideoUrl: ''
+    showIntroVideo: false, showIntroDocs: false, introVideoUrl: '', introExternalVideoUrl: '',
+    introSections: []
   });
 
   const [videoFiles, setVideoFiles] = useState({ intro: null });
+  const [documentFiles, setDocumentFiles] = useState({});
   const [localPreviews, setLocalPreviews] = useState({ intro: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -41,6 +43,10 @@ const CourseDetail = () => {
   const [newLessonTitle, setNewLessonTitle] = useState('');
   /** Thu gọn / mở rộng danh sách bài giảng (kiểu Canvas) */
   const [lessonsExpanded, setLessonsExpanded] = useState(true);
+  const [expandedLessonIds, setExpandedLessonIds] = useState({});
+  const toggleLessonExpand = (lid) => {
+    setExpandedLessonIds(prev => ({ ...prev, [lid]: !prev[lid] }));
+  };
   const { toast, confirm } = useNotify();
   const showToast = toast;
 
@@ -79,24 +85,32 @@ const CourseDetail = () => {
               content: (s.content ?? s.Content) ?? '',
               showVideo: Boolean(s.showVideo ?? s.ShowVideo),
               showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
-              videoUrls
+              showDocs: Boolean(s.showDocs ?? s.ShowDocs),
+              videoUrls,
+              docUrls: (s.docUrls ?? s.DocUrls) ?? []
             };
           });
         } else {
-          const hasContent = !!(currentLesson.overview?.trim() || currentLesson.content?.trim() || currentLesson.reviewContent?.trim() || currentLesson.essayQuestion?.trim());
-          const hasMedia = !!(currentLesson.videoUrl1 || currentLesson.videoUrl2 || currentLesson.videoUrl3 || currentLesson.videoUrl4 || currentLesson.videoUrl5);
-          const hasQuiz = !!(currentLesson.showQuiz1 || currentLesson.showQuiz2 || currentLesson.showQuiz3 || currentLesson.showQuiz4 || currentLesson.showQuiz5);
-          if (!hasContent && !hasMedia && !hasQuiz) {
-            sections = [{ title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrls: [] }];
-          } else {
-            sections = [
-              { title: currentLesson.section1Title || '1. Giới thiệu bài học', content: currentLesson.overview || '', showVideo: Boolean(currentLesson.showVideo1), showQuiz: Boolean(currentLesson.showQuiz1), videoUrls: currentLesson.videoUrl1 ? [currentLesson.videoUrl1] : [] },
-              { title: currentLesson.section2Title || '2. Bài giảng chi tiết', content: currentLesson.content || '', showVideo: Boolean(currentLesson.showVideo2), showQuiz: Boolean(currentLesson.showQuiz2), videoUrls: currentLesson.videoUrl2 ? [currentLesson.videoUrl2] : [] },
-              { title: currentLesson.section3Title || '3. Phần ôn tập', content: currentLesson.reviewContent || '', showVideo: Boolean(currentLesson.showVideo3), showQuiz: Boolean(currentLesson.showQuiz3), videoUrls: currentLesson.videoUrl3 ? [currentLesson.videoUrl3] : [] },
-              { title: currentLesson.section4Title || '4. Câu hỏi tự luận', content: currentLesson.essayQuestion || '', showVideo: Boolean(currentLesson.showVideo4), showQuiz: Boolean(currentLesson.showQuiz4), videoUrls: currentLesson.videoUrl4 ? [currentLesson.videoUrl4] : [] },
-              { title: currentLesson.section5Title || '5. Tổng kết bài học', content: '', showVideo: Boolean(currentLesson.showVideo5), showQuiz: Boolean(currentLesson.showQuiz5), videoUrls: currentLesson.videoUrl5 ? [currentLesson.videoUrl5] : [] }
-            ];
-          }
+          // Xử lý dữ liệu từ các trường legacy (nếu không có sectionsJson)
+          const legacySections = [
+            { title: (currentLesson.section1Title || '1. Giới thiệu bài học').trim(), content: (currentLesson.overview || '').trim(), showVideo: Boolean(currentLesson.showVideo1), showQuiz: Boolean(currentLesson.showQuiz1), showDocs: false, videoUrls: currentLesson.videoUrl1 ? [currentLesson.videoUrl1] : [], docUrls: [] },
+            { title: (currentLesson.section2Title || '2. Bài giảng chi tiết').trim(), content: (currentLesson.content || '').trim(), showVideo: Boolean(currentLesson.showVideo2), showQuiz: Boolean(currentLesson.showQuiz2), showDocs: false, videoUrls: currentLesson.videoUrl2 ? [currentLesson.videoUrl2] : [], docUrls: [] },
+            { title: (currentLesson.section3Title || '3. Phần ôn tập').trim(), content: (currentLesson.reviewContent || '').trim(), showVideo: Boolean(currentLesson.showVideo3), showQuiz: Boolean(currentLesson.showQuiz3), showDocs: false, videoUrls: currentLesson.videoUrl3 ? [currentLesson.videoUrl3] : [], docUrls: [] },
+            { title: (currentLesson.section4Title || '4. Câu hỏi tự luận').trim(), content: (currentLesson.essayQuestion || '').trim(), showVideo: Boolean(currentLesson.showVideo4), showQuiz: Boolean(currentLesson.showQuiz4), showDocs: false, videoUrls: currentLesson.videoUrl4 ? [currentLesson.videoUrl4] : [], docUrls: [] },
+            { title: (currentLesson.section5Title || '5. Tổng kết bài học').trim(), content: '', showVideo: Boolean(currentLesson.showVideo5), showQuiz: Boolean(currentLesson.showQuiz5), showDocs: false, videoUrls: currentLesson.videoUrl5 ? [currentLesson.videoUrl5] : [], docUrls: [] }
+          ];
+
+          // Lọc ra các mục có dữ liệu thực tế (bỏ qua các mục trống)
+          // Riêng mục index 0 sẽ được giữ lại nếu chưa có mục nào khác để đảm bảo luôn có ít nhất 1 mục hiển thị
+          const filteredSections = legacySections.filter((s, i) => {
+             const hasContent = s.content.length > 0;
+             const hasMedia = s.videoUrls.length > 0;
+             const hasQuiz = s.showQuiz;
+             return hasContent || hasMedia || hasQuiz;
+          });
+
+          // Nếu không có mục nào có dữ liệu, mặc định hiển thị 1 mục trống thay vì 5 mục trống
+          sections = filteredSections.length > 0 ? filteredSections : [legacySections[0]];
         }
         setEditData({
           title: currentLesson.title || '',
@@ -110,12 +124,53 @@ const CourseDetail = () => {
       setEditData(prev => ({
         ...prev,
         description: course.description || '',
-        showIntroVideo: Boolean(course.showIntroVideo),
-        introVideoUrl: course.introVideoUrl || '',
-        introExternalVideoUrl: course.introExternalVideoUrl || ''
+        showIntroVideo: Boolean(course.showIntroVideo || course.ShowIntroVideo),
+        showIntroDocs: Boolean(course.showIntroDocs || course.ShowIntroDocs),
+        introVideoUrl: course.introVideoUrl || course.IntroVideoUrl || '',
+        introExternalVideoUrl: course.introExternalVideoUrl || course.IntroExternalVideoUrl || '',
+        introSections: (() => {
+          const raw = course.introSectionsJson || course.IntroSectionsJson;
+          if (!raw) return [];
+          try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(s => ({
+              title: s.title ?? s.Title ?? '',
+              content: s.content ?? s.Content ?? '',
+              showVideo: Boolean(s.showVideo ?? s.ShowVideo),
+              showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
+              showDocs: Boolean(s.showDocs ?? s.ShowDocs),
+              videoUrl: s.videoUrl ?? s.VideoUrl ?? '',
+              videoUrls: s.videoUrls ?? s.VideoUrls ?? [],
+              docUrls: s.docUrls ?? s.DocUrls ?? []
+            }));
+          } catch (e) { return []; }
+        })(),
+        introDocUrls: (course.introDocUrls || course.IntroDocUrls) || []
       }));
     }
   }, [activeItem.data?.id, activeItem.type, course]);
+
+  // Hỗ trợ phím tắt Ctrl + S để lưu
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (submitting) return;
+
+        if (activeItem.type === 'intro') {
+          showToast('Đang lưu giới thiệu...', 'info');
+          handleSaveIntro('content');
+        } else if (activeItem.type === 'ls' && activeItem.data?.id) {
+          showToast(`Đang lưu nội dung bài học: ${activeItem.data.title}...`, 'info');
+          handleSaveLesson(0, 'content');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeItem, editData, submitting, videoFiles, documentFiles]);
 
   const fetchCourseDetail = async () => {
     try {
@@ -126,36 +181,119 @@ const CourseDetail = () => {
     } catch (err) { setError("Lỗi tải dữ liệu."); setLoading(false); return null; }
   };
 
-  const handleSaveIntro = async (saveType = 'all') => {
+  const handleSaveIntro = async (saveType = 'all', docUrlsOverride = null, introSectionsOverride = null) => {
     if (!course) return;
     setSubmitting(true);
     const data = new FormData();
     data.append('CourseCode', course.courseCode || '');
     data.append('Title', course.title || '');
     data.append('Description', editData.description || '');
+    data.append('CategoryId', course.categoryId || '');
+    data.append('StartDate', course.startDate || '');
+    data.append('EndDate', course.endDate || '');
     data.append('IsPublished', course.isPublished ? 'true' : 'false');
+    if (course.companyId) data.append('CompanyId', course.companyId);
     data.append('ShowIntroVideo', editData.showIntroVideo ? 'true' : 'false');
+    data.append('ShowIntroDocs', editData.showIntroDocs ? 'true' : 'false');
     data.append('IntroExternalVideoUrl', editData.introExternalVideoUrl || '');
+    data.append('IntroSectionsJson', JSON.stringify(introSectionsOverride || editData.introSections || []));
+    data.append('IntroDocUrlsJson', JSON.stringify(docUrlsOverride || editData.introDocUrls || []));
     if (videoFiles.intro) data.append('IntroVideoFile', videoFiles.intro);
+    
+    // Gửi file tài liệu intro tổng quan
+    (documentFiles.intro || []).forEach((f, fi) => f && data.append(`IntroDocFile_${fi}`, f));
+
+    // GỬI FILE THEO TỪNG MỤC INTRO SECTION
+    (editData.introSections || []).forEach((sec, sIdx) => {
+       if (videoFiles[`introSec_${sIdx}`]) {
+          data.append(`IntroSecVideo_${sIdx}`, videoFiles[`introSec_${sIdx}`]);
+       }
+       if (documentFiles[`introSec_${sIdx}`]) {
+          documentFiles[`introSec_${sIdx}`].forEach((f, fIdx) => {
+             data.append(`IntroSecDoc_${sIdx}_${fIdx}`, f);
+          });
+       }
+    });
 
     try {
-      await api.put(`/course/${id}`, data);
+      const response = await api.put(`/course/${id}`, data);
       const msg = saveType === 'content' ? 'Đã lưu nội dung!' : saveType === 'video' ? 'Đã lưu video!' : 'Đã lưu giới thiệu khóa học!';
       showToast(msg);
+      
+      if (response.data?.introSectionsJson) {
+         const raw = response.data.introSectionsJson;
+         const parsed = JSON.parse(raw);
+         const normalized = (parsed || []).map(s => ({
+            title: s.title ?? s.Title ?? '',
+            content: s.content ?? s.Content ?? '',
+            showVideo: Boolean(s.showVideo ?? s.ShowVideo),
+            showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
+            showDocs: Boolean(s.showDocs ?? s.ShowDocs),
+            videoUrl: s.videoUrl ?? s.VideoUrl ?? '',
+            videoUrls: s.videoUrls ?? s.VideoUrls ?? [],
+            docUrls: s.docUrls ?? s.DocUrls ?? []
+         }));
+         setEditData(prev => ({ ...prev, introSections: normalized }));
+      }
+
+      // Xoá file tạm (Cập nhật 1 lần duy nhất để tránh lỗi state)
+      setDocumentFiles(prev => {
+        const next = { ...prev };
+        delete next.intro;
+        (editData.introSections || []).forEach((_, idx) => {
+           delete next[`introSec_${idx}`];
+        });
+        return next;
+      });
+
       await fetchCourseDetail();
     } catch (err) { showToast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
   };
 
-  const handleSaveLesson = async (num, saveType = 'all') => {
+  const getFullUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url;
+    const base = api.defaults.baseURL.replace(/\/api\/?$/, '');
+    return base + (url.startsWith('/') ? url : '/' + url);
+  };
+
+  const formatDocName = (url) => {
+    if (!url) return '';
+    try {
+      let name = decodeURIComponent(url.split('/').pop());
+      // 1. Check for new format: Name---8hex.ext
+      const match = name.match(/^(.*)---[a-f0-9]{8}(\.[a-z0-9]+)$/i);
+      if (match) {
+        return match[1] + match[2];
+      }
+      // Khôi phục cho cả format cũ _8hex nếu còn tồn tại
+      const matchOld = name.match(/^(.*)_[a-f0-9]{8}(\.[a-z0-9]+)$/i);
+      if (matchOld) {
+        return matchOld[1] + matchOld[2];
+      }
+      // 2. legacy format: GUID 36 chars
+      if (name.match(/^[a-f0-9-]{36}\.[a-z0-9]+$/i)) {
+        return name.substring(0, 8) + '...' + name.substring(name.lastIndexOf('.'));
+      }
+      return name;
+    } catch (e) {
+      return url.split('/').pop();
+    }
+  };
+
+  const handleSaveLesson = async (num, saveType = 'all', sectionsOverride = null) => {
     if (!activeItem.data?.id) return;
     setSubmitting(true);
     const data = new FormData();
-    const sectionsForApi = editData.sections.map(s => ({
+    const rawSections = sectionsOverride || editData.sections;
+    const sectionsForApi = rawSections.map(s => ({
       title: s.title,
       content: s.content,
       showVideo: s.showVideo,
       showQuiz: s.showQuiz,
+      showDocs: s.showDocs,
       videoUrls: s.videoUrls || [],
+      docUrls: s.docUrls || [],
       videoUrl: (s.videoUrls && s.videoUrls[0]) || null
     }));
     data.append('Title', editData.title);
@@ -165,25 +303,50 @@ const CourseDetail = () => {
     editData.sections.forEach((_, i) => {
       const files = Array.isArray(videoFiles[i]) ? videoFiles[i] : (videoFiles[i] ? [videoFiles[i]] : []);
       files.forEach((f, fi) => f && data.append(`VideoFile_${i}_${fi}`, f));
+      
+      const docFiles = Array.isArray(documentFiles[i]) ? documentFiles[i] : (documentFiles[i] ? [documentFiles[i]] : []);
+      docFiles.forEach((f, fi) => f && data.append(`DocFile_${i}_${fi}`, f));
     });
 
     try {
-      const res = await api.put(`/course/lessons/${activeItem.data.id}`, data);
-      if (res.data?.sections) {
-        setEditData(prev => ({ ...prev, sections: res.data.sections }));
-        setVideoFiles(prev => {
-          const next = { ...prev };
-          editData.sections.forEach((_, i) => delete next[i]);
-          return next;
-        });
-        setLocalPreviews(prev => {
-          const next = { ...prev };
-          editData.sections.forEach((_, i) => delete next[i]);
-          return next;
-        });
-      } else if (saveType !== 'content') {
-        await fetchCourseDetail();
+      await api.put(`/course/lessons/${activeItem.data.id}`, data);
+      // Luôn tải lại data từ server để đảm bảo đồng bộ
+      const freshCourse = await fetchCourseDetail();
+      if (freshCourse) {
+        const freshLesson = freshCourse.lessons?.find(l => l.id === activeItem.data.id);
+        if (freshLesson?.sections && Array.isArray(freshLesson.sections) && freshLesson.sections.length > 0) {
+          const parsedSections = freshLesson.sections.map(s => ({
+            title: (s.title ?? s.Title) || '',
+            content: (s.content ?? s.Content) ?? '',
+            showVideo: Boolean(s.showVideo ?? s.ShowVideo),
+            showQuiz: Boolean(s.showQuiz ?? s.ShowQuiz),
+            showDocs: Boolean(s.showDocs ?? s.ShowDocs),
+            videoUrls: (() => {
+              const urls = (s.videoUrls ?? s.VideoUrls) ?? [];
+              const single = (s.videoUrl ?? s.VideoUrl) || '';
+              return Array.isArray(urls) && urls.length > 0 ? urls : (single ? [single] : []);
+            })(),
+            docUrls: (s.docUrls ?? s.DocUrls) ?? []
+          }));
+          setEditData(prev => ({ ...prev, sections: parsedSections }));
+        }
       }
+      // Xoá file tạm sau khi đã lưu thành công
+      setVideoFiles(prev => {
+        const next = { ...prev };
+        editData.sections.forEach((_, i) => delete next[i]);
+        return next;
+      });
+      setDocumentFiles(prev => {
+        const next = { ...prev };
+        editData.sections.forEach((_, i) => delete next[i]);
+        return next;
+      });
+      setLocalPreviews(prev => {
+        const next = { ...prev };
+        editData.sections.forEach((_, i) => delete next[i]);
+        return next;
+      });
       const msg = saveType === 'content' ? 'Đã lưu nội dung!' : saveType === 'video' ? 'Đã lưu video!' : 'Đã lưu!';
       showToast(msg);
     } catch (err) { showToast('Lỗi khi lưu.', 'error'); } finally { setSubmitting(false); }
@@ -192,12 +355,72 @@ const CourseDetail = () => {
   const onFileChange = (sectionIndex, files) => {
     if (files && files.length > 0) {
       const fileList = Array.from(files);
-      setVideoFiles(prev => ({ ...prev, [sectionIndex]: [...(prev[sectionIndex] || []), ...fileList] }));
+      setVideoFiles(prev => ({ ...prev, [sectionIndex]: fileList.length === 1 && typeof sectionIndex === 'string' && sectionIndex.startsWith('introSec') ? fileList[0] : [...(prev[sectionIndex] || []), ...fileList] }));
       setLocalPreviews(prev => ({
         ...prev,
-        [sectionIndex]: [...(prev[sectionIndex] || []), ...fileList.map(f => URL.createObjectURL(f))]
+        [sectionIndex]: fileList.length === 1 && typeof sectionIndex === 'string' && sectionIndex.startsWith('introSec') ? URL.createObjectURL(fileList[0]) : [...(prev[sectionIndex] || []), ...fileList.map(f => URL.createObjectURL(f))]
       }));
     }
+  };
+
+  const onDocChange = (sectionIndex, files) => {
+    if (files && files.length > 0) {
+      const fileList = Array.from(files);
+      setDocumentFiles(prev => ({ ...prev, [sectionIndex]: [...(prev[sectionIndex] || []), ...fileList] }));
+    }
+  };
+
+  const handleDeleteDoc = async (sectionIndex, sectionNum, docIndex, isLocal) => {
+    if (submitting) return;
+    const ok = await confirm({ title: 'Xóa tài liệu', message: 'Bạn có chắc chắn muốn xóa tài liệu này?', confirmText: 'Xóa' });
+    if (!ok) return;
+    try {
+      if (isLocal) {
+        if (sectionIndex === 'intro') {
+          setDocumentFiles(prev => {
+            const arr = [...(prev.intro || [])];
+            arr.splice(docIndex, 1);
+            return { ...prev, intro: arr.length ? arr : [] };
+          });
+        } else {
+          setDocumentFiles(prev => {
+            const arr = [...(prev[sectionIndex] || [])];
+            arr.splice(docIndex, 1);
+            const next = { ...prev };
+            if (arr.length) next[sectionIndex] = arr; else delete next[sectionIndex];
+            return next;
+          });
+        }
+      } else {
+        if (sectionIndex === 'intro') {
+          const newList = editData.introDocUrls.filter((_, di) => di !== docIndex);
+          setEditData(prev => ({ ...prev, introDocUrls: newList }));
+          await handleSaveIntro('content', newList);
+        } else if (sectionIndex === 'introSection') {
+          const newIntroSections = editData.introSections.map((s, i) => 
+            i === sectionNum 
+              ? { ...s, docUrls: (s.docUrls || []).filter((_, di) => di !== docIndex) }
+              : s
+          );
+          setEditData(prev => ({ ...prev, introSections: newIntroSections }));
+          // Note: handleSaveIntro normally stringifies editData.introSections. 
+          // We need to either pass it as override or let it use updated state.
+          // Since it uses editData.introSections, we should pass it or wait.
+          // Let's modify handleSaveIntro to accept both overrides.
+          await handleSaveIntro('content', null, newIntroSections);
+        } else {
+          // Xoá doc bài học
+          const newLessonSections = editData.sections.map((s, i) => 
+            i === sectionIndex 
+              ? { ...s, docUrls: s.docUrls.filter((_, di) => di !== docIndex) }
+              : s
+          );
+          setEditData(prev => ({ ...prev, sections: newLessonSections }));
+          await handleSaveLesson(sectionNum, 'content', newLessonSections);
+        }
+      }
+      showToast('Đã xóa tài liệu.');
+    } catch (err) { showToast('Lỗi khi xóa.', 'error'); }
   };
 
   const handleDeleteVideo = async (sectionIndex, sectionNum, videoIndex, isLocalPreview) => {
@@ -237,10 +460,22 @@ const CourseDetail = () => {
   };
 
   const updateSection = (index, field, value) => {
+    // Cập nhật view đang hiển thị
     setEditData(prev => ({
       ...prev,
       sections: prev.sections.map((s, i) => i === index ? { ...s, [field]: value } : s)
     }));
+    // Đồng bộ vào danh sách bài học tổng trong course
+    if (activeItem.data?.id) {
+      setCourse(prev => prev ? ({
+        ...prev,
+        lessons: prev.lessons.map(l => 
+          l.id === activeItem.data.id 
+            ? { ...l, sections: l.sections.map((s, i) => i === index ? { ...s, [field]: value } : s) }
+            : l
+        )
+      }) : null);
+    }
   };
 
   const addSection = () => {
@@ -266,7 +501,7 @@ const CourseDetail = () => {
   const sectionIcons = [<Info size={20} className="text-info" key="i1" />, <BookOpen size={20} className="text-primary" key="i2" />, <RefreshCw size={20} className="text-success" key="i3" />, <HelpCircle size={20} className="text-warning" key="i4" />, <CheckCircle2 size={20} className="text-dark" key="i5" />];
 
   const renderSection = (index, section, num) => (
-    <div key={index} className="mb-3 p-3 border rounded-4 bg-white shadow-sm">
+    <div key={index} id={`section-panel-${index}`} className="mb-3 p-3 border rounded-4 bg-white shadow-sm">
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         <span
           className="badge rounded-pill"
@@ -278,19 +513,23 @@ const CourseDetail = () => {
           <input
             type="text"
             className="form-control form-control-sm bg-light border-0 fw-bold"
-            value={section.title}
+            value={section.title || ''}
             onChange={e => updateSection(index, 'title', e.target.value)}
             placeholder="Tiêu đề mục..."
           />
         </div>
         <div className="d-flex align-items-center gap-3 ms-auto">
           <div className="form-check form-switch m-0">
-            <input className="form-check-input cursor-pointer" type="checkbox" id={`showVideo${index}`} checked={section.showVideo} onChange={e => updateSection(index, 'showVideo', e.target.checked)} />
+            <input className="form-check-input cursor-pointer" type="checkbox" id={`showVideo${index}`} checked={!!section.showVideo} onChange={e => updateSection(index, 'showVideo', e.target.checked)} />
             <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`showVideo${index}`}>Video</label>
           </div>
           <div className="form-check form-switch m-0">
-            <input className="form-check-input cursor-pointer" type="checkbox" id={`showQuiz${index}`} checked={section.showQuiz} onChange={e => updateSection(index, 'showQuiz', e.target.checked)} />
+            <input className="form-check-input cursor-pointer" type="checkbox" id={`showQuiz${index}`} checked={!!section.showQuiz} onChange={e => updateSection(index, 'showQuiz', e.target.checked)} />
             <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`showQuiz${index}`}>Quiz</label>
+          </div>
+          <div className="form-check form-switch m-0">
+            <input className="form-check-input cursor-pointer" type="checkbox" id={`showDocs${index}`} checked={!!section.showDocs} onChange={e => updateSection(index, 'showDocs', e.target.checked)} />
+            <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`showDocs${index}`}>Tài liệu</label>
           </div>
           {editData.sections.length > 1 && (
             <button type="button" className="btn btn-sm btn-outline-secondary rounded-3" onClick={() => removeSection(index)} title="Xóa mục">
@@ -301,12 +540,28 @@ const CourseDetail = () => {
       </div>
 
       <div className="mb-4">
-        <div className="d-flex justify-content-end mb-2">
+        <div className="d-flex justify-content-end align-items-center gap-3 mb-2">
+          <span className="text-muted small d-none d-md-inline"><kbd>Ctrl</kbd> + <kbd>S</kbd> để lưu nhanh</span>
           <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveLesson(num, 'content')} disabled={submitting}>
             {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu nội dung
           </button>
         </div>
-        <TiptapEditor key={`lesson-${activeItem.data?.id}-${index}`} content={section.content} onChange={(val) => updateSection(index, 'content', val)} />
+        <TiptapEditor 
+          key={`lesson-${activeItem.data?.id}-${index}`} 
+          content={section.content} 
+          onChange={(val) => {
+            // Cập nhật cả view hiện tại và danh sách bài học tổng
+            updateSection(index, 'content', val);
+            setCourse(prev => prev ? ({
+              ...prev,
+              lessons: prev.lessons.map(l => 
+                l.id === activeItem.data.id 
+                  ? { ...l, sections: l.sections.map((sec, i) => i === index ? { ...sec, content: val } : sec) }
+                  : l
+              )
+            }) : null);
+          }} 
+        />
       </div>
 
       {section.showQuiz && (
@@ -324,6 +579,54 @@ const CourseDetail = () => {
               lessonId={activeItem.data?.id}
               onToast={showToast}
             />
+        </div>
+      )}
+
+      {section.showDocs && (
+        <div className="doc-section mt-4 p-3 bg-white rounded-4 border border-info border-opacity-25 shadow-sm">
+          <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+            <div className="d-flex align-items-center gap-2 text-dark fw-bold"><FileText size={18} className="text-info" /> Tài liệu đính kèm ({section.docUrls?.length || 0})</div>
+            <button className="btn btn-sm btn-outline-info px-3 rounded-pill d-flex align-items-center gap-2" onClick={() => handleSaveLesson(num, 'content')} disabled={submitting}>
+              {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu tài liệu
+            </button>
+          </div>
+
+          <div className="d-flex justify-content-center mb-3">
+            <label className="btn btn-light py-3 px-4 rounded-3 border-2 border-dashed fw-bold d-block hover-bg-info-subtle transition-all cursor-pointer w-100">
+              <Upload size={20} className="text-info mb-1 d-block mx-auto" />
+              <span className="text-dark small d-block">Chọn Tài liệu (PDF, Word, Excel...)</span>
+              <input type="file" className="d-none" multiple onChange={e => onDocChange(index, e.target.files)} />
+            </label>
+          </div>
+
+          {((section.docUrls && section.docUrls.length > 0) || (documentFiles[index] && documentFiles[index].length > 0)) && (
+            <div className="list-group list-group-flush rounded-3 border overflow-hidden">
+              {(section.docUrls || []).map((url, di) => (
+                <div key={`saved-doc-${di}`} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-light bg-opacity-50">
+                   <div className="d-flex align-items-center gap-2 overflow-hidden">
+                      <FileText size={16} className="text-info flex-shrink-0" />
+                      <a href={getFullUrl(url)} target="_blank" rel="noreferrer" className="small text-truncate text-decoration-none text-dark hover-text-primary">
+                        {formatDocName(url)}
+                      </a>
+                   </div>
+                   <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc(index, num, di, false)}>
+                      <Trash2 size={14} />
+                   </button>
+                </div>
+              ))}
+              {(documentFiles[index] || []).map((file, di) => (
+                <div key={`new-doc-${di}`} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-info bg-opacity-10">
+                   <div className="d-flex align-items-center gap-2 overflow-hidden">
+                      <FileText size={16} className="text-info flex-shrink-0" />
+                      <span className="small text-truncate text-info fw-bold">{file.name} (Chưa lưu)</span>
+                   </div>
+                   <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc(index, num, di, true)}>
+                      <Trash2 size={14} />
+                   </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -430,6 +733,7 @@ const CourseDetail = () => {
     data.append('Title', course.title || '');
     data.append('Description', course.description || '');
     data.append('IsPublished', (!course.isPublished).toString());
+    if (course.companyId) data.append('CompanyId', course.companyId);
     data.append('ShowIntroVideo', course.showIntroVideo ? 'true' : 'false');
     data.append('IntroExternalVideoUrl', course.introExternalVideoUrl || '');
     try {
@@ -519,15 +823,55 @@ const CourseDetail = () => {
                 </button>
               </div>
 
-              <button
-                type="button"
-                className={`course-outline-item w-100 text-start d-flex align-items-center gap-2 mb-2 border-0 rounded-2 py-2 px-3 ${activeItem.type === 'intro' ? 'course-outline-item--active' : 'bg-white'}`}
-                onClick={selectIntro}
-              >
-                <Star size={18} className={activeItem.type === 'intro' ? 'text-primary' : 'text-warning'} />
-                <span className="fw-semibold small flex-grow-1 course-outline-title">Giới thiệu khóa học</span>
-                {course.isPublished ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <span className="small text-muted flex-shrink-0">—</span>}
-              </button>
+              <div className="flex-grow-1 flex-column d-flex overflow-hidden mb-2">
+                <div className={`course-outline-item rounded-2 d-flex align-items-center gap-2 py-2 px-3 ${activeItem.type === 'intro' ? 'course-outline-item--active' : 'bg-white'}`}>
+                  <button
+                    type="button"
+                    className="flex-grow-1 text-start border-0 bg-transparent d-flex align-items-center gap-2 py-1 min-w-0"
+                    onClick={() => { selectIntro(); toggleLessonExpand('intro'); }}
+                  >
+                    <Star size={18} className={activeItem.type === 'intro' ? 'text-primary' : 'text-warning'} />
+                    <span className="fw-semibold small flex-grow-1 course-outline-title">Giới thiệu khóa học</span>
+                    {expandedLessonIds['intro'] ? <ChevronUp size={14} className="ms-auto text-muted" /> : <ChevronDown size={14} className="ms-auto text-muted" />}
+                  </button>
+                  {course.isPublished ? <CheckCircle2 size={18} className="text-success flex-shrink-0" /> : <span className="small text-muted flex-shrink-0">—</span>}
+                </div>
+
+                <AnimatePresence>
+                  {expandedLessonIds['intro'] && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="ms-4 my-1 border-start ps-2 d-flex flex-column gap-1">
+                        {(editData.introSections || []).map((sec, sIdx) => (
+                          <button
+                            key={`sidebar-intro-sec-${sIdx}`}
+                            type="button"
+                            className="btn btn-link p-2 text-start text-decoration-none d-flex align-items-center gap-2 hover-bg-light rounded-2 border-0"
+                            style={{ fontSize: '0.78rem', color: '#64748b' }}
+                            onClick={() => {
+                              selectIntro();
+                              setTimeout(() => {
+                                // Cuộn đến panel intro section
+                                const el = document.getElementById(`intro-section-${sIdx}`);
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 100);
+                            }}
+                          >
+                            <div className="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                              <LayoutList size={13} className="text-primary flex-shrink-0" />
+                              <span className="text-truncate">{sec.title || `Mục ${sIdx + 1}`}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
               <button
                 type="button"
@@ -545,43 +889,82 @@ const CourseDetail = () => {
                   {(course.lessons || []).map((lesson, idx) => {
                     const isActive = activeItem.type === 'ls' && activeItem.data?.id === lesson.id;
                     return (
-                      <Reorder.Item key={lesson.id} value={lesson} className="d-flex align-items-stretch gap-1 mb-2 group">
-                        <div className="cursor-grab text-muted opacity-50 d-flex align-items-center px-1" title="Kéo để sắp xếp">
-                          <GripVertical size={14} />
-                        </div>
-                        <div className={`flex-grow-1 course-outline-item rounded-2 d-flex align-items-center gap-1 py-2 px-2 ${isActive ? 'course-outline-item--active' : 'bg-white'}`}>
-                          <button
-                            type="button"
-                            className="flex-grow-1 text-start border-0 bg-transparent d-flex align-items-center gap-2 py-1 min-w-0"
-                            onClick={() => selectLesson(lesson)}
-                          >
-                            <span className="small fw-bold text-muted flex-shrink-0">{idx + 1}</span>
-                            <span className="small fw-semibold text-dark course-outline-title">{lesson.title}</span>
-                          </button>
-                          <CheckCircle2 size={18} className="text-success flex-shrink-0" aria-hidden />
-                          <div className="dropdown">
+                      <Reorder.Item key={lesson.id} value={lesson} className="d-flex flex-column mb-2 group">
+                        <div className="d-flex align-items-stretch gap-1">
+                          <div className="cursor-grab text-muted opacity-50 d-flex align-items-center px-1" title="Kéo để sắp xếp">
+                            <GripVertical size={14} />
+                          </div>
+                          <div className={`flex-grow-1 course-outline-item rounded-2 d-flex align-items-center gap-1 py-1 px-2 ${isActive ? 'course-outline-item--active' : 'bg-white'}`}>
                             <button
                               type="button"
-                              className="btn btn-link p-1 text-secondary d-inline-flex align-items-center"
-                              data-bs-toggle="dropdown"
-                              data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
-                              data-bs-offset="0,4"
-                              aria-label="Thao tác bài học"
-                              onClick={(e) => e.stopPropagation()}
+                              className="flex-grow-1 text-start border-0 bg-transparent d-flex align-items-center gap-2 py-1 min-w-0"
+                              onClick={() => { selectLesson(lesson); toggleLessonExpand(lesson.id); }}
                             >
-                              <MoreVertical size={18} />
+                              <span className="small fw-bold text-muted flex-shrink-0">{idx + 1}</span>
+                              <span className="small fw-semibold text-dark course-outline-title text-truncate">{lesson.title || 'Bài giảng mới'}</span>
+                              {expandedLessonIds[lesson.id] ? <ChevronUp size={14} className="ms-auto text-muted" /> : <ChevronDown size={14} className="ms-auto text-muted" />}
                             </button>
-                            <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-1 small">
-                              <li>
-                                <button type="button" className="dropdown-item py-2" onClick={() => selectLesson(lesson)}>Mở chỉnh sửa</button>
-                              </li>
-                              <li><hr className="dropdown-divider my-0" /></li>
-                              <li>
-                                <button type="button" className="dropdown-item py-2 text-danger" onClick={(e) => handleDeleteLesson(e, lesson.id)}>Xóa bài học</button>
-                              </li>
-                            </ul>
+                            <CheckCircle2 size={18} className="text-success flex-shrink-0" />
+                            <div className="dropdown">
+                              <button
+                                type="button"
+                                className="btn btn-link p-1 text-secondary d-inline-flex align-items-center"
+                                data-bs-toggle="dropdown"
+                                data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
+                                data-bs-offset="0,4"
+                                aria-label="Thao tác bài học"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreVertical size={18} />
+                              </button>
+                              <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-1 small">
+                                <li>
+                                  <button type="button" className="dropdown-item py-2" onClick={() => selectLesson(lesson)}>Mở chỉnh sửa</button>
+                                </li>
+                                <li><hr className="dropdown-divider my-0" /></li>
+                                <li>
+                                  <button type="button" className="dropdown-item py-2 text-danger" onClick={(e) => handleDeleteLesson(e, lesson.id)}>Xóa bài học</button>
+                                </li>
+                              </ul>
+                            </div>
                           </div>
                         </div>
+                        
+                        {/* Chi tiết các mục con (Accordion) */}
+                        <AnimatePresence>
+                          {expandedLessonIds[lesson.id] && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="ms-4 my-1 border-start ps-2 d-flex flex-column gap-1">
+                                {(lesson.sections || []).map((sec, sIdx) => (
+                                  <button
+                                    key={`sidebar-sec-${lesson.id}-${sIdx}`}
+                                    type="button"
+                                    className="btn btn-link p-2 text-start text-decoration-none d-flex align-items-center gap-2 hover-bg-light rounded-2 border-0"
+                                    style={{ fontSize: '0.78rem', color: '#64748b' }}
+                                    onClick={() => {
+                                      selectLesson(lesson);
+                                      setTimeout(() => {
+                                        const el = document.getElementById(`section-panel-${sIdx}`);
+                                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                      }, 100);
+                                    }}
+                                  >
+                                    <div className="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                      {sec.showVideo ? <Video size={13} className="text-primary flex-shrink-0" /> : (sec.showDocs ? <FileText size={13} className="text-info flex-shrink-0" /> : <Info size={13} className="text-secondary flex-shrink-0" />)}
+                                      <span className="text-truncate">{sec.title || `Mục ${sIdx + 1}`}</span>
+                                    </div>
+                                    {sec.showQuiz && <CheckCircle2 size={12} className="text-success flex-shrink-0" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </Reorder.Item>
                     );
                   })}
@@ -617,6 +1000,22 @@ const CourseDetail = () => {
                   </button>
                 </div>
 
+                <div className="d-flex align-items-center gap-4 mb-4 p-3 bg-light rounded-4 border">
+                  <div className="form-check form-switch m-0">
+                    <input className="form-check-input cursor-pointer" type="checkbox" id="mainShowIntroVid" checked={!!editData.showIntroVideo} onChange={e => setEditData({...editData, showIntroVideo: e.target.checked})} />
+                    <label className="form-check-label fw-bold text-dark cursor-pointer" htmlFor="mainShowIntroVid">Video giới thiệu</label>
+                  </div>
+                  <div className="form-check form-switch m-0">
+                    <input className="form-check-input cursor-pointer" type="checkbox" id="mainShowIntroDoc" checked={!!editData.showIntroDocs} onChange={e => setEditData({...editData, showIntroDocs: e.target.checked})} />
+                    <label className="form-check-label fw-bold text-dark cursor-pointer" htmlFor="mainShowIntroDoc">Tài liệu giới thiệu</label>
+                  </div>
+                  <div className="ms-auto">
+                    <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('content')} disabled={submitting}>
+                      {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu thiết lập 
+                    </button>
+                  </div>
+                </div>
+
                 <div className="mb-4">
                     <div className="d-flex justify-content-end mb-2">
                       <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('content')} disabled={submitting}>
@@ -624,53 +1023,288 @@ const CourseDetail = () => {
                       </button>
                     </div>
                     <label className="form-label small fw-bold text-secondary mb-3">Nội dung văn bản giới thiệu</label>
-                    <TiptapEditor content={editData.description} onChange={(val) => setEditData({...editData, description: val})} />
+                    <TiptapEditor key="course-intro-main" content={editData.description} onChange={(val) => setEditData({...editData, description: val})} />
                 </div>
 
-                <div className="video-section mt-4 p-3 bg-light rounded-4 border">
-                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 border-bottom pb-3">
-                        <div className="d-flex align-items-center gap-2 text-dark fw-bold">
-                            <Video size={20} className="text-primary" /> Video giới thiệu khóa học
-                        </div>
-                        <div className="d-flex align-items-center gap-2">
-                          <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('video')} disabled={submitting}>
-                            {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu video
-                          </button>
-                          <div className="form-check form-switch">
-                            <input className="form-check-input cursor-pointer" type="checkbox" id="showIntroVideo" checked={editData.showIntroVideo} onChange={e => setEditData({...editData, showIntroVideo: e.target.checked})} />
-                            <label className="form-check-label small fw-bold text-nowrap cursor-pointer" htmlFor="showIntroVideo">Sử dụng Video</label>
-                          </div>
-                        </div>
+                {/* Video giới thiệu tổng quan */}
+                {editData.showIntroVideo && (
+                  <div className="mb-4 p-4 bg-white border rounded-4 shadow-sm">
+                  <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
+                    <div className="d-flex align-items-center gap-2 text-dark fw-bold">
+                       <Video size={20} className="text-primary" /> Video giới thiệu khóa học
                     </div>
+                    <button className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" onClick={() => handleSaveIntro('video')} disabled={submitting}>
+                      {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu video
+                    </button>
+                  </div>
 
-                    {editData.showIntroVideo && (
-                        <>
-                            <div className="d-flex justify-content-center mb-4">
-                                <label className="btn btn-white py-4 px-5 rounded-3 border-2 border-dashed fw-bold shadow-sm d-block hover-bg-primary-subtle transition-all cursor-pointer">
-                                    <Upload size={24} className="text-primary mb-2 d-block mx-auto" />
-                                    <span className="text-dark small d-block">Chọn tệp video giới thiệu</span>
-                                    <input type="file" className="d-none" accept="video/*" onChange={e => onFileChange('intro', e.target.files[0])} />
-                                </label>
+                  <div className="row g-3">
+                    <div className="col-md-12">
+                      <label className="form-label small fw-bold text-muted">Tải video giới thiệu lên từ máy tính</label>
+                      <div className="d-flex justify-content-center">
+                        <label className="btn btn-light py-4 px-4 rounded-3 border-2 border-dashed fw-bold d-block hover-bg-primary-subtle transition-all cursor-pointer w-100">
+                          <Upload size={24} className="text-primary mb-2 d-block mx-auto" />
+                          <span className="text-dark small d-block">Chọn tệp Video (.mp4, .mov...)</span>
+                          <input type="file" className="d-none" accept="video/*" onChange={e => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              setVideoFiles(prev => ({ ...prev, intro: file }));
+                              setLocalPreviews(prev => ({ ...prev, intro: URL.createObjectURL(file) }));
+                            }
+                          }} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(editData.introVideoUrl || localPreviews.intro) && (
+                    <div className="mt-4 pt-3 border-top">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <span className="small text-muted fw-bold">Xem trước Video:</span>
+                        {(editData.introVideoUrl || videoFiles.intro) && (
+                          <button className="btn btn-sm btn-link text-danger p-0 d-flex align-items-center gap-1" onClick={() => handleDeleteVideo('intro')}>
+                            <Trash2 size={14} /> Xóa tệp video đã tải
+                          </button>
+                        )}
+                      </div>
+                      <div className="ratio ratio-16x9 rounded-3 overflow-hidden border bg-black shadow-lg">
+                        {localPreviews.intro ? (
+                          <video controls src={localPreviews.intro} />
+                        ) : (
+                          <VideoPlayer src={editData.introVideoUrl} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+                {/* Tài liệu giới thiệu tổng quan */}
+                {editData.showIntroDocs && (
+                  <div className="mb-5 p-4 bg-white border rounded-4 shadow-sm">
+                  <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-3">
+                    <div className="d-flex align-items-center gap-2 text-dark fw-bold">
+                       <FileText size={20} className="text-info" /> Tài liệu khóa học (Tổng quan)
+                    </div>
+                    <button className="btn btn-sm btn-outline-info px-3 rounded-pill d-flex align-items-center gap-2" onClick={() => handleSaveIntro('content')} disabled={submitting}>
+                      {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu tài liệu
+                    </button>
+                  </div>
+
+                  <div className="d-flex justify-content-center mb-3">
+                    <label className="btn btn-light py-3 px-4 rounded-3 border-2 border-dashed fw-bold d-block hover-bg-info-subtle transition-all cursor-pointer w-100">
+                      <Upload size={20} className="text-info mb-1 d-block mx-auto" />
+                      <span className="text-dark small d-block">Chọn tài liệu cho khóa học (PDF, Word, Excel...)</span>
+                      <input type="file" className="d-none" multiple onChange={e => {
+                        const fileList = Array.from(e.target.files);
+                        setDocumentFiles(prev => ({ ...prev, intro: [...(prev.intro || []), ...fileList] }));
+                      }} />
+                    </label>
+                  </div>
+
+                  {((editData.introDocUrls && editData.introDocUrls.length > 0) || (documentFiles.intro && documentFiles.intro.length > 0)) && (
+                    <div className="list-group list-group-flush rounded-3 border overflow-hidden">
+                      {(editData.introDocUrls || []).map((url, di) => (
+                        <div key={`intro-saved-${di}`} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-light bg-opacity-50">
+                           <div className="d-flex align-items-center gap-2 overflow-hidden">
+                              <FileText size={16} className="text-info flex-shrink-0" />
+                              <a href={getFullUrl(url)} target="_blank" rel="noreferrer" className="small text-truncate text-decoration-none text-dark hover-text-primary">
+                                {formatDocName(url)}
+                              </a>
+                           </div>
+                           <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc('intro', 0, di, false)}>
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                      {(documentFiles.intro || []).map((file, di) => (
+                        <div key={`intro-new-${di}`} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-info bg-opacity-10">
+                           <div className="d-flex align-items-center gap-2 overflow-hidden">
+                              <FileText size={16} className="text-info flex-shrink-0" />
+                              <span className="small text-truncate text-info fw-bold">{file.name} (Chưa lưu)</span>
+                           </div>
+                           <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc('intro', 0, di, true)}>
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+                
+                {/* Cấu trúc mục giới thiệu bổ sung */}
+                <div className="mt-4 p-4 bg-white border rounded-4 shadow-sm">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <h5 className="fw-bold mb-0 d-flex align-items-center gap-2">
+                       <LayoutList size={20} className="text-primary" /> Các mục giới thiệu khác 
+                    </h5>
+                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-3">
+                      <span className="text-muted small d-none d-md-inline"><kbd>Ctrl</kbd> + <kbd>S</kbd> để lưu nhanh</span>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-outline-secondary px-3 rounded-3 d-flex align-items-center gap-2" 
+                        onClick={() => handleSaveIntro('content')} 
+                        disabled={submitting}
+                      >
+                        {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu nội dung
+                      </button>
+                    </div>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-outline-primary fw-bold" 
+                        onClick={() => setEditData({...editData, introSections: [...(editData.introSections || []), { title: '', content: '' }]})}
+                      >
+                        <Plus size={16} /> Thêm mục
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {(editData.introSections || []).length === 0 ? (
+                    <div className="text-center py-4 bg-light rounded-3 border border-dashed">
+                      <p className="text-muted small mb-0">Chưa có mục bổ sung nào. Nhấn "Thêm mục" để bắt đầu.</p>
+                    </div>
+                  ) : (
+                    <div className="d-flex flex-column gap-3">
+                      {editData.introSections.map((section, idx) => (
+                        <div key={idx} id={`intro-section-${idx}`} className="p-3 border rounded-3 bg-light position-relative">
+                          <button 
+                            type="button" 
+                            className="btn btn-link link-danger p-1 position-absolute top-0 end-0 m-2"
+                            onClick={() => {
+                              const next = [...editData.introSections];
+                              next.splice(idx, 1);
+                              setEditData({...editData, introSections: next});
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                          <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3 pb-2 border-bottom">
+                            <div className="flex-grow-1 me-4">
+                              <label className="form-label small fw-bold">Tiêu đề mục</label>
+                              <input 
+                                type="text" 
+                                className="form-control form-control-sm rounded-2 fw-bold" 
+                                value={section.title || ''} 
+                                onChange={e => {
+                                  const newVal = e.target.value;
+                                  setEditData(prev => ({
+                                    ...prev,
+                                    introSections: prev.introSections.map((s, i) => 
+                                      i === idx ? { ...s, title: newVal } : s
+                                    )
+                                  }));
+                                }} 
+                                placeholder="Ví dụ: Lợi ích khóa học..."
+                              />
                             </div>
+                            <div className="d-flex align-items-center gap-3 pt-4">
+                              <div className="form-check form-switch m-0">
+                                <input className="form-check-input cursor-pointer" type="checkbox" id={`introVid${idx}`} checked={!!section.showVideo} onChange={e => {
+                                  const newVal = e.target.checked;
+                                  setEditData(prev => ({
+                                    ...prev,
+                                    introSections: prev.introSections.map((s, i) => i === idx ? { ...s, showVideo: newVal } : s)
+                                  }));
+                                }} />
+                                <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`introVid${idx}`}>Video</label>
+                              </div>
+                              <div className="form-check form-switch m-0">
+                                <input className="form-check-input cursor-pointer" type="checkbox" id={`introDoc${idx}`} checked={!!section.showDocs} onChange={e => {
+                                  const newVal = e.target.checked;
+                                  setEditData(prev => ({
+                                    ...prev,
+                                    introSections: prev.introSections.map((s, i) => i === idx ? { ...s, showDocs: newVal } : s)
+                                  }));
+                                }} />
+                                <label className="form-check-label small fw-semibold cursor-pointer" htmlFor={`introDoc${idx}`}>Tài liệu</label>
+                               </div>
+                            </div>
+                          </div>
+                          
+                          <div className="mb-3">
+                            <label className="form-label small fw-bold">Nội dung chi tiết</label>
+                            <TiptapEditor 
+                              key={`intro-sec-${idx}`}
+                              content={section.content} 
+                              onChange={val => {
+                                setEditData(prev => ({
+                                  ...prev,
+                                  introSections: prev.introSections.map((s, i) => i === idx ? { ...s, content: val } : s)
+                                }));
+                              }} 
+                            />
+                          </div>
 
-                            {(editData.introVideoUrl || localPreviews.intro) && (
-                                <div className="mt-2 pt-3 border-top">
-                                    <div className="d-flex justify-content-between align-items-center mb-2">
-                                        <span className="small text-muted fw-bold">Xem chi tiết:</span>
-                                        {(localPreviews.intro || editData.introVideoUrl) && (
-                                            <button className="btn btn-outline-danger btn-xs rounded-pill px-3" onClick={() => handleDeleteVideo('intro', 0, 0, false)}>
-                                                <Trash2 size={12} className="me-1" /> Xóa Video
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="ratio ratio-16x9 rounded-3 overflow-hidden border bg-black shadow-lg">
-                                        {localPreviews.intro ? ( <video controls src={localPreviews.intro}></video> )
-                                        : ( <VideoPlayer src={editData.introVideoUrl} /> )}
-                                    </div>
+                          {section.showVideo && (
+                            <div className="mb-3 p-3 bg-light rounded-3 border">
+                              <div className="d-flex align-items-center justify-content-between mb-2">
+                                <label className="form-label small fw-bold d-block mb-0 text-primary"><Video size={14} className="me-1" /> Video cho mục này</label>
+                                <button className="btn btn-sm btn-outline-primary px-3 rounded-pill d-flex align-items-center gap-2" style={{ fontSize: '11px' }} onClick={() => handleSaveIntro('video')} disabled={submitting}>
+                                  {submitting ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Lưu video
+                                </button>
+                              </div>
+                              <input type="file" className="form-control form-control-sm mb-2" accept="video/*" onChange={e => onFileChange(`introSec_${idx}`, e.target.files)} />
+                              {(section.videoUrl || section.VideoUrl || localPreviews[`introSec_${idx}`]) && (
+                                <div className="ratio ratio-16x9 rounded-2 overflow-hidden border bg-black mt-2">
+                                  {localPreviews[`introSec_${idx}`] ? <video controls src={localPreviews[`introSec_${idx}`]} /> : <VideoPlayer src={section.videoUrl || section.VideoUrl} />}
                                 </div>
-                            )}
-                        </>
-                    )}
+                              )}
+                            </div>
+                          )}
+
+                          {section.showDocs && (
+                            <div className="mt-3 p-3 bg-white rounded-3 border border-info border-opacity-25 shadow-sm">
+                              <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                                <div className="d-flex align-items-center gap-2 fw-bold small text-info">
+                                  <FileText size={16} /> Tài liệu cho mục này ({(section.docUrls || []).length})
+                                </div>
+                                <button className="btn btn-sm btn-outline-info px-3 rounded-pill d-flex align-items-center gap-2" onClick={() => handleSaveIntro('content')} disabled={submitting}>
+                                  {submitting ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Lưu tài liệu
+                                </button>
+                              </div>
+
+                              <label className="btn btn-light py-3 px-4 rounded-3 border-2 border-dashed fw-bold d-block hover-bg-info-subtle transition-all cursor-pointer w-100 mb-2">
+                                <Upload size={20} className="text-info mb-1 d-block mx-auto" />
+                                <span className="text-dark small d-block text-center">Chọn tài liệu (PDF, Word, Excel...)</span>
+                                <input type="file" className="d-none" multiple onChange={e => onDocChange(`introSec_${idx}`, e.target.files)} />
+                              </label>
+
+                              {((section.docUrls || section.DocUrls || []).length > 0 || (documentFiles[`introSec_${idx}`] && documentFiles[`introSec_${idx}`].length > 0)) && (
+                                <div className="list-group list-group-flush rounded-3 border overflow-hidden mt-2">
+                                  {(section.docUrls || section.DocUrls || []).map((url, di) => (
+                                    <div key={di} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-light bg-opacity-50">
+                                      <div className="d-flex align-items-center gap-2 overflow-hidden">
+                                        <FileText size={16} className="text-info flex-shrink-0" />
+                                        <a href={getFullUrl(url)} target="_blank" rel="noreferrer" className="small text-truncate text-decoration-none text-dark hover-text-primary">
+                                          {formatDocName(url)}
+                                        </a>
+                                      </div>
+                                      <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc('introSection', idx, di, false)}>
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {(documentFiles[`introSec_${idx}`] || []).map((file, di) => (
+                                    <div key={`new-${di}`} className="list-group-item d-flex align-items-center justify-content-between py-2 px-3 bg-info bg-opacity-10">
+                                      <div className="d-flex align-items-center gap-2 overflow-hidden">
+                                        <FileText size={16} className="text-info flex-shrink-0" />
+                                        <span className="small text-truncate text-info fw-bold">{file.name} (Chưa lưu)</span>
+                                      </div>
+                                      <button className="btn btn-link btn-xs text-danger p-0" onClick={() => handleDeleteDoc('introSection', idx, di, true)}>
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -680,13 +1314,22 @@ const CourseDetail = () => {
                 </div>
 
                 <div className="row mb-4 bg-white p-3 mx-0 rounded-3 shadow-sm border">
-                  <div className="col-md-8">
+                  <div className="col-12">
                     <label className="form-label small fw-bold text-secondary">Tiêu đề bài học</label>
-                    <input type="text" className="form-control form-control-lg rounded-3 fw-bold" value={editData.title} onChange={e => setEditData({...editData, title: e.target.value})} />
-                  </div>
-                  <div className="col-md-4">
-                    <label className="form-label small fw-bold text-secondary">Ngày hiển thị</label>
-                    <input type="date" className="form-control rounded-3" value={editData.scheduledDate} onChange={e => setEditData({...editData, scheduledDate: e.target.value})} />
+                    <input 
+                      type="text" 
+                      className="form-control form-control-lg rounded-3 fw-bold" 
+                      value={editData.title || ''} 
+                      onChange={e => {
+                        const newVal = e.target.value;
+                        setEditData(prev => ({ ...prev, title: newVal }));
+                        // Đồng bộ với danh sách bài học tổng
+                        setCourse(prev => prev ? ({
+                          ...prev,
+                          lessons: prev.lessons.map(l => l.id === activeItem.data?.id ? { ...l, title: newVal } : l)
+                        }) : null);
+                      }} 
+                    />
                   </div>
                 </div>
 

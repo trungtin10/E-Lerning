@@ -125,8 +125,14 @@ const Learners = () => {
   const filteredCourses = isSuperAdmin && effectiveCompanyId
     ? courses.filter(c => c.companyId == null || c.companyId === parseInt(effectiveCompanyId, 10))
     : courses;
-
   const filteredBySearch = enrollments.filter(e => {
+    // Chỉ hiện học viên đã có hoạt động học tập thực tế
+    const hasActivity = e.totalLearningTimeMinutes > 0 || e.quizAttemptsCount > 0;
+    if (!hasActivity) return false;
+
+    // Loại bỏ các tài khoản Biên tập/Hệ thống
+    if (e.fullName?.includes('Biên tập') || e.userName === 'admin') return false;
+
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     return (
@@ -139,66 +145,39 @@ const Learners = () => {
 
   const displayCompanies = companies.filter(c => c.subDomain !== 'admin');
 
+  // Add Escape key listener to close modals
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setDetailModal(null);
+        setQuizHistoryModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
   return (
     <AdminLayout>
-      <div className="mb-4">
-        <h2 className="fw-bold tracking-tight mb-1 d-flex align-items-center gap-2">
-          <GraduationCap size={28} className="text-primary" />
+      <div className="mb-3">
+        <h2 className="fw-bold tracking-tight mb-0 d-flex align-items-center gap-2" style={{ fontSize: '1.4rem' }}>
+          <GraduationCap size={24} className="text-primary" />
           Theo dõi học viên
         </h2>
-        <p className="text-muted small mb-0">
-          {isSuperAdmin ? 'Chọn công ty để xem danh sách học viên và tiến độ.' : 'Xem danh sách học viên và tiến độ học tập.'}
+        <p className="text-muted extra-small mb-0">
+          Dữ liệu chỉ hiển thị các học viên đã có hoạt động học tập thực tế.
         </p>
       </div>
 
-      {/* 1. Stats cards - trên cùng */}
+      {/* 2. Bộ lọc - trên khung nội dung */}
       {!showCompanyList && (
-        <div className="row g-3 mb-4">
-          <div className="col-md-4">
-            <div className="card border-0 shadow-sm rounded-4 p-4 bg-primary text-white">
-              <div className="d-flex align-items-center justify-content-between">
-                <div>
-                  <div className="small opacity-75 fw-bold">TỔNG ĐĂNG KÝ</div>
-                  <div className="fs-3 fw-bold">{filteredBySearch.length}</div>
-                </div>
-                <BookOpen size={36} className="opacity-30" />
-              </div>
-            </div>
-          </div>
-          <div className="col-md-4">
-            <div className="card border-0 shadow-sm rounded-4 p-4 bg-success text-white">
-              <div className="d-flex align-items-center justify-content-between">
-                <div>
-                  <div className="small opacity-75 fw-bold">ĐÃ HOÀN THÀNH</div>
-                  <div className="fs-3 fw-bold">{filteredBySearch.filter(e => e.status === 'Completed').length}</div>
-                </div>
-                <CheckCircle2 size={36} className="opacity-30" />
-              </div>
-            </div>
-          </div>
-          <div className="col-md-4">
-            <div className="card border-0 shadow-sm rounded-4 p-4 bg-warning text-dark">
-              <div className="d-flex align-items-center justify-content-between">
-                <div>
-                  <div className="small opacity-75 fw-bold">ĐANG HỌC</div>
-                  <div className="fs-3 fw-bold">{filteredBySearch.filter(e => e.status === 'InProgress').length}</div>
-                </div>
-                <TrendingUp size={36} className="opacity-30" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Bộ lọc - dưới stats, trên khung nội dung */}
-      {!showCompanyList && (
-        <div className="card border-0 shadow-sm rounded-4 mb-4">
-          <div className="card-body p-3">
-            <div className="row g-3 align-items-end">
+        <div className="card border-0 shadow-sm rounded-4 mb-3">
+          <div className="card-body p-2 px-3">
+            <div className="row g-2 align-items-end">
               <div className="col-md-3">
-                <label className="form-label small fw-bold text-secondary">Khóa học</label>
+                <label className="form-label extra-small fw-bold text-secondary mb-1">Khóa học</label>
                 <select
-                  className="form-select rounded-3"
+                  className="form-select form-select-sm rounded-3"
                   value={filterCourseId}
                   onChange={(e) => setFilterCourseId(e.target.value)}
                 >
@@ -209,12 +188,12 @@ const Learners = () => {
                 </select>
               </div>
               <div className="col-md-4">
-                <label className="form-label small fw-bold text-secondary">Tìm kiếm</label>
-                <div className="input-group bg-light border-0 rounded-3">
-                  <span className="input-group-text bg-transparent border-0 text-muted"><Search size={18} /></span>
+                <label className="form-label extra-small fw-bold text-secondary mb-1">Tìm kiếm học viên</label>
+                <div className="input-group bg-light border rounded-3 overflow-hidden">
+                  <span className="input-group-text bg-transparent border-0 text-muted ps-2"><Search size={14} /></span>
                   <input
                     type="text"
-                    className="form-control bg-transparent border-0 py-2"
+                    className="form-control form-control-sm bg-transparent border-0 py-1"
                     placeholder="Họ tên, email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -222,19 +201,25 @@ const Learners = () => {
                   />
                 </div>
               </div>
-              <div className="col-md-3">
-                <label className="form-label small fw-bold text-secondary d-block">&nbsp;</label>
-                <button className="btn btn-primary w-100 rounded-3 fw-bold" onClick={handleSearch}>
+              <div className="col-md-2">
+                <button className="btn btn-primary btn-sm w-100 rounded-3 fw-bold" onClick={handleSearch}>
                   Tìm kiếm
                 </button>
               </div>
+              {isSuperAdmin && !showCompanyList && (
+                <div className="col-md-3 text-end">
+                  <span className="badge bg-primary bg-opacity-10 text-primary p-2 px-3 rounded-pill fw-bold" style={{ fontSize: '0.7rem' }}>
+                    Sĩ số hoạt động: {filteredBySearch.length}
+                  </span>
+                </div>
+              )}
               {isSuperAdmin && selectedCompanyId && (
                 <div className="col-md-2 d-flex align-items-end">
                   <button
-                    className="btn btn-outline-secondary w-100 rounded-3 fw-bold d-flex align-items-center gap-1"
+                    className="btn btn-outline-secondary btn-sm w-100 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-1"
                     onClick={() => { setSelectedCompanyId(null); setFilterCompanyId(''); }}
                   >
-                    <ArrowLeft size={16} /> Quay về
+                    <ArrowLeft size={14} /> Quay về
                   </button>
                 </div>
               )}
@@ -504,7 +489,7 @@ const Learners = () => {
                                     {qa.quizTitle}
                                   </button>
                                 </td>
-                                <td className="text-center fw-bold">{qa.score}%</td>
+                                <td className="text-center fw-bold">{(qa.score / 10).toFixed(1)}</td>
                                 <td className="text-center">{qa.correctAnswers}/{qa.totalQuestions}</td>
                                 <td className="text-center">
                                   {qa.isPassed ? (
@@ -544,7 +529,7 @@ const Learners = () => {
                                 const m = JSON.parse(evt.metadata);
                                 if (m.lessonTitle) meta = m.lessonTitle;
                                 if (m.sectionNum) meta += meta ? ` - Mục ${m.sectionNum}` : `Mục ${m.sectionNum}`;
-                                if (m.score != null) meta += (meta ? ' | ' : '') + `Điểm: ${m.score}%`;
+                                if (m.score != null) meta += (meta ? ' | ' : '') + `Điểm: ${(m.score/10).toFixed(1)}`;
                                 if (m.isPassed != null) meta += (meta ? ' ' : '') + (m.isPassed ? '(Đạt)' : '(Chưa đạt)');
                               }
                             } catch { meta = evt.metadata || ''; }
@@ -610,7 +595,7 @@ const Learners = () => {
                           <tr key={a.attemptId || idx}>
                             <td className="text-center">{idx + 1}</td>
                             <td>{a.completedAt ? new Date(a.completedAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
-                            <td className="text-center fw-bold">{a.score}%</td>
+                            <td className="text-center fw-bold">{(a.score / 10).toFixed(1)}</td>
                             <td className="text-center">{a.correctAnswers}/{a.totalQuestions}</td>
                             <td className="text-center">
                               {a.isPassed ? <span className="badge bg-success">Đạt</span> : <span className="badge bg-danger">Chưa đạt</span>}

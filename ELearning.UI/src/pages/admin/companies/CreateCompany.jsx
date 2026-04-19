@@ -37,6 +37,12 @@ const CreateCompany = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.contactEmail)) {
+      toast('Địa chỉ Email không đúng định dạng. Vui lòng kiểm tra lại.', 'error');
+      return;
+    }
+
     if (activated) {
       toast('Công ty này đã được kích hoạt rồi.', 'info');
       navigate('/admin/companies');
@@ -104,9 +110,7 @@ const CreateCompany = () => {
               <Building2 size={24} className="text-primary" />
               Tạo công ty mới
             </h1>
-            <p className="text-muted small mb-0">
-              Khởi tạo tenant, gói dùng thử và tài khoản quản trị — gửi email kích hoạt cho khách.
-            </p>
+
           </div>
         </div>
 
@@ -122,7 +126,6 @@ const CreateCompany = () => {
                     </span>
                     <div>
                       <h2 className="h6 fw-bold mb-0">Thông tin công ty</h2>
-                      <span className="text-muted extra-small">Tên, email liên hệ, định danh hệ thống, logo</span>
                     </div>
                   </div>
                   <div className="row g-3 mb-4">
@@ -157,12 +160,11 @@ const CreateCompany = () => {
                             type="text"
                             required
                             className="form-control border-start-0 rounded-end-3"
-                            placeholder="vd: abc-group"
+                            placeholder="Tên định danh"
                             value={formData.subDomain}
                             onChange={(e) => setFormData({ ...formData, subDomain: e.target.value })}
                           />
                         </div>
-                        <p className="extra-small text-muted mt-1 mb-0">Định danh duy nhất cho tenant (chữ thường, không dấu cách).</p>
                       </div>
                     </div>
                     <div className="col-md-5">
@@ -203,7 +205,6 @@ const CreateCompany = () => {
                     </span>
                     <div>
                       <h2 className="h6 fw-bold mb-0">Gói dùng thử</h2>
-                      <span className="text-muted extra-small">Thời hạn miễn phí trước khi nâng cấp</span>
                     </div>
                   </div>
                   <div className="row g-3 mb-4">
@@ -220,7 +221,6 @@ const CreateCompany = () => {
                         <option value="7">7 ngày miễn phí</option>
                         <option value="30">30 ngày miễn phí</option>
                       </select>
-                      <div className="form-text text-muted extra-small">Có thể đổi gói trong thời gian dùng thử.</div>
                     </div>
                   </div>
 
@@ -231,7 +231,6 @@ const CreateCompany = () => {
                     </span>
                     <div>
                       <h2 className="h6 fw-bold mb-0">Tài khoản quản trị</h2>
-                      <span className="text-muted extra-small">Thiết lập tài khoản admin cho khách hàng</span>
                     </div>
                   </div>
                   <div className="row g-3">
@@ -271,13 +270,6 @@ const CreateCompany = () => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="mt-3 p-3 bg-light rounded-3 border d-flex gap-2 align-items-start">
-                    <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0" />
-                    <p className="mb-0 small text-muted">
-                      Hệ thống sẽ tự động gán quyền Super Admin cho tài khoản này đối với tenant vừa tạo và gửi email hướng dẫn đăng nhập.
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
@@ -311,13 +303,6 @@ const CreateCompany = () => {
                       </div>
                     </dl>
 
-                    <div className="rounded-3 border bg-light p-3 text-center mb-3">
-                      <Calendar size={28} className="text-primary mb-1" />
-                      <div className="text-muted text-uppercase extra-small fw-bold mb-0">Thử nghiệm</div>
-                      <div className="fs-4 fw-bold text-dark">{formData.trialDays || '—'}</div>
-                      <div className="text-muted extra-small">ngày</div>
-                    </div>
-
                     <button
                       type="submit"
                       className="btn btn-primary w-100 py-2 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-2"
@@ -336,9 +321,6 @@ const CreateCompany = () => {
                         </>
                       )}
                     </button>
-                    <p className="text-center text-muted extra-small mt-2 mb-0 px-1">
-                      Khởi tạo môi trường riêng và gửi mail kích hoạt cho khách.
-                    </p>
                   </div>
                 </div>
               </div>

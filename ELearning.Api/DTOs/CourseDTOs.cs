@@ -33,19 +33,40 @@ public record CourseDetailDto(
     List<LessonDto> Lessons,
     bool ShowIntroVideo = false,
     string? IntroVideoUrl = null,
-    string? IntroExternalVideoUrl = null
+    string? IntroExternalVideoUrl = null,
+    string? IntroSectionsJson = null,
+    List<string>? IntroDocUrls = null,
+    bool IsPublished = false,
+    bool ShowIntroDocs = false
 );
 
-public record LessonSectionDto(string Title, string? Content, bool ShowVideo, bool ShowQuiz, string? VideoUrl, List<string>? VideoUrls = null);
+public record LessonSectionDto(string Title, string? Content, bool ShowVideo, bool ShowQuiz, bool ShowDocs = false, string? VideoUrl = null, List<string>? VideoUrls = null, List<string>? DocUrls = null);
 
 public class JsonSection
 {
+    [System.Text.Json.Serialization.JsonPropertyName("title")]
     public string? Title { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("content")]
     public string? Content { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("showVideo")]
     public bool ShowVideo { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("showQuiz")]
     public bool ShowQuiz { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("showDocs")]
+    public bool ShowDocs { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("videoUrl")]
     public string? VideoUrl { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("videoUrls")]
     public List<string>? VideoUrls { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("docUrls")]
+    public List<string>? DocUrls { get; set; }
 }
 
 public record LessonDto(
@@ -155,14 +176,17 @@ public class CreateCourseFormDto
     public string? Description { get; set; }
     public int? CategoryId { get; set; }
     public int? CompanyId { get; set; }
-    public bool IsPublished { get; set; }
+    public bool? IsPublished { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public IFormFile? ThumbnailFile { get; set; }
 
-    public bool ShowIntroVideo { get; set; }
+    public bool? ShowIntroVideo { get; set; }
+    public bool? ShowIntroDocs { get; set; }
     public string? IntroExternalVideoUrl { get; set; }
     public IFormFile? IntroVideoFile { get; set; }
+    public string? IntroSectionsJson { get; set; }
+    public string? IntroDocUrlsJson { get; set; }
 }
 
 public record ReorderLessonsDto(List<int> LessonIds);

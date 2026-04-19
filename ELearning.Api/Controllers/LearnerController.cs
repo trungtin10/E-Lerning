@@ -11,7 +11,7 @@ namespace ELearning.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin,Instructor,SuperAdmin")]
+[Authorize(Roles = "Admin,Editor,Instructor,SuperAdmin")]
 public class LearnerController : ControllerBase
 {
     private readonly ApplicationDbContext _context;

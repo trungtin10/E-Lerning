@@ -3,11 +3,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import { CheckCircle, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { useNotify } from '../../../context/NotifyContext';
+import api from '../../../api/axios';
 
 const CheckoutReturn = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    const { showNotify } = useNotify();
+    const { toast } = useNotify();
     const [loading, setLoading] = useState(true);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
@@ -19,11 +20,14 @@ const CheckoutReturn = () => {
         setLoading(false);
 
         if (isSuccess) {
-            showNotify('success', 'Giao dịch hoàn tất! Hệ thống đang cập nhật gói dịch vụ.');
+            toast('Giao dịch hoàn tất! Hệ thống đang cập nhật gói dịch vụ.', 'success');
+            // Refresh subscription info so the company sees new plan immediately
+            api.get('/admin/subscription-info').catch(() => {});
+            setTimeout(() => navigate('/admin/subscription?refresh=true', { replace: true }), 900);
         } else if (searchParams.get('error')) {
-            showNotify('error', `Thanh toán không thành công. Mã lỗi: ${searchParams.get('error')}`);
+            toast(`Thanh toán không thành công. Mã lỗi: ${searchParams.get('error')}`, 'error');
         }
-    }, [searchParams]);
+    }, [searchParams, toast, navigate]);
 
     return (
         <AdminLayout>

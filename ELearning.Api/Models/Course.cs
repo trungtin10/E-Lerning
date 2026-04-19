@@ -1,28 +1,69 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ELearning.Api.Models;
 
+[Table("KhoaHoc")]
 public class Course
 {
+    [Key]
+    [Column("Id")]
     public int Id { get; set; }
+
     [Required, MaxLength(50)]
+    [Column("MaKhoaHoc")]
     public string CourseCode { get; set; } = string.Empty;
+
     [Required, MaxLength(200)]
+    [Column("TieuDe")]
     public string Title { get; set; } = string.Empty;
+
+    [Column("MoTa")]
     public string? Description { get; set; }
+
+    [Column("ThumbnailUrl")]
     public string? ThumbnailUrl { get; set; }
 
+    [Column("JsonGiớiThiệu")]
+    public string? IntroSectionsJson { get; set; }
+
+    [Column("HienThiVideoIntro")]
     public bool ShowIntroVideo { get; set; } = false;
+
+    [Column("IntroVideoUrl")]
     public string? IntroVideoUrl { get; set; }
+
+    [Column("IntroExternalVideoUrl")]
     public string? IntroExternalVideoUrl { get; set; }
 
+    [Column("JsonTaiLieuIntro")]
+    public string? IntroDocUrlsJson { get; set; }
+
+    [Column("HienThiTaiLieuIntro")]
+    public bool ShowIntroDocs { get; set; } = false;
+
+    [Column("DaXuatBan")]
     public bool IsPublished { get; set; } = false;
+
+    [Column("NgayBatDau")]
     public DateTime StartDate { get; set; } = DateTime.UtcNow;
+
+    [Column("NgayKetThuc")]
     public DateTime? EndDate { get; set; }
+
+    [Column("DanhMucId")]
     public int CategoryId { get; set; }
+
+    [Column("GiangVienId")]
     public string? InstructorId { get; set; }
+
+    [Column("CongTyId")]
     public int? CompanyId { get; set; }
+
+    [Column("NgayTao")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [Column("NgayCapNhat")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public virtual Category Category { get; set; } = null!;
@@ -33,11 +74,18 @@ public class Course
     public virtual ICollection<Lesson> Lessons { get; set; } = new List<Lesson>();
 }
 
+[Table("BaiHoc")]
 public class Lesson
 {
+    [Key]
+    [Column("Id")]
     public int Id { get; set; }
+
+    [Column("KhoaHocId")]
     public int CourseId { get; set; }
+
     [Required, MaxLength(200)]
+    [Column("TieuDe")]
     public string Title { get; set; } = string.Empty;
 
     public string? Section1Title { get; set; } = "1. Giới thiệu bài học";

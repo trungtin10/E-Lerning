@@ -13,6 +13,7 @@ public class UserSummaryDto
     public bool IsActive { get; set; }
     public bool EmailConfirmed { get; set; }
     public bool IsExpired { get; set; }
+    public string Status { get; set; } = string.Empty;
 }
 
 public record UserDetailDto(

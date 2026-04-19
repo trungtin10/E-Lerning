@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { CreditCard, Loader2, Trash2, CheckSquare, Square } from 'lucide-react';
+import { CreditCard, Loader2, Trash2, CheckSquare, Square, MoreVertical } from 'lucide-react';
+import AdminPaginationBar from '../../../components/common/AdminPaginationBar';
 import { useNotify } from '../../../context/NotifyContext';
 
 const Transactions = () => {
@@ -244,26 +245,47 @@ const Transactions = () => {
                     <td>{formatDateTime(t.createdAt)}</td>
                     {isSuperAdmin && (
                       <td className="text-center">
-                        {isPendingStatus(t.status) && (
+                        <div className="dropdown">
                           <button
-                            className="btn btn-sm btn-outline-success d-flex align-items-center gap-1 mx-auto mb-1"
-                            onClick={() => handleComplete(t.id)}
-                            title="Xác nhận đã nhận tiền"
+                            className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
+                            data-bs-boundary="viewport"
+                            data-bs-offset="0,8"
+                            aria-expanded="false"
                           >
-                            <CreditCard size={14} /> Xác nhận
+                            <MoreVertical size={16} />
                           </button>
-                        )}
-                        {isCompletedStatus(t.status) && (
-                          <span className="text-success small"><i className="bi bi-check-circle-fill"></i> Hoàn tất</span>
-                        )}
-
-                        <button
-                          className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1 mx-auto"
-                          onClick={() => handleDeleteOne(t.id)}
-                          title="Xóa giao dịch"
-                        >
-                          <Trash2 size={14} /> Xóa
-                        </button>
+                          <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                            {isPendingStatus(t.status) && (
+                              <li>
+                                <button
+                                  className="dropdown-item d-flex align-items-center gap-2 py-2 text-success"
+                                  onClick={() => handleComplete(t.id)}
+                                >
+                                  <CreditCard size={16} /> Xác nhận
+                                </button>
+                              </li>
+                            )}
+                            {isCompletedStatus(t.status) && (
+                              <li>
+                                <div className="dropdown-item d-flex align-items-center gap-2 py-2 text-success disabled bg-transparent">
+                                  <i className="bi bi-check-circle-fill" style={{ width: '16px' }}></i> Hoàn tất
+                                </div>
+                              </li>
+                            )}
+                            <li><hr className="dropdown-divider" /></li>
+                            <li>
+                              <button
+                                className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger"
+                                onClick={() => handleDeleteOne(t.id)}
+                              >
+                                <Trash2 size={16} /> Xóa
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -277,26 +299,15 @@ const Transactions = () => {
         </div>
       </div>
 
-      <div className="d-flex justify-content-between align-items-center mt-3">
-        <div className="small text-muted">
-          Hiện tại trang {page} / {Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE))} - tổng {data.total || 0} giao dịch
-        </div>
-        <div className="btn-group btn-group-sm" role="group">
-          <button
-            className="btn btn-outline-primary"
-            onClick={() => handlePageChange(page - 1)}
-            disabled={page <= 1}
-          >
-            Trang trước
-          </button>
-          <button
-            className="btn btn-outline-primary"
-            onClick={() => handlePageChange(page + 1)}
-            disabled={(page * PAGE_SIZE) >= (data.total || 0)}
-          >
-            Trang sau
-          </button>
-        </div>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mt-3">
+        <div className="small text-muted">Tổng {data.total || 0} giao dịch</div>
+        <AdminPaginationBar
+          page={page}
+          totalPages={Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE))}
+          disabled={loading}
+          onPrev={() => handlePageChange(page - 1)}
+          onNext={() => handlePageChange(page + 1)}
+        />
       </div>
     </AdminLayout>
   );

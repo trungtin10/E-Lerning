@@ -1,16 +1,19 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { Check, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { Check, ArrowRight, Loader2, Sparkles, History, X } from 'lucide-react';
 import { useNotify } from '../../../context/NotifyContext';
 
 const Subscription = () => {
-  const { showNotify } = useNotify();
+  const { toast } = useNotify();
+  const [searchParams] = useSearchParams();
   const user = (() => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } })();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [subInfo, setSubInfo] = useState(null);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
 
   const now = useMemo(() => new Date(), []);
   const expiryDate = subInfo?.planExpiryDate ? new Date(subInfo.planExpiryDate) : null;
@@ -22,6 +25,33 @@ const Subscription = () => {
     fetchPlans();
     fetchSubInfo();
   }, []);
+
+  // Auto-refresh subscription info when user returns to this tab/page
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchSubInfo();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  // Refresh when returning from payment (refresh=true query param)
+  useEffect(() => {
+    if (searchParams.get('refresh') === 'true') {
+      fetchSubInfo();
+    }
+  }, [searchParams]);
+
+  // Refresh subscription info when closing transaction modal
+  useEffect(() => {
+    if (!showTransactionModal) {
+      // Slight delay to debounce refresh calls
+      const timer = setTimeout(() => {
+        fetchSubInfo();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showTransactionModal]);
 
   const fetchSubInfo = async () => {
     try {
@@ -38,7 +68,7 @@ const Subscription = () => {
       const res = await api.get('/plan');
       setPlans(res.data.filter(p => p.isActive));
     } catch (e) {
-      showNotify('error', 'Không thể tải danh sách gói dịch vụ');
+      toast('Không thể tải danh sách gói dịch vụ', 'error');
     } finally {
       setLoading(false);
     }
@@ -56,7 +86,7 @@ const Subscription = () => {
         window.location.href = res.data.paymentUrl;
       }
     } catch (e) {
-      showNotify('error', e.response?.data || 'Lỗi khi khởi tạo thanh toán');
+      toast(e.response?.data || 'Lỗi khi khởi tạo thanh toán', 'error');
     } finally {
       setProcessing(null);
     }
@@ -92,7 +122,7 @@ const Subscription = () => {
     // Fallback: nếu DB chưa đặt tên đúng thì lấy 3 gói đầu theo sortOrder
     const paid3 = fixed.length === 3 ? fixed : paid.slice(0, 3);
     return [free, ...paid3];
-  }, [plans, subInfo?.maxUsers]);
+  }, [plans, subInfo?.maxUsers, currentPlanName]);
 
   const getCardStyle = (name) => {
     const n = (name || '').toLowerCase();
@@ -101,6 +131,15 @@ const Subscription = () => {
     if (n.includes('go') || n.includes('basic')) return { tone: 'light', featured: false, badge: null };
     if (n.includes('free')) return { tone: 'light', featured: false, badge: null };
     return { tone: 'light', featured: false, badge: null };
+  };
+
+  const normalizePlanName = (raw) => {
+    const n = (raw || '').toLowerCase();
+    if (n.includes('free')) return 'free';
+    if (n.includes('plus')) return 'plus';
+    if (n.includes('pro') || n.includes('enterprise')) return 'pro';
+    if (n.includes('basic') || n.includes('go')) return 'basic';
+    return n.trim();
   };
 
   const displayPlanName = (raw) => {
@@ -164,10 +203,11 @@ const Subscription = () => {
     ];
   };
 
-  const getButtonLabel = (p) => {
+  const getButtonLabel = (p, isCurrentPlan) => {
+    if (isCurrentPlan) return 'Gói hiện tại';
     const n = (p?.name || '').trim();
     if (!n) return 'Nâng cấp';
-    if (/free/i.test(n)) return 'Gói hiện tại';
+    if (/free/i.test(n)) return 'Gói miễn phí';
     return `Nâng cấp lên ${displayPlanName(n)}`;
   };
 
@@ -190,7 +230,9 @@ const Subscription = () => {
               <div className="col-md-4">
                 <div className="p-3 bg-light rounded-3 border">
                   <div className="small text-muted mb-1">Gói dịch vụ</div>
-                  <div className="fw-bold fs-5 text-primary">{displayPlanName(subInfo.currentPlan || 'Free')}</div>
+                  <div className="fw-bold fs-5 text-primary d-flex align-items-center gap-2">
+                    {displayPlanName(subInfo.currentPlan || 'Free')}
+                  </div>
                 </div>
               </div>
               <div className="col-md-4">
@@ -212,13 +254,21 @@ const Subscription = () => {
             </div>
 
             {isExpired && isFreePlan && (
-              <div className="alert alert-warning rounded-4 mb-0">
+              <div className="alert alert-warning rounded-4 mb-3">
                 <div className="fw-bold">Gói Free đã hết hạn.</div>
                 <div className="small">Vui lòng chọn một gói trả phí bên dưới để tiếp tục sử dụng đầy đủ tính năng cho công ty.</div>
               </div>
             )}
 
-            {/* Bỏ lịch sử giao dịch theo yêu cầu UI */}
+            <div className="d-flex gap-2">
+              <button 
+                type="button"
+                className="btn btn-outline-primary rounded-3 d-flex align-items-center gap-2"
+                onClick={() => setShowTransactionModal(true)}
+              >
+                <History size={18} /> Xem lịch sử giao dịch
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -230,7 +280,10 @@ const Subscription = () => {
           {displayPlans.map((p) => {
             const style = getCardStyle(p.name);
             const isFree = /free/i.test(p.name);
-            const isCurrent = currentPlanName && p.name && currentPlanName.toLowerCase() === p.name.toLowerCase();
+            // Normalize both plan names before comparing
+            const normalizedCurrent = normalizePlanName(currentPlanName);
+            const normalizedCard = normalizePlanName(p.name);
+            const isCurrent = normalizedCurrent && normalizedCard && normalizedCurrent === normalizedCard;
 
             const price = p.priceMonthly || 0;
             const pricePerMonth = p.priceMonthly || 0;
@@ -285,18 +338,100 @@ const Subscription = () => {
                     <button
                       type="button"
                       className={`btn ${btnClass} w-100 rounded-3 fw-semibold mt-3 d-flex align-items-center justify-content-center gap-2`}
-                      disabled={isDisabled || !canBuy}
-                      onClick={() => canBuy && handleUpgrade(p.id)}
-                      title={!canBuy ? 'Gói Free không cần mua' : undefined}
+                      disabled={isDisabled || !canBuy || isCurrent}
+                      onClick={() => !isCurrent && canBuy && handleUpgrade(p.id)}
+                      title={!canBuy && !isCurrent ? 'Gói Free không cần mua' : isCurrent ? 'Đây là gói hiện tại của bạn' : undefined}
                     >
-                      {processing === p.id ? <Loader2 className="animate-spin" size={18} /> : getButtonLabel(p)}
-                      {processing !== p.id && canBuy && <ArrowRight size={18} />}
+                      {processing === p.id ? <Loader2 className="animate-spin" size={18} /> : getButtonLabel(p, isCurrent)}
+                      {processing !== p.id && canBuy && !isCurrent && <ArrowRight size={18} />}
                     </button>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Transaction History Modal */}
+      {showTransactionModal && (
+        <div className="modal d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content border-0 rounded-4">
+              <div className="modal-header border-0 p-4 d-flex justify-content-between align-items-center">
+                <h5 className="fw-bold m-0">Lịch sử giao dịch</h5>
+                <button 
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowTransactionModal(false)}
+                />
+              </div>
+              <div className="modal-body p-4">
+                {subInfo?.transactions && subInfo.transactions.length > 0 ? (
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle">
+                      <thead className="table-light">
+                        <tr>
+                          <th className="border-0 fw-bold">Mã giao dịch</th>
+                          <th className="border-0 fw-bold">Gói dịch vụ</th>
+                          <th className="border-0 fw-bold">Số tiền</th>
+                          <th className="border-0 fw-bold">Phương thức</th>
+                          <th className="border-0 fw-bold">Trạng thái</th>
+                          <th className="border-0 fw-bold">Ngày tạo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {subInfo.transactions.map((t) => (
+                          <tr key={t.id}>
+                            <td className="fw-semibold">#{t.id}</td>
+                            <td>{t.planName || '—'}</td>
+                            <td className="fw-semibold">{formatMoney(t.amount)} VND</td>
+                            <td>
+                              <span className="badge bg-light text-dark">{t.paymentGateway || 'Khác'}</span>
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                t.status === 'Completed' ? 'bg-success' : 
+                                t.status === 'Pending' ? 'bg-warning' : 
+                                'bg-danger'
+                              }`}>
+                                {t.status === 'Completed' ? '✓ Hoàn tất' : 
+                                 t.status === 'Pending' ? '⏳ Đang xử lý' : 
+                                 '✗ Thất bại'}
+                              </span>
+                            </td>
+                            <td className="text-muted small">
+                              {new Date(t.createdAt).toLocaleDateString('vi-VN', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-5 text-muted">
+                    <History size={40} className="mb-3 opacity-50" />
+                    <p className="mb-0">Chưa có giao dịch nào</p>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer border-0 p-4">
+                <button 
+                  type="button"
+                  className="btn btn-secondary rounded-3"
+                  onClick={() => setShowTransactionModal(false)}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

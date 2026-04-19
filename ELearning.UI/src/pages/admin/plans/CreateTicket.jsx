@@ -2,48 +2,34 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { MessageCircle, Paperclip, Send, X, Loader2, ChevronLeft } from 'lucide-react';
+import TiptapEditor from '../../../components/common/TiptapEditor';
+import { Phone, ChevronLeft, Loader2 } from 'lucide-react';
 
 export default function CreateTicket() {
   const navigate = useNavigate();
   const user = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem('user') || '{}');
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
   }, []);
-  const roles = Array.isArray(user?.roles)
-    ? user.roles
-    : String(user?.roles ?? user?.role ?? '')
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const roles = Array.isArray(user?.roles) ? user.roles : String(user?.roles ?? user?.role ?? '').split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
   const isSuperAdmin = roles.includes('SuperAdmin');
   const isCompanyAdmin = roles.includes('Admin');
 
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ subject: '', content: '', priority: 'Normal' });
-  const [files, setFiles] = useState([]);
-
-  const handleFiles = (e) => {
-    const arr = Array.from(e.target.files || []);
-    setFiles((prev) => [...prev, ...arr].slice(0, 8));
-    e.target.value = '';
-  };
-
-  const removeFileAt = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx));
+  const [form, setForm] = useState({ subject: '', content: '' });
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.subject.trim() || !form.content.trim()) return;
+    if (!form.subject.trim() || !form.content.trim() || form.content === '<p></p>') {
+      alert('Vui lòng nhập đầy đủ tiêu đề và nội dung yêu cầu.');
+      return;
+    }
     setSubmitting(true);
     try {
       const fd = new FormData();
       fd.append('subject', form.subject);
       fd.append('content', form.content);
-      fd.append('priority', form.priority);
-      files.forEach((f) => fd.append('files', f));
+      fd.append('priority', 'Normal');
+      
       const r = await api.post('/ticket', fd);
       const newId = r.data?.id ?? r.data?.Id ?? r.data?.ticketId ?? r.data?.TicketId;
       navigate(newId ? `/admin/tickets/${newId}` : '/admin/tickets');
@@ -58,141 +44,89 @@ export default function CreateTicket() {
   if (isSuperAdmin) {
     return (
       <AdminLayout>
-        <div className="container-fluid px-4 py-3">
-          <div className="card border-0 shadow-sm rounded-4">
-            <div className="card-body p-4">
-              <div className="fw-bold mb-1">Trang này dành cho Admin công ty</div>
-              <div className="text-muted small">SuperAdmin không cần tạo yêu cầu hỗ trợ.</div>
-              <button className="btn btn-sm btn-outline-secondary mt-3" onClick={() => navigate('/admin/tickets')}>
-                Quay lại
-              </button>
-            </div>
-          </div>
+        <div className="container-fluid px-4 py-3 text-center py-5">
+            <div className="fw-bold mb-1">Trang này dành cho Admin công ty</div>
+            <div className="text-muted small">SuperAdmin không cần tạo yêu cầu hỗ trợ.</div>
+            <button className="btn btn-sm btn-outline-secondary mt-3" onClick={() => navigate('/admin/tickets')}>Quay lại</button>
         </div>
       </AdminLayout>
     );
   }
 
-  if (!isCompanyAdmin) {
-    return (
-      <AdminLayout>
-        <div className="container-fluid px-4 py-3">
-          <div className="card border-0 shadow-sm rounded-4">
-            <div className="card-body p-4">
-              <div className="fw-bold mb-1">Bạn không có quyền tạo hỗ trợ</div>
-              <div className="text-muted small">Chỉ Admin công ty mới có thể gửi yêu cầu lên SuperAdmin.</div>
-            </div>
-          </div>
-        </div>
-      </AdminLayout>
-    );
-  }
+  const TopBar = () => (
+    <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between p-3 gap-3" style={{ backgroundColor: '#0f172a' }}>
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        <input type="text" className="form-control border-secondary text-white shadow-none" style={{ backgroundColor: '#1e293b', minWidth: '220px' }} placeholder="Nhập từ khóa tìm kiếm" />
+        <button className="btn text-white px-4 border-0" style={{ backgroundColor: '#3b82f6', fontWeight: 600, height: '38px' }}>TÌM KIẾM</button>
+      </div>
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', height: '38px', padding: '0 16px' }}>
+          <span className="d-flex align-items-center gap-2">1900 9477 <Phone size={16} /></span>
+        </button>
+        <button className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0" style={{ backgroundColor: '#10b981', height: '38px', padding: '0 16px' }} onClick={() => navigate('/admin/tickets/new')}>
+          GỬI YÊU CẦU 
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <AdminLayout>
-      <div className="container-fluid px-4 py-3">
-        <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-          <div className="d-flex align-items-center gap-2">
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => navigate('/admin/tickets')}>
-              <ChevronLeft size={16} /> Quay lại
-            </button>
-            <span className="d-inline-flex align-items-center gap-2 ms-1">
-              <MessageCircle size={18} className="text-muted" />
-              <span className="fw-bold">Tạo yêu cầu hỗ trợ</span>
-            </span>
-          </div>
+      <div style={{ margin: '-1.5rem', backgroundColor: '#fff', minHeight: '100vh', paddingBottom: '40px' }}>
+        <TopBar />
+        
+        <div className="px-3 pt-4 pb-3 border-bottom d-flex align-items-center justify-content-between">
+          <h4 className="fw-bold mb-0 text-uppercase" style={{ color: '#0f172a', letterSpacing: '0.5px', fontSize: '1.25rem' }}>GỬI YÊU CẦU MỚI</h4>
+          <button className="btn btn-outline-secondary d-flex align-items-center gap-2" onClick={() => navigate('/admin/tickets')}>
+            <ChevronLeft size={16} /> Quay lại danh sách
+          </button>
         </div>
 
-        <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
-          <div className="card-body p-4">
-            <div className="alert alert-info border-0 rounded-4">
-              <div className="fw-semibold mb-1">Hướng dẫn</div>
-              <div className="small mb-0">
-                Mô tả chi tiết vấn đề bạn gặp phải. Đính kèm ảnh minh hoạ sẽ giúp SuperAdmin hỗ trợ nhanh hơn.
-              </div>
+        <div className="container-fluid pt-4 px-3" style={{ maxWidth: '1000px' }}>
+          <div className="card border-0 shadow-sm rounded-4 overflow-hidden border">
+            <div className="card-header bg-warning bg-opacity-10 border-bottom border-warning border-opacity-25 py-3">
+               <span className="fw-bold text-dark text-uppercase small">TẠO YÊU CẦU HỖ TRỢ ĐẾN BỘ PHẬN KỸ THUẬT</span>
             </div>
-
-            <form onSubmit={submit} className="d-flex flex-column gap-3">
-              <div>
-                <label className="form-label fw-semibold">
-                  <span className="text-danger">*</span> Tiêu đề ticket
-                </label>
-                <input
-                  className="form-control bg-light border-0"
-                  placeholder="Ví dụ: Lỗi không thể đăng nhập vào hệ thống"
-                  value={form.subject}
-                  onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
-                  required
-                />
-                <div className="form-text">Tiêu đề ngắn gọn để dễ nhận biết.</div>
-              </div>
-
-              <div>
-                <label className="form-label fw-semibold">
-                  <span className="text-danger">*</span> Mô tả chi tiết vấn đề
-                </label>
-                <textarea
-                  className="form-control bg-light border-0"
-                  rows={8}
-                  placeholder="Mô tả chi tiết vấn đề bạn gặp phải, các bước đã thử, lỗi cụ thể..."
-                  value={form.content}
-                  onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))}
-                  required
-                />
-                <div className="form-text">Càng chi tiết càng tốt để được hỗ trợ nhanh.</div>
-              </div>
-
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label fw-semibold">Mức độ ưu tiên</label>
-                  <select
-                    className="form-select bg-light border-0"
-                    value={form.priority}
-                    onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                  >
-                    <option value="Low">Thấp</option>
-                    <option value="Normal">Bình thường</option>
-                    <option value="High">Cao</option>
-                    <option value="Urgent">Khẩn cấp</option>
-                  </select>
+            <div className="card-body p-4">
+              <form onSubmit={submit}>
+                <div className="mb-4">
+                  <label className="form-label fw-bold text-danger small text-uppercase">Lĩnh vực / Tiêu đề yêu cầu:</label>
+                  <input
+                    type="text"
+                    className="form-control rounded-3 shadow-none border-secondary border-opacity-25 py-2"
+                    placeholder="Nhập tiêu đề ngắn gọn cho vấn đề của bạn..."
+                    value={form.subject}
+                    onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
+                    required
+                  />
                 </div>
-                <div className="col-md-6">
-                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                    <Paperclip size={16} /> Đính kèm tệp
-                  </label>
-                  <input type="file" className="form-control bg-light border-0" multiple onChange={handleFiles} />
-                  <div className="form-text">Tối đa 8 tệp.</div>
-                </div>
-              </div>
 
-              {files.length > 0 && (
-                <div className="d-flex flex-wrap gap-2">
-                  {files.map((f, idx) => (
-                    <span key={f.name + idx} className="badge text-bg-light border d-inline-flex align-items-center gap-2">
-                      <Paperclip size={14} />
-                      <span className="text-truncate" style={{ maxWidth: 320 }}>{f.name}</span>
-                      <button type="button" className="btn btn-sm p-0 border-0" onClick={() => removeFileAt(idx)} aria-label="Remove">
-                        <X size={14} />
-                      </button>
-                    </span>
-                  ))}
+                <div className="mb-4">
+                  <label className="form-label fw-bold text-danger small text-uppercase">Nội dung chi tiết yêu cầu:</label>
+                  <div className="mb-2 text-muted small">Bạn có thể chèn hình ảnh minh họa, bảng biểu hoặc copy nội dung trực tiếp vào đây.</div>
+                  <TiptapEditor 
+                    content={form.content} 
+                    onChange={(val) => setForm(p => ({ ...p, content: val }))} 
+                  />
                 </div>
-              )}
 
-              <div className="d-flex justify-content-end gap-2 pt-2">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => navigate('/admin/tickets')}>
-                  Hủy
-                </button>
-                <button type="submit" className="btn btn-primary d-inline-flex align-items-center gap-2" disabled={submitting}>
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  {submitting ? 'Đang gửi...' : 'Gửi ticket'}
-                </button>
-              </div>
-            </form>
+                <div className="d-flex align-items-center justify-content-center gap-3 mt-5 pt-3 border-top">
+                  <button type="button" className="btn btn-light px-5 py-2 rounded-3 fw-bold border" onClick={() => navigate('/admin/tickets')} disabled={submitting}>
+                    QUAY LẠI
+                  </button>
+                  <button type="submit" className="btn text-white px-5 py-2 rounded-3 fw-bold shadow-sm d-flex align-items-center gap-2" style={{ backgroundColor: '#e11d48' }} disabled={submitting}>
+                    {submitting ? <><Loader2 size={18} className="animate-spin" /> ĐANG GỬI...</> : 'GỬI YÊU CẦU'}
+                  </button>
+                </div>
+                
+                <div className="text-center small mt-4 p-3 bg-light rounded-3 border-dashed border-success border-opacity-25" style={{ color: '#059669' }}>
+                   Yêu cầu của bạn sẽ được gửi trực tiếp đến Hệ Thống Tổng để xử lý. Vui lòng cung cấp chi tiết lỗi để được hỗ trợ tốt nhất.
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
     </AdminLayout>
   );
 }
-

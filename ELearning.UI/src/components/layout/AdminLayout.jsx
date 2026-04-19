@@ -21,14 +21,21 @@ const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
-  const logoUrl = user?.companyLogoUrl ? getUploadUrl(user.companyLogoUrl) : '/h_logo.png';
+  const safeUser = user ?? {};
+  const logoUrl = safeUser?.companyLogoUrl ? getUploadUrl(safeUser.companyLogoUrl) : '/h_logo.png';
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const raw = sessionStorage.getItem('user') || localStorage.getItem('user');
+    if (!raw) {
       navigate('/login');
     } else {
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(raw));
+      } catch (err) {
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('user');
+        navigate('/login');
+      }
     }
   }, [navigate]);
 
@@ -40,7 +47,7 @@ const AdminLayout = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (location.pathname.startsWith('/admin/courses') || location.pathname.startsWith('/admin/company-courses') || location.pathname.startsWith('/admin/learners')) {
+    if (location.pathname.startsWith('/admin/courses') || location.pathname.startsWith('/admin/company-courses')) {
       setCourseMenuOpen(true);
     }
     if (location.pathname.startsWith('/admin/home-config')) {
@@ -51,12 +58,14 @@ const AdminLayout = ({ children }) => {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     navigate('/login');
   };
 
   const refreshUserRef = useRef(() => {});
   refreshUserRef.current = () => {
-    const raw = localStorage.getItem('user');
+    const raw = sessionStorage.getItem('user') || localStorage.getItem('user');
     if (!raw) return;
     try {
       setUser(JSON.parse(raw));
@@ -71,9 +80,14 @@ const AdminLayout = ({ children }) => {
     return () => window.removeEventListener('elearning-user-updated', onUp);
   }, []);
 
-  if (!user) return null;
-
-  const isSuperAdmin = user.roles?.includes('SuperAdmin');
+  const roles = Array.isArray(safeUser?.roles)
+    ? safeUser.roles
+    : String(safeUser?.roles ?? safeUser?.role ?? '')
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const isSuperAdmin = roles.includes('SuperAdmin');
+  const isEditor = roles.includes('Editor');
 
   const getInitials = (name) => {
     if (!name) return 'AD';
@@ -81,49 +95,66 @@ const AdminLayout = ({ children }) => {
   };
 
   const menuItems = isSuperAdmin ? [
-    { type: 'dropdown', icon: LayoutDashboard, label: 'Cấu hình trang chủ', children: [
-      { path: '/admin/home-config/header', label: 'Đầu trang' },
-      { path: '/admin/home-config/slider-vi', label: 'Slider trang chủ VN' },
-      { path: '/admin/home-config/slider-en', label: 'Slider trang chủ EN' },
-      { path: '/admin/home-config/small-banner', label: 'Banner nhỏ' },
-      { path: '/admin/home-config/testimonials', label: 'Cảm nhận khách hàng' },
-      { path: '/admin/home-config/footer', label: 'Thông tin chân trang' },
-      { path: '/admin/home-config/policy', label: 'Chính sách & Quy định' },
-      { path: '/admin/home-config/social-links', label: 'Liên kết mạng xã hội' },
-    ]},
     { path: '/admin/companies', icon: Building2, label: 'Quản lý Công ty' },
     { path: '/admin/users', icon: Users, label: 'Người dùng toàn hệ thống' },
     { type: 'dropdown', icon: BookOpen, label: 'Khóa học', children: [
       { path: '/admin/courses', label: 'Quản lý khóa học' },
-      { path: '/admin/learners', label: 'Theo dõi học viên' },
     ]},
+    { path: '/admin/learners', icon: GraduationCap, label: 'Theo dõi học viên' },
     { path: '/admin/categories', icon: BookOpen, label: 'Danh mục khóa học' },
     { path: '/admin/plans', icon: Package, label: 'Gói dịch vụ' },
     { path: '/admin/transactions', icon: CreditCard, label: 'Giao dịch' },
     { path: '/admin/audit-logs', icon: FileText, label: 'Nhật ký hoạt động' },
     { path: '/admin/tickets', icon: MessageCircle, label: 'Hỗ trợ Ticket' },
     { path: '/admin/announcements', icon: Megaphone, label: 'Thông báo' },
-  ] : [
+  ] : (isEditor ? [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Bảng điều khiển' },
-    { path: `/admin/company-users/${user.subDomain || 'default'}`, icon: Users, label: 'Quản lý Nhân viên' },
     { type: 'dropdown', icon: BookOpen, label: 'Khóa học', children: [
       { path: '/admin/company-courses', label: 'Quản lý khóa học' },
       { path: '/admin/categories', label: 'Danh mục khóa học' },
-      { path: '/admin/learners', label: 'Theo dõi học viên' },
     ]},
+    { path: '/admin/learners', icon: GraduationCap, label: 'Theo dõi học viên' },
+    { path: '/admin/audit-logs', icon: FileText, label: 'Nhật ký hoạt động' },
+    { path: '/admin/tickets', icon: MessageCircle, label: 'Hỗ trợ' },
+  ] : [
+    { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Bảng điều khiển' },
+    { path: `/admin/company-users/${safeUser.subDomain || 'default'}`, icon: Users, label: 'Quản lý Nhân viên' },
+    { type: 'dropdown', icon: BookOpen, label: 'Khóa học', children: [
+      { path: '/admin/company-courses', label: 'Quản lý khóa học' },
+      { path: '/admin/categories', label: 'Danh mục khóa học' },
+    ]},
+    { path: '/admin/learners', icon: GraduationCap, label: 'Theo dõi học viên' },
     { path: '/admin/subscription', icon: Package, label: 'Gói dịch vụ' },
     { path: '/admin/audit-logs', icon: FileText, label: 'Nhật ký hoạt động' },
     { path: '/admin/tickets', icon: MessageCircle, label: 'Hỗ trợ' },
-  ];
+  ]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!isEditor || isSuperAdmin) return;
+    const p = location.pathname;
+    const blocked =
+      p.startsWith('/admin/users')
+      || p.startsWith('/admin/companies')
+      || p.startsWith('/admin/company-users')
+      || p.startsWith('/admin/transactions')
+      || p.startsWith('/admin/plans')
+      || p.startsWith('/admin/subscription')
+      || p.startsWith('/admin/home-config')
+      || p.startsWith('/admin/announcements');
+    if (blocked) navigate('/admin/company-courses', { replace: true });
+  }, [user, isEditor, isSuperAdmin, location.pathname, navigate]);
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen d-flex flex-column admin-shell">
       <header className="admin-header d-flex align-items-center justify-content-between px-4 py-3">
         <div className="d-flex align-items-center gap-3">
-          <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden flex-shrink-0 admin-chip" style={{ width: 40, height: 40, padding: 6 }}>
+          <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden flex-shrink-0 admin-chip" style={{ width: 32, height: 32, padding: 5 }}>
             <img src={logoUrl} alt="Logo" className="w-100 h-100 object-fit-contain" onError={(e) => { e.target.onerror = null; e.target.src = '/h_logo.png'; setLogoError(true); }} />
             {logoError && (
-              <span className="fw-bold" style={{ fontSize: '1.05rem' }}>EL</span>
+              <span className="fw-bold" style={{ fontSize: '1rem' }}>EL</span>
             )}
           </div>
           <div className="admin-brand">
@@ -133,7 +164,7 @@ const AdminLayout = ({ children }) => {
               onClick={() => navigate('/admin/dashboard')}
               aria-label="Về trang dashboard"
             >
-              E-Learning Admin
+              E-LEARNING CMS
             </button>
             <div className="admin-brand__subtitle">{isSuperAdmin ? 'System' : 'Company'}</div>
           </div>
@@ -225,11 +256,11 @@ const AdminLayout = ({ children }) => {
       </header>
 
       {/* Body: Sidebar + Content */}
-      <div className="d-flex flex-grow-1 overflow-hidden position-relative admin-main">
+      <div className="d-flex flex-grow-1 position-relative admin-main" style={{ minHeight: 0 }}>
         {isSidebarOpen && (
           <div
             className="d-lg-none position-fixed"
-            style={{ top: 64, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 799 }}
+            style={{ top: 56, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.25)', zIndex: 799 }}
             onClick={() => setSidebarOpen(false)}
             aria-hidden="true"
           />
@@ -237,8 +268,8 @@ const AdminLayout = ({ children }) => {
         <aside
           className={`transition-all d-flex flex-column flex-shrink-0 ${!isSidebarOpen ? 'd-none' : ''} admin-sidebar`}
           style={{
-            width: 276,
-            minHeight: 'calc(100vh - 64px)',
+            width: 240,
+            minHeight: 'calc(100vh - 56px)',
           }}
         >
           <div className="admin-sidebar-scroll flex-grow-1">
@@ -251,7 +282,6 @@ const AdminLayout = ({ children }) => {
                   location.pathname === c.path ||
                   (c.path?.includes('courses') && location.pathname.startsWith('/admin/courses')) ||
                   (c.path?.includes('company-courses') && location.pathname.startsWith('/admin/company-courses')) ||
-                  (c.path?.includes('learners') && location.pathname.startsWith('/admin/learners')) ||
                   (typeof c.path === 'string' && c.path.startsWith('/admin/home-config') && location.pathname.startsWith('/admin/home-config'))
                 );
                 return (
@@ -280,7 +310,6 @@ const AdminLayout = ({ children }) => {
                           const isActive = location.pathname === child.path ||
                             (child.path?.includes('courses') && location.pathname.startsWith('/admin/courses')) ||
                             (child.path?.includes('company-courses') && location.pathname.startsWith('/admin/company-courses')) ||
-                            (child.path?.includes('learners') && location.pathname.startsWith('/admin/learners')) ||
                             (typeof child.path === 'string' && child.path.startsWith('/admin/home-config') && location.pathname.startsWith('/admin/home-config'));
                           return (
                             <Link
@@ -305,7 +334,8 @@ const AdminLayout = ({ children }) => {
               const isActive = location.pathname === item.path
                 || (item.path?.includes('courses') && location.pathname.startsWith('/admin/courses'))
                 || (item.path?.includes('company-users') && location.pathname.startsWith('/admin/company-users'))
-                || (item.path?.includes('learners') && location.pathname.startsWith('/admin/learners'));
+                || (item.path?.includes('learners') && location.pathname.startsWith('/admin/learners'))
+                || (typeof item.path === 'string' && item.path.includes('home-config') && location.pathname.startsWith('/admin/home-config'));
               const Icon = item.icon;
               return (
                 <Link
@@ -324,7 +354,7 @@ const AdminLayout = ({ children }) => {
           </div>
         </aside>
 
-        <main className="flex-grow-1 d-flex flex-column overflow-hidden admin-content">
+        <main className="flex-grow-1 d-flex flex-column admin-content" style={{ minWidth: 0 }}>
           <div className="p-4 overflow-auto flex-grow-1">
             {children}
           </div>

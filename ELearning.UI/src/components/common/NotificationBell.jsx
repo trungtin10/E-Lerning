@@ -11,8 +11,12 @@ const NotificationBell = () => {
   const refreshUnread = async () => {
     try {
       const r = await api.get('/notification/unread-count');
-      setUnread(r.data?.unread ?? 0);
-    } catch { /* ignore */ }
+      if (r && r.data) {
+        setUnread(r.data.unread ?? 0);
+      }
+    } catch (err) {
+      console.warn('NotificationBell: Failed to refresh unread count', err.message);
+    }
   };
 
   const loadList = async () => {
@@ -57,7 +61,7 @@ const NotificationBell = () => {
     <div className="position-relative">
       <button
         type="button"
-        className="btn btn-link p-2 text-white position-relative"
+        className="btn btn-link p-2 text-secondary position-relative hover-bg-light rounded-circle transition-all border-0 shadow-none d-flex align-items-center justify-content-center"
         onClick={() => setOpen(v => !v)}
         title="Thông báo"
       >

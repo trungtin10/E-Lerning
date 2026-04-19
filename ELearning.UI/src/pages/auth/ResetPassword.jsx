@@ -50,9 +50,9 @@ const ResetPassword = () => {
 
   if (!userId || !token) {
     return (
-      <div className="min-vh-100 d-flex align-items-center justify-content-center p-4" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #4a90c7 100%)' }}>
-        <div className="card border-0 shadow-lg rounded-4 p-5" style={{ maxWidth: '420px' }}>
-          <div className="alert alert-danger">Link không hợp lệ hoặc đã hết hạn. Vui lòng <Link to="/forgot-password">yêu cầu gửi lại</Link>.</div>
+      <div className="min-vh-100 d-flex align-items-center justify-content-center p-4 bg-light">
+        <div className="card border-0 shadow-lg rounded-4 p-5 text-center" style={{ maxWidth: '420px' }}>
+          <div className="alert alert-danger small">Link không hợp lệ hoặc đã hết hạn. Vui lòng <Link to="/forgot-password">yêu cầu gửi lại</Link>.</div>
           <Link to="/login" className="btn btn-primary w-100">Quay lại đăng nhập</Link>
         </div>
       </div>
@@ -63,23 +63,23 @@ const ResetPassword = () => {
     <div className="min-vh-100 d-flex align-items-center justify-content-center p-4" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #4a90c7 100%)', fontFamily: "'Inter', sans-serif" }}>
       <div className="card border-0 shadow-lg rounded-4" style={{ maxWidth: '420px', width: '100%' }}>
         <div className="card-body p-5">
-          <Link to="/login" className="d-inline-flex align-items-center gap-2 text-decoration-none mb-4" style={{ color: '#475569', fontSize: '0.9rem' }}>
-            <ArrowLeft size={18} /> Đăng nhập
+          <Link to="/login" className="d-inline-flex align-items-center gap-2 text-decoration-none mb-4 text-secondary small fw-medium">
+            <ArrowLeft size={18} /> Quay lại đăng nhập
           </Link>
 
-          <h4 className="mb-2" style={{ color: '#1e293b', fontSize: '1.35rem', fontWeight: 700 }}>Đặt mật khẩu mới</h4>
-          <p className="mb-4" style={{ color: '#64748b', fontSize: '0.9rem' }}>Nhập mật khẩu mới cho tài khoản của bạn.</p>
+          <h4 className="mb-2 text-dark fw-bold">Đặt mật khẩu mới</h4>
+          <p className="mb-4 text-muted small">Nhập mật khẩu mới cho tài khoản của bạn.</p>
 
           {success ? (
-            <div className="alert alert-success">
-              Đặt lại mật khẩu thành công! <Link to="/login">Đăng nhập ngay</Link>
+            <div className="alert alert-success small">
+              Đặt lại mật khẩu thành công! <Link to="/login" className="fw-bold">Đăng nhập ngay</Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              {error && <div className="alert alert-danger py-2 mb-3">{error}</div>}
+              {error && <div className="alert alert-danger py-2 mb-3 small">{error}</div>}
 
               <div className="mb-3">
-                <label className="form-label">Mật khẩu mới *</label>
+                <label className="form-label mb-2 fw-semibold text-secondary small">Mật khẩu mới *</label>
                 <div className="input-group" style={{ borderRadius: '10px', overflow: 'hidden' }}>
                   <span className="input-group-text bg-white border-end-0"><Lock size={18} className="text-muted" /></span>
                   <input
@@ -98,10 +98,10 @@ const ResetPassword = () => {
               </div>
 
               <div className="mb-4">
-                <label className="form-label">Xác nhận mật khẩu *</label>
+                <label className="form-label mb-2 fw-semibold text-secondary small">Xác nhận mật khẩu *</label>
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  className="form-control py-2 px-3"
+                  className="form-control py-2 px-3 border"
                   placeholder="Nhập lại mật khẩu"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -110,8 +110,8 @@ const ResetPassword = () => {
                 />
               </div>
 
-              <button type="submit" disabled={loading} className="btn btn-danger w-100 py-2 fw-semibold rounded-3 d-flex align-items-center justify-content-center gap-2">
-                {loading ? <Loader2 className="animate-spin" size={20} /> : 'Đặt lại mật khẩu'}
+              <button type="submit" disabled={loading} className="btn btn-primary w-100 py-2 fw-semibold rounded-3 d-flex align-items-center justify-content-center gap-2">
+                {loading ? <Loader2 className="animate-spin" size={20} /> : 'Cập nhật mật khẩu'}
               </button>
             </form>
           )}

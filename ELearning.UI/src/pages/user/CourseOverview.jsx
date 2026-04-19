@@ -38,12 +38,18 @@ const CourseOverview = () => {
     setExpandedSections(initial);
   }, [course?.id, course?.description, course?.showIntroVideo, course?.introVideoUrl, course?.introExternalVideoUrl, course?.lessons]);
 
+  const [errorStatus, setErrorStatus] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const fetchCourseDetail = async () => {
     try {
       const response = await api.get(`/course/${id}`);
       setCourse(response.data);
+      setErrorMessage('');
     } catch (err) {
       console.error(err);
+      setErrorStatus(err.response?.status || 500);
+      setErrorMessage(err.response?.data?.message || err.response?.data || '');
     } finally {
       setLoading(false);
     }
@@ -128,6 +134,25 @@ const CourseOverview = () => {
   };
 
   if (loading) return <div className="vh-100 d-flex align-items-center justify-content-center bg-white"><Loader2 className="animate-spin text-primary" size={48} /></div>;
+
+  if (errorStatus === 404 || !course) {
+    return (
+      <UserLayout hideSidebar hideHeader>
+        <div className="container py-5 text-center" style={{ marginTop: '100px' }}>
+          <div className="bg-light d-inline-flex p-4 rounded-circle mb-4">
+            <BookOpen size={64} className="text-muted opacity-50" />
+          </div>
+          <h2 className="fw-bold mb-3">{t('courseNotFound') || 'Khóa học không tồn tại'}</h2>
+          <p className="text-muted mb-4 mx-auto" style={{ maxWidth: '400px' }}>
+            {errorMessage || 'Khóa học bạn đang tìm kiếm không thể tìm thấy hoặc đã bị gỡ bỏ.'}
+          </p>
+          <button className="btn btn-primary px-5 py-2 fw-bold rounded-pill shadow-sm" onClick={() => navigate('/dashboard')}>
+            {t('backToHome') || 'Quay lại trang chủ'}
+          </button>
+        </div>
+      </UserLayout>
+    );
+  }
 
   const tabs = [
     { id: 'course', labelKey: 'tabCourse' },

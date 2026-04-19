@@ -59,11 +59,34 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     setSubmitting(true);
 
+    let finalCategoryId = formData.categoryId;
+
+    // Tự động lưu Danh mục tạo nhanh nếu user nhập nhưng quên nhấn Lưu
+    if (showQuickAddCategory && newCategoryName.trim()) {
+      try {
+        const response = await api.post('/course/categories', { name: newCategoryName.trim() });
+        setCategories(prev => [...prev, response.data]);
+        finalCategoryId = response.data.id;
+        setNewCategoryName('');
+        setShowQuickAddCategory(false);
+      } catch (err) {
+        toast('Lỗi khi thêm danh mục nhanh.', 'error');
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    if (!finalCategoryId) {
+      toast('Vui lòng chọn hoặc nhập tên danh mục khóa học.', 'warning');
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const data = new FormData();
       data.append('CourseCode', formData.courseCode);
       data.append('Title', formData.title);
-      data.append('CategoryId', formData.categoryId);
+      data.append('CategoryId', finalCategoryId);
       if (formData.companyId) data.append('CompanyId', formData.companyId);
       data.append('IsPublished', formData.isPublished);
       data.append('StartDate', formData.startDate);
@@ -118,14 +141,21 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
                 </label>
                 {showQuickAddCategory ? (
                   <div className="input-group mb-2">
-                    <input type="text" className="form-control form-control-sm" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
+                    <input type="text" className="form-control form-control-sm" placeholder="Nhập tên chuyên ngành mới..." value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
                     <button className="btn btn-primary btn-sm" type="button" onClick={handleQuickAddCategory}>Lưu</button>
                   </div>
                 ) : (
-                  <select required className="form-select rounded-3" value={formData.categoryId} onChange={e => setFormData({...formData, categoryId: e.target.value})}>
-                    <option value="">-- Chọn chuyên ngành --</option>
-                    {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                  </select>
+                  <>
+                    <select required className="form-select rounded-3" value={formData.categoryId} onChange={e => setFormData({...formData, categoryId: e.target.value})}>
+                      <option value="">-- Chọn chuyên ngành --</option>
+                      {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                    </select>
+                    {categories.length === 0 && (
+                      <div className="text-danger extra-small mt-1 px-1">
+                        Hiện tại chưa có danh mục này. Hãy nhấn <b>+ Thêm nhanh</b> ở trên.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

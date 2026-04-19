@@ -1,4 +1,5 @@
 using ELearning.Api.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,13 +32,47 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
     public DbSet<Certificate> Certificates { get; set; } = null!;
     public DbSet<LearnerBehaviorEvent> LearnerBehaviorEvents { get; set; } = null!;
+    public DbSet<CourseDiscussion> CourseDiscussions { get; set; } = null!;
+    public DbSet<UserNote> UserNotes { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
+        // --- VIỆT HÓA IDENTITY TABLES ---
         builder.Entity<ApplicationUser>(entity =>
         {
+            entity.ToTable("NguoiDung");
+            entity.Property(u => u.Id).HasColumnName("Id");
+            entity.Property(u => u.UserName).HasColumnName("TenDangNhap");
+            entity.Property(u => u.NormalizedUserName).HasColumnName("TenDangNhapChuanHoa");
+            entity.Property(u => u.Email).HasColumnName("Email");
+            entity.Property(u => u.NormalizedEmail).HasColumnName("EmailChuanHoa");
+            entity.Property(u => u.EmailConfirmed).HasColumnName("DaXacThucEmail");
+            entity.Property(u => u.PasswordHash).HasColumnName("MatKhauHash");
+            entity.Property(u => u.SecurityStamp).HasColumnName("DauVanTayBaoMat");
+            entity.Property(u => u.ConcurrencyStamp).HasColumnName("DauVanTayDongThoi");
+            entity.Property(u => u.PhoneNumber).HasColumnName("SoDienThoai");
+            entity.Property(u => u.PhoneNumberConfirmed).HasColumnName("DaXacThucSDT");
+            entity.Property(u => u.TwoFactorEnabled).HasColumnName("XacThucHaiLop");
+            entity.Property(u => u.LockoutEnd).HasColumnName("ThoiGianBiKhoa");
+            entity.Property(u => u.LockoutEnabled).HasColumnName("CoTheBiKhoa");
+            entity.Property(u => u.AccessFailedCount).HasColumnName("SoLanDangNhapSai");
+            
+            // Cho phép trùng Email ở cấp độ Entity Framework
+            entity.HasIndex(u => u.NormalizedEmail).HasDatabaseName("EmailIndex").IsUnique(false);
+            entity.HasIndex(u => u.Email).IsUnique(false);
+
+            // Custom ApplicationUser properties
+            entity.Property(u => u.FullName).HasColumnName("HoTen");
+            entity.Property(u => u.AvatarUrl).HasColumnName("AvatarUrl");
+            entity.Property(u => u.CoverPhotoUrl).HasColumnName("AnhBiaUrl");
+            entity.Property(u => u.JobTitle).HasColumnName("ChucDanh");
+            entity.Property(u => u.CompanyId).HasColumnName("CongTyId");
+            entity.Property(u => u.DepartmentId).HasColumnName("PhongBanId");
+            entity.Property(u => u.IsActive).HasColumnName("TrangThaiHoatDong");
+            entity.Property(u => u.CreatedAt).HasColumnName("NgayTao");
+
             entity.HasOne(u => u.Company)
                 .WithMany(c => c.Users)
                 .HasForeignKey(u => u.CompanyId)
@@ -49,6 +84,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
+        // Mapping các bảng Identity còn lại
+        builder.Entity<IdentityRole>(entity => entity.ToTable("VaiTro"));
+        builder.Entity<IdentityUserRole<string>>(entity => entity.ToTable("NguoiDungVaiTro"));
+        builder.Entity<IdentityUserClaim<string>>(entity => entity.ToTable("NguoiDungYeuCau"));
+        builder.Entity<IdentityUserLogin<string>>(entity => entity.ToTable("NguoiDungDangNhap"));
+        builder.Entity<IdentityRoleClaim<string>>(entity => entity.ToTable("VaiTroYeuCau"));
+        builder.Entity<IdentityUserToken<string>>(entity => entity.ToTable("NguoiDungToken"));
+
+        // --- CẤU HÌNH CÁC THỰC THỂ KHÁC ---
         builder.Entity<Course>(entity =>
         {
             entity.HasOne(c => c.Instructor)
@@ -231,6 +275,27 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany()
                 .HasForeignKey(n => n.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CourseDiscussion>(entity =>
+        {
+            entity.HasOne(d => d.User)
+                .WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(d => d.Parent)
+                .WithMany(p => p.Replies)
+                .HasForeignKey(d => d.ParentId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        builder.Entity<UserNote>(entity =>
+        {
+            entity.HasOne(n => n.User)
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

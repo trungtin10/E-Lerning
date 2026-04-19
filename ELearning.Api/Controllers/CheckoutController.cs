@@ -150,6 +150,13 @@ public class CheckoutController : ControllerBase
 
             var company = transaction.Company;
             var plan = transaction.ServicePlan;
+            
+            // If plan wasn't loaded, fetch it from database
+            if (plan == null && transaction.ServicePlanId > 0)
+            {
+                plan = await _context.ServicePlans.FindAsync(transaction.ServicePlanId);
+            }
+
             DateTime startFrom = (company.PlanExpiresAt.HasValue && company.PlanExpiresAt > DateTime.UtcNow)
                 ? company.PlanExpiresAt.Value
                 : DateTime.UtcNow;
@@ -157,7 +164,7 @@ public class CheckoutController : ControllerBase
 
             transaction.PlanExpiresAt = expiresAt;
             company.ServicePlanId = transaction.ServicePlanId;
-            company.ServicePlan = plan?.Name;
+            company.ServicePlan = plan?.Name ?? "Basic";
             company.PlanExpiresAt = expiresAt;
             company.MaxUsers = plan?.MaxUsers ?? company.MaxUsers;
             company.UpdatedAt = DateTime.UtcNow;
@@ -217,6 +224,13 @@ public class CheckoutController : ControllerBase
 
             var company = transaction.Company;
             var plan = transaction.ServicePlan;
+            
+            // If plan wasn't loaded, fetch it from database
+            if (plan == null && transaction.ServicePlanId > 0)
+            {
+                plan = await _context.ServicePlans.FindAsync(transaction.ServicePlanId);
+            }
+
             DateTime startFrom = (company.PlanExpiresAt.HasValue && company.PlanExpiresAt > DateTime.UtcNow)
                 ? company.PlanExpiresAt.Value
                 : DateTime.UtcNow;
@@ -224,7 +238,7 @@ public class CheckoutController : ControllerBase
 
             transaction.PlanExpiresAt = expiresAt;
             company.ServicePlanId = transaction.ServicePlanId;
-            company.ServicePlan = plan?.Name;
+            company.ServicePlan = plan?.Name ?? "Basic";
             company.PlanExpiresAt = expiresAt;
             company.MaxUsers = plan?.MaxUsers ?? company.MaxUsers;
             company.UpdatedAt = DateTime.UtcNow;
@@ -283,6 +297,12 @@ public class CheckoutController : ControllerBase
             var company = transaction.Company;
             var plan = transaction.ServicePlan;
             
+            // If plan wasn't loaded, fetch it from database
+            if (plan == null && transaction.ServicePlanId > 0)
+            {
+                plan = await _context.ServicePlans.FindAsync(transaction.ServicePlanId);
+            }
+            
             DateTime startFrom = (company.PlanExpiresAt.HasValue && company.PlanExpiresAt > DateTime.UtcNow) 
                 ? company.PlanExpiresAt.Value 
                 : DateTime.UtcNow;
@@ -292,13 +312,13 @@ public class CheckoutController : ControllerBase
             transaction.PlanExpiresAt = expiresAt;
 
             company.ServicePlanId = transaction.ServicePlanId;
-            company.ServicePlan = plan.Name;
+            company.ServicePlan = plan?.Name ?? "Basic";
             company.PlanExpiresAt = expiresAt;
-            company.MaxUsers = plan.MaxUsers;
+            company.MaxUsers = plan?.MaxUsers ?? company.MaxUsers;
             company.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            await _audit.LogAsync("Payment", "Transaction", transaction.Id.ToString(), null, $"Công ty {company.CompanyName} thanh toán thành công gói {plan.Name}");
+            await _audit.LogAsync("Payment", "Transaction", transaction.Id.ToString(), null, $"Công ty {company.CompanyName} thanh toán thành công gói {plan?.Name}");
         }
         else
         {

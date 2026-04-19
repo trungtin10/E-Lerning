@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, Building2, User, CheckCircle2, XCircle, Trash2, Edit2, Loader2, Calendar, ExternalLink, Layers, Hash, Clock, Eye } from 'lucide-react';
+import { BookOpen, Building2, User, CheckCircle2, XCircle, Trash2, Edit2, Loader2, Calendar, ExternalLink, Layers, Hash, Clock, Eye, MoreVertical } from 'lucide-react';
 
 const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
   const navigate = useNavigate();
@@ -109,10 +109,36 @@ const CourseTable = ({ courses, loading, onDelete, onEdit }) => {
                 )}
               </td>
               <td className="px-4 py-3 text-end align-middle">
-                <div className="d-flex justify-content-end gap-1">
-                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border" onClick={() => window.open(`/course/${course.id}`, '_blank')} title="Xem giao diện Học viên"><Eye size={14} /></button>
-                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border" onClick={() => onEdit(course)} title="Sửa thông tin"><Edit2 size={14} /></button>
-                  <button className="btn btn-white btn-sm p-1.5 rounded-2 border text-danger" onClick={() => onDelete(course.id, course.title)} title="Xóa khóa học"><Trash2 size={14} /></button>
+                <div className="dropdown">
+                  <button
+                    className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    data-bs-popper-config={JSON.stringify({ strategy: 'fixed' })}
+                    data-bs-boundary="viewport"
+                    data-bs-offset="0,8"
+                    aria-expanded="false"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                  <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                    <li>
+                      <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => window.open(`/course/${course.id}`, '_blank')}>
+                        <Eye size={16} className="text-info" /> Xem giao diện
+                      </button>
+                    </li>
+                    <li>
+                      <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => onEdit(course)}>
+                        <Edit2 size={16} className="text-primary" /> Sửa thông tin
+                      </button>
+                    </li>
+                    <li><hr className="dropdown-divider" /></li>
+                    <li>
+                      <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" onClick={() => onDelete(course.id, course.title)}>
+                        <Trash2 size={16} /> Xóa khóa học
+                      </button>
+                    </li>
+                  </ul>
                 </div>
               </td>
             </tr>

@@ -17,6 +17,7 @@ dist/
 *.swp
 *.swo
 *~
+*.bak
 
 # OS
 Thumbs.db
