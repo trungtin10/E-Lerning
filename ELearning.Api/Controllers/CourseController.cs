@@ -713,17 +713,29 @@ public class CourseController : BaseApiController
     }
 
     [HttpGet("categories")]
-    public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories() 
+    public async Task<ActionResult<IEnumerable<CategoryDto>>> GetCategories([FromQuery] int? companyId) 
     { 
         var query = _context.Categories.AsQueryable();
-        if (!User.IsInRole("SuperAdmin"))
+        
+        if (User.IsInRole("SuperAdmin"))
         {
-            var companyId = await GetUserCompanyIdAsync() ?? 0;
-            if (companyId > 0)
-                query = query.Where(c => c.CompanyId == companyId || c.CompanyId == null);
+            if (companyId.HasValue)
+            {
+                if (companyId.Value > 0)
+                    query = query.Where(c => c.CompanyId == companyId.Value || c.CompanyId == null);
+                else
+                    query = query.Where(c => c.CompanyId == null);
+            }
+        }
+        else
+        {
+            var userCompanyId = await GetUserCompanyIdAsync() ?? 0;
+            if (userCompanyId > 0)
+                query = query.Where(c => c.CompanyId == userCompanyId || c.CompanyId == null);
             else
                 query = query.Where(c => c.CompanyId == null);
         }
+
         return await query
             .Select(c => new CategoryDto(c.Id, c.Name, c.Description, c.CompanyId))
             .ToListAsync(); 
@@ -734,6 +746,15 @@ public class CourseController : BaseApiController
     {
         try
         {
+            var name = dto.Name?.Trim();
+            if (string.IsNullOrEmpty(name)) return BadRequest("Tên danh mục không được để trống.");
+
+            // Chuẩn hóa: Nếu viết hoa toàn bộ, chuyển về chỉ viết hoa chữ cái đầu
+            if (name.All(c => !char.IsLetter(c) || char.IsUpper(c)))
+            {
+                name = char.ToUpper(name[0]) + name.Substring(1).ToLower();
+            }
+
             var companyId = dto.CompanyId;
             if (!User.IsInRole("SuperAdmin"))
             {
@@ -741,9 +762,19 @@ public class CourseController : BaseApiController
                 companyId = cid > 0 ? cid : null;
             }
 
+            // Kiểm tra trùng lặp (không phân biệt hoa thường)
+            var existing = await _context.Categories
+                .FirstOrDefaultAsync(c => c.Name.ToLower() == name.ToLower() && c.CompanyId == companyId);
+            
+            if (existing != null)
+            {
+                // Trả về danh mục đã tồn tại để tránh lỗi trùng lặp khi "Thêm nhanh"
+                return Ok(new CategoryDto(existing.Id, existing.Name, existing.Description, existing.CompanyId));
+            }
+
             var category = new Category
             {
-                Name = dto.Name,
+                Name = name,
                 Description = dto.Description,
                 CompanyId = companyId
             };
@@ -769,7 +800,22 @@ public class CourseController : BaseApiController
                 if (existing.CompanyId != companyId) return StatusCode(403, "Không có quyền chỉnh sửa danh mục này.");
             }
 
-            existing.Name = dto.Name;
+            var name = dto.Name?.Trim();
+            if (string.IsNullOrEmpty(name)) return BadRequest("Tên danh mục không được để trống.");
+
+            // Chuẩn hóa nếu viết hoa toàn bộ
+            if (name.All(c => !char.IsLetter(c) || char.IsUpper(c)))
+            {
+                name = char.ToUpper(name[0]) + name.Substring(1).ToLower();
+            }
+
+            // Kiểm tra trùng lặp với các bản ghi khác
+            var duplicate = await _context.Categories
+                .AnyAsync(c => c.Id != id && c.Name.ToLower() == name.ToLower() && c.CompanyId == existing.CompanyId);
+            
+            if (duplicate) return BadRequest("Tên danh mục này đã tồn tại.");
+
+            existing.Name = name;
             existing.Description = dto.Description;
             await _context.SaveChangesAsync();
             await _audit.LogAsync("Update", "Category", id.ToString(), null, existing.Name, "Cập nhật danh mục");

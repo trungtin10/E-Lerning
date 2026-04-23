@@ -37,11 +37,21 @@ const EditCourseModal = ({ isOpen, onClose, onSuccess, course }) => {
     }
   }, [isOpen, course]);
 
+  const fetchCategories = async (compId = null) => {
+    try {
+      const url = compId ? `/course/categories?companyId=${compId}` : '/course/categories';
+      const res = await api.get(url);
+      setCategories(res.data);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
   const fetchInitialData = async () => {
     setLoadingData(true);
     try {
       const [catRes, compRes] = await Promise.all([
-        api.get('/course/categories'),
+        api.get(formData.companyId ? `/course/categories?companyId=${formData.companyId}` : '/course/categories'),
         isSuperAdmin ? api.get('/superadmin/companies') : Promise.resolve({ data: [] })
       ]);
       setCategories(catRes.data);
@@ -52,6 +62,13 @@ const EditCourseModal = ({ isOpen, onClose, onSuccess, course }) => {
       setLoadingData(false);
     }
   };
+
+  // Khi SuperAdmin thay đổi công ty, cập nhật lại danh sách danh mục tương ứng
+  useEffect(() => {
+    if (isOpen && isSuperAdmin && formData.companyId !== undefined) {
+      fetchCategories(formData.companyId);
+    }
+  }, [formData.companyId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

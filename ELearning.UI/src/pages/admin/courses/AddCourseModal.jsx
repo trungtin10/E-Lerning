@@ -29,10 +29,21 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
     }
   }, [isOpen]);
 
+  const fetchCategories = async (compId = null) => {
+    try {
+      const url = compId ? `/course/categories?companyId=${compId}` : '/course/categories';
+      const res = await api.get(url);
+      setCategories(res.data);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
   const fetchData = async () => {
     try {
+      // Khi load lần đầu, lấy toàn bộ hoặc theo công ty mặc định (nếu có)
       const [catRes, compRes] = await Promise.all([
-        api.get('/course/categories'),
+        api.get(formData.companyId ? `/course/categories?companyId=${formData.companyId}` : '/course/categories'),
         isSuperAdmin ? api.get('/superadmin/companies') : Promise.resolve({ data: [] })
       ]);
       setCategories(catRes.data);
@@ -42,15 +53,35 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
+  // Khi SuperAdmin thay đổi công ty, cập nhật lại danh sách danh mục tương ứng
+  useEffect(() => {
+    if (isOpen && isSuperAdmin) {
+      fetchCategories(formData.companyId);
+    }
+  }, [formData.companyId]);
+
   const handleQuickAddCategory = async () => {
-    if (!newCategoryName) return;
+    if (!newCategoryName.trim()) return;
+
+    // Chuẩn hóa: Nếu nhập toàn chữ HOA, chuyển về chỉ viết hoa chữ cái đầu
+    let nameToSave = newCategoryName.trim();
+    if (nameToSave === nameToSave.toUpperCase() && nameToSave !== nameToSave.toLowerCase()) {
+      nameToSave = nameToSave.charAt(0).toUpperCase() + nameToSave.slice(1).toLowerCase();
+    }
+
     try {
       const response = await api.post('/course/categories', { 
-        name: newCategoryName,
+        name: nameToSave,
         companyId: formData.companyId || null
       });
-      setCategories([...categories, response.data]);
-      setFormData({ ...formData, categoryId: response.data.id });
+      
+      const newCat = response.data;
+      // Cập nhật categories nếu chưa có trong list
+      setCategories(prev => {
+        if (prev.find(c => c.id === newCat.id)) return prev;
+        return [...prev, newCat];
+      });
+      setFormData({ ...formData, categoryId: newCat.id });
       setNewCategoryName('');
       setShowQuickAddCategory(false);
     } catch (err) {
@@ -67,12 +98,22 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
     // Tự động lưu Danh mục tạo nhanh nếu user nhập nhưng quên nhấn Lưu
     if (showQuickAddCategory && newCategoryName.trim()) {
       try {
+        let nameToSave = newCategoryName.trim();
+        if (nameToSave === nameToSave.toUpperCase() && nameToSave !== nameToSave.toLowerCase()) {
+          nameToSave = nameToSave.charAt(0).toUpperCase() + nameToSave.slice(1).toLowerCase();
+        }
+
         const response = await api.post('/course/categories', { 
-          name: newCategoryName.trim(),
+          name: nameToSave,
           companyId: formData.companyId || null
         });
-        setCategories(prev => [...prev, response.data]);
-        finalCategoryId = response.data.id;
+        
+        const newCat = response.data;
+        setCategories(prev => {
+          if (prev.find(c => c.id === newCat.id)) return prev;
+          return [...prev, newCat];
+        });
+        finalCategoryId = newCat.id;
         setNewCategoryName('');
         setShowQuickAddCategory(false);
       } catch (err) {

@@ -88,17 +88,25 @@ const Categories = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let nameToSave = formData.name.trim();
+      if (nameToSave === nameToSave.toUpperCase() && nameToSave !== nameToSave.toLowerCase()) {
+        nameToSave = nameToSave.charAt(0).toUpperCase() + nameToSave.slice(1).toLowerCase();
+      }
+
+      const payload = { ...formData, name: nameToSave };
+
       if (editingId) {
-        await api.put(`/course/categories/${editingId}`, formData);
+        await api.put(`/course/categories/${editingId}`, payload);
       } else {
-        await api.post('/course/categories', formData);
+        await api.post('/course/categories', payload);
       }
       setFormData({ name: '', description: '', companyId: '' });
       setShowAddModal(false);
       setEditingId(null);
       fetchCategories();
     } catch (err) {
-      toast('Lỗi khi lưu danh mục.', 'error');
+      const msg = err.response?.data || 'Lỗi khi lưu danh mục.';
+      toast(typeof msg === 'string' ? msg : 'Lỗi khi lưu danh mục.', 'error');
     }
   };
 
