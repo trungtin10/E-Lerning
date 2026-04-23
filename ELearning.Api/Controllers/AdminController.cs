@@ -229,10 +229,10 @@ public class AdminController : BaseApiController
             PlanExpiryDate = company.PlanExpiresAt,
             UserCount = userCount,
             MaxUsers = company.Plan?.MaxUsers ?? company.MaxUsers ?? 0,
-            StorageUsedBytes = breakdown.TotalBytes,
-            VideoStorageBytes = breakdown.VideoBytes,
-            ImageStorageBytes = breakdown.ImageBytes,
-            DocumentStorageBytes = breakdown.DocumentBytes,
+            StorageUsedBytes = breakdown.Total,
+            VideoStorageBytes = breakdown.Videos,
+            ImageStorageBytes = breakdown.Images,
+            DocumentStorageBytes = breakdown.Documents,
             StorageLimitGB = company.Plan?.StorageLimitGB ?? 0,
             Transactions = transactions
         });

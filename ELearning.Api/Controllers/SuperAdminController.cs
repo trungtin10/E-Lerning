@@ -363,7 +363,7 @@ public class SuperAdminController : BaseApiController
             { 
                 await _emailService.SendActivationEmailAsync(user.Email!, user.FullName, user.UserName!, form.Password, activationLink); 
             } 
-            catch (Exception ex) 
+            catch (Exception) 
             { 
                 // Rollback: Xóa user và company vừa tạo nếu gửi mail lỗi
                 await _userManager.DeleteAsync(user);
