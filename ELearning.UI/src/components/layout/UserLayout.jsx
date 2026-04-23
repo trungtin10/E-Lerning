@@ -7,7 +7,8 @@ import {
   LayoutDashboard, BookOpen, GraduationCap, Compass, ClipboardList,
   Settings, LogOut, UserCircle, ChevronDown, HelpCircle,
   Home, MapPin, Phone, Mail, Apple, Play, QrCode, Bot,
-  User, KeyRound, Search, MessageSquare, Bell, Facebook, Linkedin, Youtube, Users
+  User, KeyRound, Search, MessageSquare, Bell, Facebook, Linkedin, Youtube, Users,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import NotificationBell from '../common/NotificationBell';
 import UserAccountDialogs from '../account/UserAccountDialogs';
@@ -129,41 +130,28 @@ const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
         style={{ width: isCollapsed ? '80px' : '280px', height: '100vh', zIndex: 1000 }}
       >
         <div className={`p-4 mb-2 d-flex align-items-center ${isCollapsed ? 'justify-content-center' : 'justify-content-between'}`}>
-          <Link to="/dashboard" className="text-decoration-none d-flex align-items-center gap-2 overflow-hidden">
-            {user.companyLogoUrl && (
-              <img 
-                src={getUploadUrl(user.companyLogoUrl)} 
-                alt="Logo" 
-                className="flex-shrink-0"
-                style={{ height: '32px', width: 'auto', objectFit: 'contain' }} 
-              />
-            )}
-            {!isCollapsed && (
-              <span className="fw-bold text-truncate" style={{ color: '#4c49ed', fontSize: '1.25rem' }}>{user.companyName || 'MẠNG XUYÊN VIỆT'}</span>
-            )}
-          </Link>
           {!isCollapsed && (
-            <button 
-              className="btn btn-sm btn-light border-0 rounded-circle p-1 ms-2"
-              onClick={() => setIsCollapsed(true)}
-              title="Thu gọn"
-            >
-              <LayoutDashboard size={14} className="text-muted" />
-            </button>
+            <Link to="/dashboard" className="text-decoration-none d-flex align-items-center gap-2 overflow-hidden">
+              {user.companyLogoUrl && (
+                <img 
+                  src={getUploadUrl(user.companyLogoUrl)} 
+                  alt="Logo" 
+                  className="flex-shrink-0"
+                  style={{ height: '32px', width: 'auto', objectFit: 'contain' }} 
+                />
+              )}
+              <span className="fw-bold text-truncate" style={{ color: '#4c49ed', fontSize: '1.25rem' }}>{user.companyName || 'MẠNG XUYÊN VIỆT'}</span>
+            </Link>
           )}
+          
+          <button 
+            className={`btn btn-sm btn-light border-0 rounded-circle p-2 ${isCollapsed ? '' : 'ms-2'}`}
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            title={isCollapsed ? "Mở rộng" : "Thu gọn"}
+          >
+            {isCollapsed ? <PanelLeftOpen size={20} className="text-primary" /> : <PanelLeftClose size={18} className="text-muted" />}
+          </button>
         </div>
-
-        {isCollapsed && (
-          <div className="text-center mb-3">
-             <button 
-              className="btn btn-sm btn-primary bg-opacity-10 text-primary border-0 rounded-circle p-2"
-              onClick={() => setIsCollapsed(false)}
-              title="Mở rộng"
-            >
-              <LayoutDashboard size={18} />
-            </button>
-          </div>
-        )}
 
         <div className={`px-${isCollapsed ? '2' : '4'} mb-4`}>
           <div className={`rounded-4 ${isCollapsed ? 'p-2 justify-content-center' : 'p-3 gap-3'} d-flex align-items-center`} style={{ backgroundColor: '#f5f3ff' }}>
