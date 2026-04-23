@@ -20,7 +20,8 @@ public record LearnerEnrollmentDto(
     int TotalLessons,
     int QuizAttemptsCount,
     int QuizPassedCount,
-    bool HasStartedLearning
+    bool HasStartedLearning,
+    bool HasCertificate = false
 );
 
 /// <summary>Chi tiết tiến độ học viên trong một khóa</summary>

@@ -85,5 +85,6 @@ public record MyEnrolledCourseDto(
     double ProgressPercentage,
     string Status,
     DateTime? EnrolledAt,
-    bool IsEnrolled = true
+    bool IsEnrolled = true,
+    int? CertificateId = null
 );

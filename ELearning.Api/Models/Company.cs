@@ -60,6 +60,10 @@ public class Company
     [Column("NgayCapNhat")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    [MaxLength(200)]
+    [Column("NganhNghe")]
+    public string? Industry { get; set; }
+
     public virtual ServicePlan? Plan { get; set; }
     public virtual ICollection<Department> Departments { get; set; } = new List<Department>();
     public virtual ICollection<ApplicationUser> Users { get; set; } = new List<ApplicationUser>();

@@ -25,7 +25,7 @@ const Categories = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowAddModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', description: '' });
+  const [formData, setFormData] = useState({ name: '', description: '', companyId: '' });
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
@@ -71,7 +71,7 @@ const Categories = () => {
     setPage(p => (p > total && total > 0) ? 1 : p);
   }, [filteredCategories.length]);
 
-  const colCount = isSuperAdmin ? 5 : 4;
+  const colCount = isSuperAdmin ? 4 : 3;
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -93,7 +93,7 @@ const Categories = () => {
       } else {
         await api.post('/course/categories', formData);
       }
-      setFormData({ name: '', description: '' });
+      setFormData({ name: '', description: '', companyId: '' });
       setShowAddModal(false);
       setEditingId(null);
       fetchCategories();
@@ -190,7 +190,6 @@ const Categories = () => {
                     </span>
                   </th>
                 )}
-                <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Mô tả chi tiết</th>
                 <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end">Thao tác</th>
               </tr>
             </thead>
@@ -228,7 +227,6 @@ const Categories = () => {
                         <span className="text-dark fw-medium">{categoryCompanyLabel(cat)}</span>
                       </td>
                     )}
-                    <td className="py-3 text-muted small">{cat.description || <em className="opacity-50">Chưa có mô tả</em>}</td>
                     <td className="px-4 py-3 text-end">
                       <div className="dropdown">
                         <button
@@ -244,7 +242,7 @@ const Categories = () => {
                         </button>
                         <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
                           <li>
-                            <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => { setEditingId(cat.id); setFormData({ name: cat.name, description: cat.description || '' }); setShowAddModal(true); }}>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => { setEditingId(cat.id); setFormData({ name: cat.name, description: cat.description || '', companyId: (cat.companyId ?? cat.CompanyId) || '' }); setShowAddModal(true); }}>
                               <Edit2 size={16} className="text-primary" /> Chỉnh sửa
                             </button>
                           </li>
@@ -283,7 +281,7 @@ const Categories = () => {
             <div className="modal-content border-0 rounded-4 shadow">
               <div className="modal-header border-0 p-4 pb-0">
                 <h5 className="fw-bold mb-0">{editingId ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}</h5>
-                <button type="button" className="btn-close" onClick={() => { setShowAddModal(false); setEditingId(null); setFormData({ name: '', description: '' }); }}></button>
+                <button type="button" className="btn-close" onClick={() => { setShowAddModal(false); setEditingId(null); setFormData({ name: '', description: '', companyId: '' }); }}></button>
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body p-4">
@@ -295,6 +293,15 @@ const Categories = () => {
                     <label className="form-label small fw-bold">Mô tả</label>
                     <textarea className="form-control rounded-3" rows="3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}></textarea>
                   </div>
+                  {isSuperAdmin && (
+                    <div className="mb-3">
+                      <label className="form-label small fw-bold">Thuộc về công ty</label>
+                      <select className="form-select rounded-3" value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})}>
+                        <option value="">Hệ thống tổng (Dùng chung)</option>
+                        {companies.map(comp => <option key={comp.id} value={comp.id}>{comp.companyName}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div className="modal-footer border-0 p-4 pt-0">
                   <button type="button" className="btn btn-light px-4 fw-bold" onClick={() => { setShowAddModal(false); setEditingId(null); }}>Hủy</button>

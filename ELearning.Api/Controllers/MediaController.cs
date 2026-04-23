@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Hosting;
+using ELearning.Api.Services;
+using ELearning.Api.Data;
 using System;
-using System.IO;
 using System.Threading.Tasks;
 
 namespace ELearning.Api.Controllers
@@ -11,13 +11,14 @@ namespace ELearning.Api.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class MediaController : ControllerBase
+    public class MediaController : BaseApiController
     {
-        private readonly IWebHostEnvironment _env;
+        private readonly IFileUploadService _fileUpload;
 
-        public MediaController(IWebHostEnvironment env)
+        public MediaController(ApplicationDbContext context, IConfiguration config, IFileUploadService fileUpload)
+            : base(context, config)
         {
-            _env = env;
+            _fileUpload = fileUpload;
         }
 
         [HttpPost("upload")]
@@ -28,26 +29,8 @@ namespace ELearning.Api.Controllers
 
             try
             {
-                var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
-                if (!Directory.Exists(uploadDir))
-                    Directory.CreateDirectory(uploadDir);
-
-                var fileExtension = Path.GetExtension(file.FileName).ToLower();
-                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".pdf", ".docx", ".xlsx" };
-                
-                // Note: Simplified for now, you might want more strict validation
-                // if (!Array.Exists(allowedExtensions, e => e == fileExtension))
-                //    return BadRequest("Định dạng file không được hỗ trợ.");
-
-                var fileName = $"media_{DateTime.Now:yyyyMMddHHmmss}_{Guid.NewGuid():N}{fileExtension}";
-                var filePath = Path.Combine(uploadDir, fileName);
-
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
-                var url = $"/uploads/{fileName}";
+                var companyId = await GetUserCompanyIdAsync();
+                var url = await _fileUpload.SaveFileAsync(file, companyId, "media", file.FileName);
                 return Ok(new { url, fileName = file.FileName });
             }
             catch (Exception ex)

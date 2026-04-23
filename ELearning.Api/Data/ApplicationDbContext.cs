@@ -31,6 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
     public DbSet<Certificate> Certificates { get; set; } = null!;
+    public DbSet<CertificateTemplate> CertificateTemplates { get; set; } = null!;
     public DbSet<LearnerBehaviorEvent> LearnerBehaviorEvents { get; set; } = null!;
     public DbSet<CourseDiscussion> CourseDiscussions { get; set; } = null!;
     public DbSet<UserNote> UserNotes { get; set; } = null!;
@@ -153,6 +154,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasOne(c => c.Course)
                 .WithMany()
                 .HasForeignKey(c => c.CourseId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(c => c.Template)
+                .WithMany()
+                .HasForeignKey(c => c.TemplateId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<CertificateTemplate>(entity =>
+        {
+            entity.HasOne(t => t.Company)
+                .WithMany()
+                .HasForeignKey(t => t.CompanyId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
 

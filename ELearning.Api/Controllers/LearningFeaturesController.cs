@@ -88,14 +88,20 @@ public class NoteController : ControllerBase
         _context = context;
     }
 
-    [HttpGet("{courseId}/{lessonId}")]
-    public async Task<IActionResult> GetNote(int courseId, int lessonId)
+    [HttpGet("{courseId}")]
+    public async Task<IActionResult> GetNote(int courseId, [FromQuery] int? lessonId)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return Unauthorized();
 
-        var note = await _context.UserNotes
-            .FirstOrDefaultAsync(n => n.UserId == userId && n.CourseId == courseId && n.LessonId == lessonId);
+        var query = _context.UserNotes.Where(n => n.UserId == userId && n.CourseId == courseId);
+        
+        if (lessonId.HasValue)
+            query = query.Where(n => n.LessonId == lessonId.Value);
+        else
+            query = query.Where(n => n.LessonId == null);
+
+        var note = await query.FirstOrDefaultAsync();
 
         if (note == null) return Ok(new { Content = "" });
 
@@ -135,4 +141,4 @@ public class NoteController : ControllerBase
     }
 }
 
-public record SaveNoteDto(int CourseId, int LessonId, string Content);
+public record SaveNoteDto(int CourseId, int? LessonId, string Content);

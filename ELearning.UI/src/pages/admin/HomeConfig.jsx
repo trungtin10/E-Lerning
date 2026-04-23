@@ -31,7 +31,7 @@ export default function HomeConfig() {
       <div className="system-config-container shadow-sm border rounded-2 overflow-hidden bg-white">
         {/* Header Bar */}
         <div className="bg-primary px-3 py-2 text-white fw-bold d-flex align-items-center" style={{ backgroundColor: '#0071ae !important' }}>
-          TConfig list
+          Danh sách cấu hình
         </div>
 
         {/* Filter / Search Bar */}
@@ -45,7 +45,7 @@ export default function HomeConfig() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           <button className="btn btn-sm px-4 d-flex align-items-center gap-1 border shadow-sm btn-light-grey">
-            <Search size={14} /> Search
+            <Search size={14} /> Tìm kiếm
           </button>
         </div>
 
@@ -54,10 +54,10 @@ export default function HomeConfig() {
           <table className="table table-bordered table-hover mb-0 align-middle config-custom-table">
             <thead className="table-light">
               <tr className="text-center">
-                <th style={{ width: 50 }}>No.</th>
-                <th>Config Name</th>
-                <th>Config Value</th>
-                <th style={{ width: 80 }}>Action</th>
+                <th style={{ width: 50 }}>STT</th>
+                <th>Tên cấu hình</th>
+                <th>Giá trị</th>
+                <th style={{ width: 100 }}>Hành động</th>
               </tr>
             </thead>
             <tbody>

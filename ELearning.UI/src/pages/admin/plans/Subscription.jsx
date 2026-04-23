@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { Check, ArrowRight, Loader2, Sparkles, History, X } from 'lucide-react';
+import { Check, ArrowRight, Loader2, Sparkles, History, X, Video, Image as ImageIcon, FileText } from 'lucide-react';
 import { useNotify } from '../../../context/NotifyContext';
 
 const Subscription = () => {
@@ -243,11 +243,40 @@ const Subscription = () => {
                   </div>
                 </div>
               </div>
-              <div className="col-md-4">
+              <div className="col-md-3">
                 <div className="p-3 bg-light rounded-3 border">
                   <div className="small text-muted mb-1">Số lượng nhân viên</div>
                   <div className="fw-bold fs-5 text-dark">
                     {subInfo.userCount} / {subInfo.maxUsers || '∞'}
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="p-3 bg-light rounded-3 border">
+                  <div className="small text-muted mb-1">Dung lượng lưu trữ</div>
+                  <div className="fw-bold fs-5 text-dark mb-2">
+                    {(subInfo.storageUsedBytes / 1024 / 1024).toFixed(1)} MB / {subInfo.storageLimitGB || 0} GB
+                  </div>
+                  <div className="d-flex flex-column gap-1 mb-2">
+                    <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                       <span className="d-flex align-items-center gap-1"><Video size={12} /> Video:</span>
+                       <span className="fw-medium">{(subInfo.videoStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                       <span className="d-flex align-items-center gap-1"><ImageIcon size={12} /> Hình ảnh:</span>
+                       <span className="fw-medium">{(subInfo.imageStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                       <span className="d-flex align-items-center gap-1"><FileText size={12} /> Tài liệu:</span>
+                       <span className="fw-medium">{(subInfo.documentStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                    </div>
+                  </div>
+                  <div className="progress mt-2" style={{ height: '4px' }}>
+                    <div 
+                      className={`progress-bar bg-${(subInfo.storageUsedBytes / (subInfo.storageLimitGB * 1024 * 1024 * 1024 || 1) > 0.9) ? 'danger' : 'primary'}`}
+                      role="progressbar" 
+                      style={{ width: `${Math.min(100, (subInfo.storageUsedBytes / (subInfo.storageLimitGB * 1024 * 1024 * 1024 || 1)) * 100)}%` }} 
+                    />
                   </div>
                 </div>
               </div>
@@ -392,11 +421,13 @@ const Subscription = () => {
                             <td>
                               <span className={`badge ${
                                 t.status === 'Completed' ? 'bg-success' : 
-                                t.status === 'Pending' ? 'bg-warning' : 
+                                t.status === 'Pending' ? 'bg-warning text-dark' : 
+                                t.status === 'Canceled' ? 'bg-secondary' :
                                 'bg-danger'
                               }`}>
                                 {t.status === 'Completed' ? '✓ Hoàn tất' : 
                                  t.status === 'Pending' ? '⏳ Đang xử lý' : 
+                                 t.status === 'Canceled' ? '⊘ Hủy thanh toán' :
                                  '✗ Thất bại'}
                               </span>
                             </td>

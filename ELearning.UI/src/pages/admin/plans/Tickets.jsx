@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api, { getUploadUrl } from '../../../api/axios';
-import { Loader2, Paperclip, ChevronLeft, Building2, HelpCircle, User, Phone, Undo, Redo, ListTodo, List, XCircle, Mail, Save } from 'lucide-react';
+import { Loader2, Paperclip, ChevronLeft, Building2, HelpCircle, User, Phone, Undo, Redo, ListTodo, List, XCircle, Mail, Save, Trash2, MoreVertical, Eye } from 'lucide-react';
 import TiptapEditor from '../../../components/common/TiptapEditor';
+import { useNotify } from '../../../context/NotifyContext';
 
 const formatVnDateTime = (value) => {
   if (value == null) return '';
@@ -29,6 +30,7 @@ const Tickets = () => {
   const [thread, setThread] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const { toast, confirm } = useNotify();
 
   const [replyBody, setReplyBody] = useState('');
   const [files, setFiles] = useState([null, null, null]);
@@ -119,8 +121,9 @@ const Tickets = () => {
       setPreviews([null, null, null]);
       document.querySelectorAll('.file-input').forEach(el => el.value = '');
       fetchList();
+      toast('Đã gửi phản hồi thành công.', 'success');
     } catch (err) {
-      alert('Lỗi: ' + (err.response?.data || 'Không gửi được'));
+      toast('Lỗi: ' + (err.response?.data || 'Không gửi được'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -132,8 +135,29 @@ const Tickets = () => {
       await api.patch(`/ticket/${ticketId}/status`, { status: newStatus });
       await fetchThread(ticketId);
       fetchList();
+      toast('Đã cập nhật trạng thái.', 'success');
     } catch {
-      alert('Không cập nhật được trạng thái');
+      toast('Không cập nhật được trạng thái', 'error');
+    }
+  };
+
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    const ok = await confirm({ 
+      title: 'Xoá yêu cầu hỗ trợ', 
+      message: 'Bạn có chắc chắn muốn xoá ticket này? Hành động này không thể hoàn tác và toàn bộ lịch sử trao đổi sẽ bị mất.', 
+      confirmText: 'Xoá ticket' 
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/ticket/${id}`);
+      toast('Đã xoá ticket thành công.', 'success');
+      fetchList();
+      if (ticketId && parseInt(ticketId) === id) {
+        navigate('/admin/tickets');
+      }
+    } catch (err) {
+      toast('Không xoá được ticket: ' + (err.response?.data?.message || err.response?.data || 'Lỗi hệ thống'), 'error');
     }
   };
 
@@ -147,12 +171,14 @@ const Tickets = () => {
         <button className="btn text-white px-4 border-0" style={{ backgroundColor: '#3b82f6', fontWeight: 600, height: '38px' }}>TÌM KIẾM</button>
       </div>
       <div className="d-flex flex-wrap align-items-center gap-2">
-        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', height: '38px', padding: '0 16px' }}>
-          <span className="d-flex align-items-center gap-2">1900 9477 <Phone size={16} /></span>
-        </button>
-        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', opacity: 0.9, height: '38px', padding: '0 16px' }}>
-          THAN PHIỀN GÓP Ý
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          <div className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0 px-3" style={{ backgroundColor: '#e11d48', height: '38px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            <span className="d-flex align-items-center gap-2">0909 995 137 | 028-3842 8832 <Phone size={14} /></span>
+          </div>
+          <div className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0 px-3" style={{ backgroundColor: '#e11d48', height: '38px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            <span className="d-flex align-items-center gap-2">info@xvnet.vn <Mail size={14} /></span>
+          </div>
+        </div>
         {isCompanyAdmin && !isSuperAdmin && (
           <button className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0" style={{ backgroundColor: '#10b981', height: '38px', padding: '0 16px' }} onClick={() => navigate('/admin/tickets/new')}>
             GỬI YÊU CẦU 
@@ -178,7 +204,7 @@ const Tickets = () => {
         <h4 className="fw-bold mb-0 text-uppercase" style={{ color: '#0f172a', letterSpacing: '0.5px', fontSize: '1.25rem' }}>MY SUPPORT :: Danh sách yêu cầu</h4>
       </div>
       <div className="px-3 pb-4 pt-3">
-        <div className="bg-white table-responsive">
+        <div className="bg-white table-responsive pb-5" style={{ minHeight: '400px' }}>
           <table className="table table-bordered table-hover align-middle mb-0" style={{ minWidth: '950px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
@@ -188,6 +214,7 @@ const Tickets = () => {
                 <th className="text-center text-secondary fw-bold py-3" style={{ width: '180px', fontSize: '0.85rem' }}>Thời gian</th>
                 <th className="text-center text-secondary fw-bold py-3" style={{ width: '130px', fontSize: '0.85rem' }}>Trạng thái</th>
                 <th className="text-center text-secondary fw-bold py-3" style={{ width: '180px', fontSize: '0.85rem' }}>Dịch vụ</th>
+                <th className="text-center text-secondary fw-bold py-3" style={{ width: '120px', fontSize: '0.85rem' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -208,6 +235,36 @@ const Tickets = () => {
                     </td>
                     <td className="text-center">{renderBadge(t.status)}</td>
                     <td className="text-center text-muted" style={{ fontSize: '0.88rem' }}>{t.companyName || 'Windows: hethong'}</td>
+                    <td className="text-center">
+                      <div className="dropdown" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                          type="button"
+                          data-bs-toggle="dropdown"
+                          data-bs-display="static"
+                          aria-expanded="false"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                        <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                          <li>
+                            <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-primary" onClick={() => navigate(`/admin/tickets/${t.id}`)}>
+                              <Eye size={16} /> Xem chi tiết
+                            </button>
+                          </li>
+                          {(isSuperAdmin || isCompanyAdmin) && (
+                            <>
+                              <li><hr className="dropdown-divider" /></li>
+                              <li>
+                                <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" onClick={(e) => handleDelete(e, t.id)}>
+                                  <Trash2 size={16} /> Xoá ticket
+                                </button>
+                              </li>
+                            </>
+                          )}
+                        </ul>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -350,9 +407,19 @@ const Tickets = () => {
               );
             })}
 
+            {/* Company Banner */}
+            <div className="mb-3 d-flex align-items-center gap-2 p-2 rounded-3" style={{ backgroundColor: '#ffc107', border: '1px solid #e2e8f0' }}>
+              <div className="bg-white rounded-circle p-1 d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px' }}>
+                <HelpCircle size={14} className="text-warning" />
+              </div>
+              <span className="fw-bold text-dark small text-uppercase">
+                {thread.companyName || user.companyName || 'Hệ thống E-Learning'}
+              </span>
+            </div>
+
             {/* Reply Form */}
-            <div className="mt-4" style={{ border: '1px solid #f6d155', padding: '4px' }}>
-              <div className="p-2 fw-bold bg-white" style={{ color: '#d9534f', fontSize: '0.85rem' }}>
+            <div className="mt-2" style={{ border: '1px solid #ffc107', padding: '4px' }}>
+              <div className="p-2 fw-bold bg-white" style={{ color: '#000', fontSize: '0.85rem' }}>
                 Nội dung phản hồi:
               </div>
               <div className="p-3 bg-white">
@@ -365,20 +432,22 @@ const Tickets = () => {
                     />
                   </div>
 
+                  <hr className="my-4 text-muted opacity-25" />
+
                   {[1, 2, 3].map((num, i) => (
-                    <div key={num} className="mb-3">
-                      <div className="small text-secondary mb-1" style={{ fontSize: '0.8rem' }}>
+                    <div key={num} className="mb-4">
+                      <div className="text-dark mb-2" style={{ fontSize: '0.85rem' }}>
                         Hình minh họa {num} (*.gif, *.jpg, *.jpeg, *.png, *.svg, *.bmp, *.pdf, *.zip, *.rar) và dung lượng tối đa 10Mb:
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                        <input type="file" className="form-control form-control-sm file-input rounded-0 rounded-start border-secondary" style={{ maxWidth: '300px' }} onChange={(e) => handleFileChange(i, e)} />
+                        <input type="file" className="form-control form-control-sm file-input rounded-0 border-secondary border-opacity-25" style={{ maxWidth: '400px' }} onChange={(e) => handleFileChange(i, e)} />
                         {previews[i] && (
                           <div className="position-relative" style={{ width: '60px', height: '60px' }}>
-                            <img src={previews[i]} alt="Preview" className="w-100 h-100 object-fit-cover border" />
+                            <img src={previews[i]} alt="Preview" className="w-100 h-100 object-fit-cover border shadow-sm" />
                             <button 
                               type="button" 
-                              className="btn btn-sm p-0 position-absolute top-0 end-0 bg-white border rounded-circle d-flex align-items-center justify-content-center" 
-                              style={{ width: '20px', height: '20px', marginTop: '-10px', marginRight: '-10px' }}
+                              className="btn btn-sm p-0 position-absolute top-0 end-0 bg-white border rounded-circle d-flex align-items-center justify-content-center shadow-sm" 
+                              style={{ width: '20px', height: '20px', marginTop: '-10px', marginRight: '-10px', zIndex: 10 }}
                               onClick={() => {
                                 const newFiles = [...files];
                                 const newPreviews = [...previews];
@@ -396,20 +465,20 @@ const Tickets = () => {
                           </div>
                         )}
                       </div>
-                      {num < 3 && <hr className="my-3 text-muted opacity-25" />}
+                      <hr className="mt-4 text-muted opacity-25" />
                     </div>
                   ))}
 
                   <div className="text-center mt-5 mb-3">
-                    <button type="submit" className="btn text-white px-4 py-2 border-0 fw-medium" style={{ backgroundColor: '#e11d48', minWidth: '100px' }} disabled={submitting}>
+                    <button type="submit" className="btn text-white px-4 py-2 border-0 fw-medium shadow-sm" style={{ backgroundColor: '#e11d48', minWidth: '120px' }} disabled={submitting}>
                       {submitting ? 'ĐANG GỬI...' : 'Gửi Đi'}
                     </button>
-                    <button type="button" className="btn text-white px-4 py-2 border-0 fw-medium ms-2" style={{ backgroundColor: '#6c757d', minWidth: '130px' }} onClick={() => handleStatusChange('Closed')}>
+                    <button type="button" className="btn text-white px-4 py-2 border-0 fw-medium ms-2 shadow-sm" style={{ backgroundColor: '#4b5563', minWidth: '140px' }} onClick={() => handleStatusChange('Closed')}>
                       Đóng câu hỏi
                     </button>
                   </div>
-                  <div className="text-center small mt-2" style={{ color: '#10b981', fontSize: '0.85rem' }}>
-                    Nếu quý khách có câu hỏi hay vấn đề Mới, vui lòng Không phản hồi, xin hãy Gửi Yêu Cầu Mới sẽ giúp chúng tôi hỗ trợ nhanh hơn
+                  <div className="text-center mt-4" style={{ color: '#059669', fontSize: '0.85rem' }}>
+                    Nếu quý khách có câu hỏi hay vấn đề Mới, vui lòng Không phản hồi, xin hãy <span style={{ color: '#3b82f6', textDecoration: 'underline', cursor: 'pointer' }} onClick={() => navigate('/admin/tickets/new')}>Gửi Yêu Cầu Mới</span> sẽ giúp chúng tôi hỗ trợ nhanh hơn
                   </div>
                 </form>
               </div>

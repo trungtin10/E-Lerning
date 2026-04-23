@@ -118,13 +118,8 @@ const Login = () => {
         style={{ maxWidth: '420px', width: '100%' }}
       >
         <div className="card-body p-4 p-md-5">
-          {/* Logo & Branding */}
+          {/* Branding */}
           <div className="text-center mb-4">
-            <div className="d-flex align-items-center justify-content-center mb-3">
-              <div className="d-flex align-items-center justify-content-center rounded-2 overflow-hidden bg-white border" style={{ width: 56, height: 56, padding: 8, borderColor: '#e2e8f0' }}>
-                <img src="/h_logo.png" alt="Logo" className="w-100 h-100 object-fit-contain" />
-              </div>
-            </div>
             <h2 className="mb-1 text-dark fw-bold" style={{ fontSize: '1.85rem' }}>E-Learning</h2>
             <p className="mb-0 text-muted small">Hệ thống đào tạo trực tuyến</p>
           </div>

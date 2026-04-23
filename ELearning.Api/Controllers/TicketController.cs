@@ -11,7 +11,7 @@ namespace ELearning.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class TicketController : ControllerBase
+public class TicketController : BaseApiController
 {
     private const long MaxImageBytes = 8 * 1024 * 1024;
     private const long MaxFileBytes = 20 * 1024 * 1024;
@@ -43,13 +43,12 @@ public class TicketController : ControllerBase
         ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
         ".zip", ".rar"
     };
-
-    private readonly ApplicationDbContext _context;
     private readonly IAuditService _audit;
     private readonly IWebHostEnvironment _env;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly INotificationService _notification;
     private readonly IEmailService _email;
+    private readonly IFileUploadService _fileUpload;
 
     public TicketController(
         ApplicationDbContext context,
@@ -57,65 +56,47 @@ public class TicketController : ControllerBase
         IWebHostEnvironment env,
         UserManager<ApplicationUser> userManager,
         INotificationService notification,
-        IEmailService email)
+        IEmailService email,
+        IFileUploadService fileUpload,
+        IConfiguration config)
+        : base(context, config)
     {
-        _context = context;
         _audit = audit;
         _env = env;
         _userManager = userManager;
         _notification = notification;
         _email = email;
+        _fileUpload = fileUpload;
     }
 
-    private string? CurrentUserId => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-    private async Task<int> GetCompanyIdFromClaimsAsync()
-    {
-        var v = User.FindFirst("CompanyId")?.Value;
-        if (int.TryParse(v, out var id) && id > 0) return id;
-
-        var userId = CurrentUserId;
-        if (!string.IsNullOrWhiteSpace(userId))
-        {
-            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-            if (user?.CompanyId != null) return user.CompanyId.Value;
-        }
-
-        return 0;
-    }
 
     private async Task<bool> CanAccessTicketAsync(SupportTicket ticket, string userId)
     {
         if (User.IsInRole("SuperAdmin")) return true;
         if (!User.IsInRole("Admin") && !User.IsInRole("Editor")) return false;
-        var companyId = await GetCompanyIdFromClaimsAsync();
+        var companyId = await GetUserCompanyIdAsync() ?? 0;
         return companyId > 0 && ticket.CompanyId == companyId;
     }
 
-    private async Task<List<string>> SaveTicketAttachmentsAsync(IFormFileCollection files)
+    private async Task<List<string>> SaveTicketAttachmentsAsync(IFormFileCollection files, int companyId)
     {
         var urls = new List<string>();
         if (files == null || files.Count == 0) return urls;
-        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads/tickets");
-        Directory.CreateDirectory(uploadDir);
+        
         var count = 0;
         foreach (var file in files)
         {
             if (file.Length == 0) continue;
             if (count >= 8) break;
+            
             var contentType = file.ContentType ?? "";
             var ext = Path.GetExtension(file.FileName) ?? "";
-            if (string.IsNullOrWhiteSpace(ext) || ext.Length > 10) ext = "";
-
-            var isImage = AllowedImageContentTypes.Contains(contentType)
-                          || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-                          || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-                          || ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-                          || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
-                          || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase);
-
+            
             if (!AllowedFileExtensions.Contains(ext))
                 throw new InvalidOperationException($"File không hợp lệ (chỉ nhận ảnh/pdf/doc/xls/ppt/txt/zip/rar): {file.FileName}");
+
+            var isImage = AllowedImageContentTypes.Contains(contentType);
 
             if (isImage)
             {
@@ -124,17 +105,13 @@ public class TicketController : ControllerBase
             else
             {
                 if (file.Length > MaxFileBytes) throw new InvalidOperationException($"File vượt quá {MaxFileBytes / 1024 / 1024}MB: {file.FileName}");
-                if (!AllowedFileContentTypes.Contains(contentType))
-                    throw new InvalidOperationException($"Loại file không được hỗ trợ: {file.FileName}");
             }
 
-            var fileName = Guid.NewGuid().ToString("N") + ext;
-            var filePath = Path.Combine(uploadDir, fileName);
-            await using (var stream = new FileStream(filePath, FileMode.Create))
-                await file.CopyToAsync(stream);
-            urls.Add($"/uploads/tickets/{fileName}");
+            var url = await _fileUpload.SaveFileAsync(file, companyId, "tickets");
+            urls.Add(url);
             count++;
         }
+
         return urls;
     }
 
@@ -175,7 +152,7 @@ public class TicketController : ControllerBase
         List<string> attachmentUrls;
         try
         {
-            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files, user.CompanyId.Value);
         }
         catch (InvalidOperationException ex)
         {
@@ -336,7 +313,7 @@ public class TicketController : ControllerBase
         List<string> attachmentUrls;
         try
         {
-            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files, user.CompanyId.Value);
         }
         catch (InvalidOperationException ex)
         {
@@ -418,7 +395,7 @@ public class TicketController : ControllerBase
     [Authorize(Roles = "Admin,Editor")]
     public async Task<ActionResult<IEnumerable<SupportTicketListItemDto>>> GetCompanyTickets()
     {
-        var companyId = await GetCompanyIdFromClaimsAsync();
+        var companyId = await GetUserCompanyIdAsync() ?? 0;
         if (companyId <= 0) return BadRequest("Thiếu thông tin công ty.");
 
         var tickets = await _context.SupportTickets
@@ -518,11 +495,19 @@ public class TicketController : ControllerBase
     {
         var userId = CurrentUserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var ticket = await _context.SupportTickets
+            .Include(t => t.Company)
+            .Include(t => t.Posts).ThenInclude(p => p.Attachments)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (ticket == null) return NotFound();
+        if (!await CanAccessTicketAsync(ticket, userId)) return Forbid();
+
         var bodyText = body?.Trim() ?? "";
         List<string> attachmentUrls;
         try
         {
-            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files);
+            attachmentUrls = await SaveTicketAttachmentsAsync(Request.Form.Files, ticket.CompanyId);
         }
         catch (InvalidOperationException ex)
         {
@@ -532,17 +517,11 @@ public class TicketController : ControllerBase
         if (string.IsNullOrEmpty(bodyText) && attachmentUrls.Count == 0)
             return BadRequest("Nhập nội dung hoặc đính kèm ít nhất một tệp.");
 
-        var ticket = await _context.SupportTickets
-            .Include(t => t.Company)
-            .Include(t => t.Posts).ThenInclude(p => p.Attachments)
-            .FirstOrDefaultAsync(t => t.Id == id);
-        if (ticket == null) return NotFound();
-        if (!await CanAccessTicketAsync(ticket, userId)) return Forbid();
-
+        var isSuper = User.IsInRole("SuperAdmin");
         var canChangeStatus = isSuper || User.IsInRole("Admin") || User.IsInRole("Editor");
         if (!string.IsNullOrWhiteSpace(status) && canChangeStatus)
         {
-            var s = status.Trim();
+            var s = status!.Trim();
             if (s is "Open" or "InProgress" or "Resolved" or "Closed")
                 ticket.Status = s;
         }
@@ -712,5 +691,34 @@ public class TicketController : ControllerBase
             AsUtc(ticket.CreatedAt),
             AsUtc(ticket.LastActivityAt),
             count));
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "SuperAdmin,Admin")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var userId = CurrentUserId;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var ticket = await _context.SupportTickets.FirstOrDefaultAsync(t => t.Id == id);
+        if (ticket == null) return NotFound();
+
+        if (!await CanAccessTicketAsync(ticket, userId)) return Forbid();
+
+        // Xoá các attachment của các post thuộc ticket
+        var posts = await _context.SupportTicketPosts.Where(p => p.SupportTicketId == id).ToListAsync();
+        foreach (var post in posts)
+        {
+            var attachments = await _context.SupportTicketAttachments.Where(a => a.SupportTicketPostId == post.Id).ToListAsync();
+            _context.SupportTicketAttachments.RemoveRange(attachments);
+        }
+
+        _context.SupportTicketPosts.RemoveRange(posts);
+        _context.SupportTickets.Remove(ticket);
+        await _context.SaveChangesAsync();
+
+        await _audit.LogAsync("Delete", "SupportTicket", id.ToString(), null, ticket.Subject, "Xoá ticket hỗ trợ");
+
+        return Ok(new { Message = "Đã xoá ticket thành công." });
     }
 }

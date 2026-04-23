@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Building2, Edit2, Trash2, Loader2, Check, Copy, MoreVertical, Eye, X } from 'lucide-react';
+import { Building2, Edit2, Trash2, Loader2, Check, Copy, MoreVertical, Eye, X, Video, Image, FileText, Database } from 'lucide-react';
 import { getUploadUrl } from '../../../api/axios';
 import { getCompanyPortalUrl } from '../../../utils/companyPortalUrl';
 
@@ -73,9 +73,8 @@ const CompanyTable = ({
             <th>Tên công ty</th>
             <th style={{ width: 150 }}>Gói dịch vụ</th>
             <th style={{ width: 150 }}>SubDomain</th>
-            <th style={{ width: 100 }}>Trạng thái</th>
             <th style={{ width: 180 }}>Thông tin</th>
-            <th style={{ width: 120 }}>Action</th>
+            <th style={{ width: 140 }}>Hành động</th>
           </tr>
         </thead>
         <tbody>
@@ -133,13 +132,7 @@ const CompanyTable = ({
               <td className="text-center">
                 <span className="text-danger fw-bold">{company.subDomain}</span>
               </td>
-              <td className="text-center">
-                {company.isActive ? (
-                  <Check size={20} className="text-success" strokeWidth={3} />
-                ) : (
-                  <X size={20} className="text-danger opacity-85" strokeWidth={3} />
-                )}
-              </td>
+
               <td className="small text-muted">
                 <div className="mb-1"><span className="fw-medium text-dark">{formatDateTime(company.createdAt)}</span></div>
                 <div className="text-nowrap overflow-hidden text-truncate" style={{ maxWidth: 160 }}>
@@ -159,7 +152,29 @@ const CompanyTable = ({
                   >
                     <MoreVertical size={16} />
                   </button>
-                  <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                  <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-4" style={{ minWidth: '220px' }}>
+                    <li className="px-3 py-2 bg-light border-bottom">
+                      <div className="extra-small fw-bold text-secondary mb-1 d-flex align-items-center gap-1">
+                        <Database size={12} /> DUNG LƯỢNG SỬ DỤNG
+                      </div>
+                      <div className="fw-bold text-dark mb-1" style={{ fontSize: '0.9rem' }}>
+                        {(company.storageUsedBytes / 1024 / 1024).toFixed(1)} MB
+                      </div>
+                      <div className="d-flex flex-column gap-1">
+                        <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                           <span className="d-flex align-items-center gap-1"><Video size={12} /> Video:</span>
+                           <span className="fw-medium">{(company.videoStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                        </div>
+                        <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                           <span className="d-flex align-items-center gap-1"><Image size={12} /> Hình ảnh:</span>
+                           <span className="fw-medium">{(company.imageStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                        </div>
+                        <div className="d-flex align-items-center justify-content-between extra-small text-muted">
+                           <span className="d-flex align-items-center gap-1"><FileText size={12} /> Tài liệu:</span>
+                           <span className="fw-medium">{(company.documentStorageBytes / 1024 / 1024).toFixed(1)} MB</span>
+                        </div>
+                      </div>
+                    </li>
                     <li>
                       <a
                         href={getCompanyPortalUrl(company)}

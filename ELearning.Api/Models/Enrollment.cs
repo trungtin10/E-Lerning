@@ -136,6 +136,13 @@ public class Certificate
     [Column("KhoaHocId")]
     public int CourseId { get; set; }
 
+    [MaxLength(50)]
+    [Column("MaChungChi")]
+    public string? CertificateCode { get; set; }
+
+    [Column("MauChungChiId")]
+    public int? TemplateId { get; set; }
+
     [Column("NgayCap")]
     public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
 
@@ -144,4 +151,5 @@ public class Certificate
 
     public virtual ApplicationUser User { get; set; } = null!;
     public virtual Course Course { get; set; } = null!;
+    public virtual CertificateTemplate? Template { get; set; }
 }

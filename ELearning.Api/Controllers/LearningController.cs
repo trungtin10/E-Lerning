@@ -12,34 +12,19 @@ namespace ELearning.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class LearningController : ControllerBase
+public class LearningController : BaseApiController
 {
-    private readonly ApplicationDbContext _context;
-    private readonly IConfiguration _config;
     private readonly IAuditService _audit;
+    private readonly ICertificateService _certService;
 
-    public LearningController(ApplicationDbContext context, IConfiguration config, IAuditService audit)
+    public LearningController(ApplicationDbContext context, IConfiguration config, IAuditService audit, ICertificateService certService)
+        : base(context, config)
     {
-        _context = context;
-        _config = config;
         _audit = audit;
+        _certService = certService;
     }
 
-    private string GetBaseUrl()
-    {
-        var configuredDomain = _config["AppSettings:AppDomain"];
-        if (!string.IsNullOrEmpty(configuredDomain)) return configuredDomain.TrimEnd('/');
-        
-        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
-        {
-            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
-            return $"{proto}://{forwardedHost}";
-        }
 
-        var host = Request.Host.Value ?? string.Empty;
-        if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
-        return $"{Request.Scheme}://{host}";
-    }
 
     [HttpPost("enroll")]
     public async Task<IActionResult> Enroll([FromBody] EnrollmentRequestDto dto)
@@ -116,8 +101,15 @@ public class LearningController : ControllerBase
                 {
                     enrollment.Status = "Completed";
                     enrollment.CompletedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    
+                    // Trigger cấp chứng chỉ tự động
+                    await _certService.CheckAndIssueCertificateAsync(userId!, enrollment.CourseId);
                 }
-                await _context.SaveChangesAsync();
+                else
+                {
+                    await _context.SaveChangesAsync();
+                }
             }
         }
 
@@ -202,19 +194,7 @@ public class LearningController : ControllerBase
         return Ok(result);
     }
 
-    private async Task<int?> GetUserCompanyIdAsync()
-    {
-        var claim = User.FindFirst("CompanyId")?.Value
-            ?? User.FindFirst(c => string.Equals(c.Type, "CompanyId", StringComparison.OrdinalIgnoreCase))?.Value;
-        if (int.TryParse(claim, out int cid)) return cid;
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!string.IsNullOrEmpty(userId))
-        {
-            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-            return user?.CompanyId;
-        }
-        return null;
-    }
+
 
     [HttpGet("my-courses")]
     public async Task<IActionResult> GetMyCourses()
@@ -228,6 +208,10 @@ public class LearningController : ControllerBase
             .OrderByDescending(e => e.EnrolledAt)
             .ToListAsync();
 
+        var certificates = await _context.Certificates
+            .Where(c => c.UserId == userId)
+            .ToDictionaryAsync(c => c.CourseId, c => c.Id);
+
         var enrolledIds = enrollments.Select(e => e.CourseId).ToHashSet();
         var result = enrollments.Select(e => new MyEnrolledCourseDto(
             e.Course.Id,
@@ -240,7 +224,8 @@ public class LearningController : ControllerBase
             e.ProgressPercentage,
             e.Status,
             e.EnrolledAt,
-            true
+            true,
+            certificates.TryGetValue(e.CourseId, out var certId) ? certId : null
         )).ToList();
 
         // Thêm khóa học thuộc công ty user (chưa đăng ký) - đồng bộ hiển thị
@@ -266,7 +251,8 @@ public class LearningController : ControllerBase
                     0,
                     "Available",
                     null,
-                    false
+                    false,
+                    null
                 ));
             }
         }

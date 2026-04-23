@@ -115,7 +115,7 @@ const Courses = () => {
     <AdminLayout>
       <div className="mb-4 d-flex flex-column flex-md-row align-items-md-start justify-content-md-between gap-3">
         <div>
-          <h2 className="fw-bold tracking-tight mb-1 d-flex align-items-center gap-2">
+          <h2 className="fw-bold tracking-tight mb-1 d-flex align-items-center gap-2" style={{ fontFamily: 'Inter, sans-serif', textAlign: 'left' }}>
             <BookOpen size={26} />
             Khóa học
           </h2>
@@ -269,8 +269,8 @@ const Courses = () => {
                         </div>
                       </div>
 
-                      <div className="card-body p-3 d-flex flex-column">
-                        <div className="fw-bold text-dark mb-1" style={{ lineHeight: 1.25, fontSize: '0.86rem' }}>
+                      <div className="card-body p-3 d-flex flex-column" style={{ textAlign: 'left' }}>
+                        <div className="fw-bold text-dark mb-1" style={{ lineHeight: 1.25, fontSize: '0.86rem', fontFamily: 'Inter, sans-serif' }}>
                           <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {course.title}
                           </span>
@@ -299,7 +299,7 @@ const Courses = () => {
                           <button
                             type="button"
                             className="btn btn-outline-secondary btn-xs flex-grow-1 d-flex align-items-center justify-content-center gap-1 course-card-actions__view"
-                            onClick={() => window.open(`/course/${course.id}`, '_blank')}
+                            onClick={() => window.open(`/course/${course.id}?preview=true`, '_blank')}
                             title="Xem giao diện Học viên"
                           >
                             <Eye size={13} /> Xem

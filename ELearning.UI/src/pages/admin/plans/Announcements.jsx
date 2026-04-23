@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
-import { Megaphone, Plus, Loader2, Trash2, Calendar, Target, Layout, Eye, EyeOff } from 'lucide-react';
+import { Megaphone, Plus, Loader2, Trash2, Calendar, Target, Layout, Eye, EyeOff, MoreVertical } from 'lucide-react';
 import TiptapEditor from '../../../components/common/TiptapEditor';
+import { useNotify } from '../../../context/NotifyContext';
 
 const Announcements = () => {
   const [list, setList] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [viewModal, setViewModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const { toast, confirm } = useNotify();
   
   const [form, setForm] = useState({
     title: '',
     content: '',
     targetType: 'All',
+    targetCompanyId: '',
     displayType: 'Banner',
     severity: 'Info',
     priority: 0,
@@ -33,7 +37,20 @@ const Announcements = () => {
     }
   };
 
-  useEffect(() => { fetchList(); }, []);
+  const fetchCompanies = async () => {
+    try {
+      const r = await api.get('/superadmin/companies');
+      const data = r.data?.data || r.data?.items || r.data;
+      setCompanies(Array.isArray(data) ? data : []);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => { 
+    fetchList(); 
+    fetchCompanies();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,14 +65,16 @@ const Announcements = () => {
         title: '',
         content: '',
         targetType: 'All',
+        targetCompanyId: '',
         displayType: 'Banner',
         severity: 'Info',
         priority: 0,
         startAt: new Date().toISOString().slice(0, 16),
       });
       fetchList();
+      toast('Đã phát hành thông báo thành công.', 'success');
     } catch (err) {
-      alert(err.response?.data || 'Lỗi khi lưu thông báo');
+      toast(err.response?.data || 'Lỗi khi lưu thông báo', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -65,18 +84,25 @@ const Announcements = () => {
     try {
       await api.put(`/announcement/${id}/toggle`);
       fetchList();
+      toast('Đã cập nhật trạng thái thông báo.', 'success');
     } catch (err) {
-      alert(err.response?.data || 'Lỗi');
+      toast(err.response?.data || 'Lỗi khi cập nhật trạng thái.', 'error');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa thông báo này?')) return;
+    const ok = await confirm({ 
+      title: 'Xoá thông báo', 
+      message: 'Bạn có chắc chắn muốn xóa thông báo này? Người dùng sẽ không còn nhìn thấy nội dung này nữa.', 
+      confirmText: 'Xoá ngay' 
+    });
+    if (!ok) return;
     try {
       await api.delete(`/announcement/${id}`);
       fetchList();
+      toast('Đã xóa thông báo.', 'success');
     } catch (err) {
-      alert(err.response?.data || 'Lỗi');
+      toast(err.response?.data || 'Lỗi khi xoá thông báo.', 'error');
     }
   };
 
@@ -146,16 +172,35 @@ const Announcements = () => {
                         </div>
                       </td>
                       <td className="pe-4 text-end">
-                        <div className="d-flex justify-content-end gap-1">
-                          <button className="btn btn-sm btn-white border shadow-sm" onClick={() => setViewModal(a)} title="Xem chi tiết">
-                            <Eye size={16} />
+                        <div className="dropdown">
+                           <button
+                            className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            data-bs-boundary="window"
+                          >
+                            <MoreVertical size={16} />
                           </button>
-                          <button className="btn btn-sm btn-white border shadow-sm" onClick={() => handleToggle(a.id)} title={a.isActive ? 'Tắt' : 'Bật'}>
-                            {a.isActive ? <EyeOff size={16} /> : <Eye size={16} className="text-secondary" />}
-                          </button>
-                          <button className="btn btn-sm btn-white border shadow-sm text-danger" onClick={() => handleDelete(a.id)} title="Xóa">
-                            <Trash2 size={16} />
-                          </button>
+                          <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                            <li>
+                              <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-primary" onClick={() => setViewModal(a)}>
+                                <Eye size={16} /> Xem chi tiết
+                              </button>
+                            </li>
+                            <li>
+                              <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-secondary" onClick={() => handleToggle(a.id)}>
+                                {a.isActive ? <EyeOff size={16} /> : <Eye size={16} />}
+                                {a.isActive ? 'Tắt thông báo' : 'Bật thông báo'}
+                              </button>
+                            </li>
+                            <li><hr className="dropdown-divider" /></li>
+                            <li>
+                              <button className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" onClick={() => handleDelete(a.id)}>
+                                <Trash2 size={16} /> Xoá thông báo
+                              </button>
+                            </li>
+                          </ul>
                         </div>
                       </td>
                     </tr>
@@ -210,8 +255,26 @@ const Announcements = () => {
                               <option value="All">Toàn bộ thành viên</option>
                               <option value="AllCompanies">Các quản trị viên công ty</option>
                               <option value="SuperAdminOnly">Chỉ Super Admin</option>
+                              <option value="SpecificCompany">Một công ty cụ thể</option>
                             </select>
                           </div>
+
+                          {form.targetType === 'SpecificCompany' && (
+                            <div className="mb-4 animate-in fade-in duration-300">
+                              <label className="form-label small fw-bold text-uppercase text-muted">Chọn công ty</label>
+                              <select 
+                                className="form-select border-0 shadow-sm" 
+                                value={form.targetCompanyId} 
+                                onChange={e => setForm({ ...form, targetCompanyId: e.target.value })}
+                                required
+                              >
+                                <option value="">-- Chọn công ty --</option>
+                                {companies.map(c => (
+                                  <option key={c.id} value={c.id}>{c.companyName || c.subDomain}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
 
                           <div className="mb-4">
                             <label className="form-label small fw-bold text-uppercase text-muted">Hình thức hiển thị</label>

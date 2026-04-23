@@ -25,7 +25,7 @@ const CourseDetail = () => {
 
   const [activeItem, setActiveItem] = useState({ type: 'intro' });
   const defaultSections = () => [
-    { title: '1. Phần nội dung', content: '', showVideo: false, showQuiz: false, videoUrls: [] }
+    { title: '1. Giới thiệu bài học', content: '', showVideo: false, showQuiz: false, videoUrls: [] }
   ];
   const [editData, setEditData] = useState({
     title: '', description: '',
@@ -109,7 +109,7 @@ const CourseDetail = () => {
              return hasContent || hasMedia || hasQuiz;
           });
 
-          // Nếu không có mục nào có dữ liệu, mặc định hiển thị 1 mục trống thay vì 5 mục trống
+          // Nếu không có mục nào có dữ liệu, mặc định hiển thị 1 mục đầu tiên thay vì 5 mục
           sections = filteredSections.length > 0 ? filteredSections : [legacySections[0]];
         }
         setEditData({
@@ -479,10 +479,19 @@ const CourseDetail = () => {
   };
 
   const addSection = () => {
-    const n = editData.sections.length + 1;
+    const nextIdx = editData.sections.length;
+    const defaultTitles = [
+      '1. Giới thiệu bài học',
+      '2. Bài giảng chi tiết',
+      '3. Phần ôn tập',
+      '4. Câu hỏi tự luận',
+      '5. Tổng kết bài học'
+    ];
+    const newTitle = defaultTitles[nextIdx] || `${nextIdx + 1}. Phần mới`;
+    
     setEditData(prev => ({
       ...prev,
-      sections: [...prev.sections, { title: `${n}. Phần mới`, content: '', showVideo: false, showQuiz: false, videoUrls: [] }]
+      sections: [...prev.sections, { title: newTitle, content: '', showVideo: false, showQuiz: false, videoUrls: [] }]
     }));
   };
 

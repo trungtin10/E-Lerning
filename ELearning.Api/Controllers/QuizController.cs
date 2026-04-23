@@ -15,11 +15,13 @@ public class QuizController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuditService _audit;
+    private readonly ICertificateService _certService;
 
-    public QuizController(ApplicationDbContext context, IAuditService audit)
+    public QuizController(ApplicationDbContext context, IAuditService audit, ICertificateService certService)
     {
         _context = context;
         _audit = audit;
+        _certService = certService;
     }
 
     [HttpGet("{courseId}")]
@@ -192,6 +194,13 @@ public class QuizController : ControllerBase
         }
         await _context.SaveChangesAsync();
         await _audit.LogAsync("Submit", "QuizAttempt", attempt.Id.ToString(), null, $"{score}% ({correct}/{total})", "Nộp bài kiểm tra");
+
+        // Nếu là bài thi cuối khóa và đạt điểm, thử cấp chứng chỉ tự động
+        if (quiz.SectionNumber == 0 && isPassed)
+        {
+            await _certService.CheckAndIssueCertificateAsync(userId, quiz.CourseId);
+        }
+
         return Ok(new QuizResultDto(score, isPassed, correct, total));
     }
 

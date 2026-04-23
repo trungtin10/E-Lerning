@@ -14,11 +14,21 @@ const severityStyle = (sev) => {
 
 const AnnouncementCenter = () => {
   const [announcements, setAnnouncements] = useState([]);
-  const [dismissedAnon, setDismissedAnon] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('announcementDismissed') || '[]'); }
-    catch { return []; }
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
   });
+  const userId = user?.id || 'anon';
+
+  const [dismissedAnon, setDismissedAnon] = useState([]);
+  const [dismissedPopups, setDismissedPopups] = useState([]);
   const [ackPopupId, setAckPopupId] = useState(null);
+
+  useEffect(() => {
+    const savedAnon = sessionStorage.getItem(`announcementDismissed_${userId}`);
+    const savedPopups = sessionStorage.getItem(`popupDismissed_${userId}`);
+    setDismissedAnon(savedAnon ? JSON.parse(savedAnon) : []);
+    setDismissedPopups(savedPopups ? JSON.parse(savedPopups) : []);
+  }, [userId]);
 
   const reload = async () => {
     try {
@@ -31,6 +41,23 @@ const AnnouncementCenter = () => {
 
   useEffect(() => { reload(); }, []);
 
+  const stripHtml = (html) => {
+    if (!html) return '';
+    const decoded = unescapeHtml(html);
+    const doc = new DOMParser().parseFromString(decoded, 'text/html');
+    return doc.body.textContent || "";
+  };
+
+  const unescapeHtml = (safe) => {
+    if (!safe) return '';
+    return safe.replace(/&amp;/g, '&')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>')
+               .replace(/&quot;/g, '"')
+               .replace(/&#039;/g, "'")
+               .replace(/&nbsp;/g, ' ');
+  };
+
   const banners = useMemo(() => {
     return (announcements || [])
       .filter(a => a.displayType === 'Banner')
@@ -41,8 +68,9 @@ const AnnouncementCenter = () => {
   const popups = useMemo(() => {
     return (announcements || [])
       .filter(a => a.displayType === 'Popup')
+      .filter(a => !dismissedPopups.includes(a.id))
       .sort((x, y) => (y.priority ?? 0) - (x.priority ?? 0));
-  }, [announcements]);
+  }, [announcements, dismissedPopups]);
 
   // auto show highest priority popup if any
   useEffect(() => {
@@ -59,8 +87,17 @@ const AnnouncementCenter = () => {
     try { await api.post(`/announcement/${a.id}/dismiss`); } catch { /* ignore (anon) */ }
   };
 
-  const acknowledgePopup = async (a) => {
+  const closePopup = (id) => {
+    setDismissedPopups(prev => {
+      const next = [...prev, id];
+      sessionStorage.setItem(`popupDismissed_${userId}`, JSON.stringify(next));
+      return next;
+    });
     setAckPopupId(null);
+  };
+
+  const acknowledgePopup = async (a) => {
+    closePopup(a.id);
     try { await api.post(`/announcement/${a.id}/ack`); } catch { /* ignore */ }
     reload();
   };
@@ -73,6 +110,7 @@ const AnnouncementCenter = () => {
         <div className="position-fixed top-0 start-0 end-0 z-1050" style={{ zIndex: 1050 }}>
           {banners.map(a => {
             const st = severityStyle(a.severity);
+            const plainContent = stripHtml(a.content);
             return (
               <div
                 key={a.id}
@@ -83,7 +121,7 @@ const AnnouncementCenter = () => {
                   <span className={`badge rounded-pill ${st.badge}`} style={{ fontSize: '0.7rem' }}>{a.severity || 'Info'}</span>
                   <span className="small text-truncate">
                     <span className="fw-bold">{a.title}</span>
-                    {a.content ? `: ${String(a.content).slice(0, 120)}${String(a.content).length > 120 ? '...' : ''}` : ''}
+                    {plainContent ? `: ${plainContent.slice(0, 120)}${plainContent.length > 120 ? '...' : ''}` : ''}
                   </span>
                   {a.linkUrl && (
                     <a className="small text-white-50 text-decoration-underline flex-shrink-0" href={a.linkUrl}>
@@ -107,10 +145,14 @@ const AnnouncementCenter = () => {
                   <h5 className="modal-title fw-bold mb-0">{activePopup.title}</h5>
                   <div className="small text-muted">{activePopup.severity || 'Info'} · Priority {activePopup.priority ?? 0}</div>
                 </div>
-                <button type="button" className="btn-close" onClick={() => setAckPopupId(null)} />
+                <button type="button" className="btn-close" onClick={() => closePopup(activePopup.id)} />
               </div>
               <div className="modal-body">
-                <div className="text-secondary" style={{ whiteSpace: 'pre-wrap' }}>{activePopup.content}</div>
+                <div 
+                   className="text-secondary notification-content-html" 
+                   style={{ whiteSpace: 'pre-wrap' }}
+                   dangerouslySetInnerHTML={{ __html: unescapeHtml(activePopup.content) }}
+                />
                 {activePopup.linkUrl && (
                   <div className="mt-3">
                     <a className="btn btn-outline-primary btn-sm" href={activePopup.linkUrl}>Mở liên kết</a>
@@ -118,7 +160,7 @@ const AnnouncementCenter = () => {
                 )}
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setAckPopupId(null)}>Đóng</button>
+                <button className="btn btn-secondary" onClick={() => closePopup(activePopup.id)}>Đóng</button>
                 <button className="btn btn-primary" onClick={() => acknowledgePopup(activePopup)}>Đã hiểu</button>
               </div>
             </div>

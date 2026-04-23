@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../../components/layout/AdminLayout';
 import api from '../../../api/axios';
 import TiptapEditor from '../../../components/common/TiptapEditor';
-import { Phone, ChevronLeft, Loader2 } from 'lucide-react';
+import { Phone, Mail, ChevronLeft, Loader2 } from 'lucide-react';
+import { useNotify } from '../../../context/NotifyContext';
 
 export default function CreateTicket() {
   const navigate = useNavigate();
@@ -16,11 +17,12 @@ export default function CreateTicket() {
 
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ subject: '', content: '' });
+  const { toast } = useNotify();
 
   const submit = async (e) => {
     e.preventDefault();
     if (!form.subject.trim() || !form.content.trim() || form.content === '<p></p>') {
-      alert('Vui lòng nhập đầy đủ tiêu đề và nội dung yêu cầu.');
+      toast('Vui lòng nhập đầy đủ tiêu đề và nội dung yêu cầu.', 'warning');
       return;
     }
     setSubmitting(true);
@@ -33,9 +35,10 @@ export default function CreateTicket() {
       const r = await api.post('/ticket', fd);
       const newId = r.data?.id ?? r.data?.Id ?? r.data?.ticketId ?? r.data?.TicketId;
       navigate(newId ? `/admin/tickets/${newId}` : '/admin/tickets');
+      toast('Đã gửi yêu cầu hỗ trợ thành công.', 'success');
     } catch (err) {
       const msg = err.response?.data;
-      alert(typeof msg === 'string' ? msg : (msg?.message || 'Không tạo được yêu cầu hỗ trợ.'));
+      toast(typeof msg === 'string' ? msg : (msg?.message || 'Không tạo được yêu cầu hỗ trợ.'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -60,9 +63,14 @@ export default function CreateTicket() {
         <button className="btn text-white px-4 border-0" style={{ backgroundColor: '#3b82f6', fontWeight: 600, height: '38px' }}>TÌM KIẾM</button>
       </div>
       <div className="d-flex flex-wrap align-items-center gap-2">
-        <button className="btn text-white fw-bold d-flex flex-column align-items-center justify-content-center border-0" style={{ backgroundColor: '#e11d48', height: '38px', padding: '0 16px' }}>
-          <span className="d-flex align-items-center gap-2">1900 9477 <Phone size={16} /></span>
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          <div className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0 px-3" style={{ backgroundColor: '#e11d48', height: '38px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            <span className="d-flex align-items-center gap-2">0909 995 137 | 028-3842 8832 <Phone size={14} /></span>
+          </div>
+          <div className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0 px-3" style={{ backgroundColor: '#e11d48', height: '38px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            <span className="d-flex align-items-center gap-2">info@xvnet.vn <Mail size={14} /></span>
+          </div>
+        </div>
         <button className="btn text-white fw-bold d-flex align-items-center justify-content-center border-0" style={{ backgroundColor: '#10b981', height: '38px', padding: '0 16px' }} onClick={() => navigate('/admin/tickets/new')}>
           GỬI YÊU CẦU 
         </button>

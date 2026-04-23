@@ -15,8 +15,9 @@ const CheckoutReturn = () => {
 
     useEffect(() => {
         const isSuccess = searchParams.get('success') === 'true';
+        const err = searchParams.get('error') || '';
         setSuccess(isSuccess);
-        setError(searchParams.get('error') || '');
+        setError(err);
         setLoading(false);
 
         if (isSuccess) {
@@ -24,10 +25,16 @@ const CheckoutReturn = () => {
             // Refresh subscription info so the company sees new plan immediately
             api.get('/admin/subscription-info').catch(() => {});
             setTimeout(() => navigate('/admin/subscription?refresh=true', { replace: true }), 900);
-        } else if (searchParams.get('error')) {
-            toast(`Thanh toán không thành công. Mã lỗi: ${searchParams.get('error')}`, 'error');
+        } else if (err) {
+            if (err === 'Code24' || err === 'Code1006' || err === 'Code49') {
+                toast('Bạn đã hủy giao dịch thanh toán.', 'info');
+            } else {
+                toast(`Thanh toán không thành công. Mã lỗi: ${err}`, 'error');
+            }
         }
     }, [searchParams, toast, navigate]);
+
+    const isCanceled = error === 'Code24' || error === 'Code1006' || error === 'Code49';
 
     return (
         <AdminLayout>
@@ -44,6 +51,16 @@ const CheckoutReturn = () => {
                                 className="btn btn-primary rounded-pill w-100 py-2 d-flex align-items-center justify-content-center"
                                 onClick={() => navigate('/admin/dashboard')}
                             >Về Trang Chủ <ArrowRight size={18} className="ms-2" /></button>
+                        </>
+                    ) : isCanceled ? (
+                        <>
+                            <div className="mb-4 text-warning"><XCircle size={80} /></div>
+                            <h2 className="fw-bold mb-3">Hủy thanh toán</h2>
+                            <p className="text-muted mb-4">Bạn đã chủ động hủy giao dịch này. Gói dịch vụ của bạn chưa được thay đổi.</p>
+                            <button 
+                                className="btn btn-primary rounded-pill w-100 py-2"
+                                onClick={() => navigate('/admin/subscription')}
+                            >Quay lại trang nâng cấp</button>
                         </>
                     ) : (
                         <>

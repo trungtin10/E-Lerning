@@ -24,7 +24,8 @@ const Dashboard = () => {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/superadmin/dashboard-stats');
+      const endpoint = isSuperAdmin ? '/superadmin/dashboard-stats' : '/admin/dashboard-stats';
+      const response = await api.get(endpoint);
       setStats(response.data);
     } catch (err) {
       setError('Không thể tải dữ liệu bảng điều khiển.');
@@ -96,41 +97,44 @@ const Dashboard = () => {
       )}
 
       {/* Stats Grid */}
-      <div className="row g-4 mb-5">
+      <div className="row g-4 mb-4">
         <div className="col-12 col-md-6 col-xl-3">
           <StatCard 
-            title="Tổng số Công ty" 
-            value={stats?.totalCompanies} 
-            icon={Building2} 
+            title={isSuperAdmin ? "Tổng số Công ty" : "Tổng Người dùng"} 
+            value={isSuperAdmin ? stats?.totalCompanies : stats?.totalUsers} 
+            icon={isSuperAdmin ? Building2 : Users} 
             color="primary" 
-            onClick={() => navigate('/admin/companies')}
+            onClick={() => navigate(isSuperAdmin ? '/admin/companies' : '/admin/users')}
           />
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <StatCard 
-            title="Đang hoạt động" 
-            value={stats?.activeCompanies} 
+            title={isSuperAdmin ? "Đang hoạt động" : "Đang hoạt động"} 
+            value={isSuperAdmin ? stats?.activeCompanies : stats?.activeUsers} 
             icon={Activity} 
             color="success" 
-            onClick={() => navigate('/admin/companies')}
+            onClick={() => navigate(isSuperAdmin ? '/admin/companies' : '/admin/users')}
           />
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <StatCard 
-            title="Tổng Người dùng" 
-            value={stats?.totalUsers} 
-            icon={Users} 
+            title={isSuperAdmin ? "Tổng Người dùng" : "Tổng Khóa học"} 
+            value={isSuperAdmin ? stats?.totalUsers : stats?.totalCourses} 
+            icon={isSuperAdmin ? Users : BookOpen} 
             color="info" 
-            onClick={() => navigate('/admin/users')}
+            onClick={() => navigate(isSuperAdmin ? '/admin/users' : '/admin/courses')}
           />
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <StatCard 
-            title="Tổng Khóa học" 
-            value={stats?.totalCourses} 
-            icon={BookOpen} 
+            title="Dung lượng" 
+            value={isSuperAdmin 
+              ? `${(stats?.totalStorageUsedBytes / 1024 / 1024 / 1024).toFixed(2)} GB` 
+              : `${(stats?.storageUsedBytes / 1024 / 1024).toFixed(1)} MB`
+            } 
+            icon={Activity} 
             color="warning" 
-            onClick={() => navigate('/admin/courses')}
+            onClick={() => navigate(isSuperAdmin ? '/admin/companies' : '/admin/subscription')}
           />
         </div>
       </div>
@@ -207,9 +211,13 @@ const Dashboard = () => {
               <div className="mt-4 p-4 bg-white bg-opacity-10 rounded-4 border border-white border-opacity-10">
                 <div className="d-flex align-items-center gap-2 mb-2">
                   <AlertCircle size={18} />
-                  <span className="fw-bold">Yêu cầu hỗ trợ mới</span>
+                  <span className="fw-bold">{isSuperAdmin ? "Yêu cầu hỗ trợ mới" : "Trạng thái hệ thống"}</span>
                 </div>
-                <p className="small mb-3 opacity-75">Có {stats?.pendingActivations || 0} tài khoản đang chờ kích hoạt email.</p>
+                <p className="small mb-3 opacity-75">
+                  {isSuperAdmin 
+                    ? `Có ${stats?.pendingActivations || 0} tài khoản đang chờ kích hoạt email.`
+                    : `Hệ thống đang hoạt động bình thường với ${stats?.activeUsers || 0} nhân viên trực tuyến.`}
+                </p>
                 <button 
                   className="btn btn-light w-100 rounded-3 fw-bold py-2"
                   onClick={() => navigate('/admin/users')}

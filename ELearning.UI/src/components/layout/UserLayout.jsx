@@ -14,6 +14,7 @@ import UserAccountDialogs from '../account/UserAccountDialogs';
 
 const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -55,8 +56,6 @@ const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
   const menuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Bảng điều khiển' },
     { path: '/my-courses', icon: BookOpen, label: 'Khóa học của tôi' },
-    { path: '/resources', icon: Compass, label: 'Tài liệu' },
-    { path: '/community', icon: Users, label: 'Cộng đồng' },
   ];
 
   const handleLogout = () => {
@@ -126,10 +125,10 @@ const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
       {/* Sidebar - ẩn khi hideSidebar */}
       {!hideSidebar && (
       <aside
-        className={`bg-white border-end d-flex flex-column sticky-top overflow-hidden flex-shrink-0`}
-        style={{ width: '280px', height: '100vh', zIndex: 1000 }}
+        className={`bg-white border-end d-flex flex-column sticky-top overflow-hidden flex-shrink-0 transition-all`}
+        style={{ width: isCollapsed ? '80px' : '280px', height: '100vh', zIndex: 1000 }}
       >
-        <div className="p-4 mb-2">
+        <div className={`p-4 mb-2 d-flex align-items-center ${isCollapsed ? 'justify-content-center' : 'justify-content-between'}`}>
           <Link to="/dashboard" className="text-decoration-none d-flex align-items-center gap-2 overflow-hidden">
             {user.companyLogoUrl && (
               <img 
@@ -139,47 +138,74 @@ const UserLayout = ({ children, hideSidebar = false, hideHeader = false }) => {
                 style={{ height: '32px', width: 'auto', objectFit: 'contain' }} 
               />
             )}
-            <span className="fw-bold text-truncate" style={{ color: '#4c49ed', fontSize: '1.25rem' }}>{user.companyName || 'MẠNG XUYÊN VIỆT'}</span>
+            {!isCollapsed && (
+              <span className="fw-bold text-truncate" style={{ color: '#4c49ed', fontSize: '1.25rem' }}>{user.companyName || 'MẠNG XUYÊN VIỆT'}</span>
+            )}
           </Link>
+          {!isCollapsed && (
+            <button 
+              className="btn btn-sm btn-light border-0 rounded-circle p-1 ms-2"
+              onClick={() => setIsCollapsed(true)}
+              title="Thu gọn"
+            >
+              <LayoutDashboard size={14} className="text-muted" />
+            </button>
+          )}
         </div>
 
-        <div className="px-4 mb-4">
-          <div className="rounded-4 p-3 d-flex align-items-center gap-3" style={{ backgroundColor: '#f5f3ff' }}>
+        {isCollapsed && (
+          <div className="text-center mb-3">
+             <button 
+              className="btn btn-sm btn-primary bg-opacity-10 text-primary border-0 rounded-circle p-2"
+              onClick={() => setIsCollapsed(false)}
+              title="Mở rộng"
+            >
+              <LayoutDashboard size={18} />
+            </button>
+          </div>
+        )}
+
+        <div className={`px-${isCollapsed ? '2' : '4'} mb-4`}>
+          <div className={`rounded-4 ${isCollapsed ? 'p-2 justify-content-center' : 'p-3 gap-3'} d-flex align-items-center`} style={{ backgroundColor: '#f5f3ff' }}>
              <div className="bg-white rounded-3 p-2 shadow-sm d-flex align-items-center justify-content-center">
                 <BookOpen size={18} style={{ color: '#4c49ed' }} />
              </div>
-             <div>
-               <div className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>Cổng học tập</div>
-               <div className="text-muted" style={{ fontSize: '0.65rem', fontWeight: 600 }}>DÀNH CHO HỌC VIÊN</div>
-             </div>
+             {!isCollapsed && (
+               <div>
+                 <div className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>Cổng học tập</div>
+                 <div className="text-muted" style={{ fontSize: '0.65rem', fontWeight: 600 }}>DÀNH CHO HỌC VIÊN</div>
+               </div>
+             )}
           </div>
         </div>
 
-        <div className="flex-grow-1 px-3">
+        <div className={`flex-grow-1 px-${isCollapsed ? '2' : '3'}`}>
           <nav className="nav flex-column gap-1">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <Link key={item.path} to={item.path}
-                  className={`nav-link d-flex align-items-center gap-3 px-3 py-2 rounded-3 transition-all ${isActive ? 'bg-primary bg-opacity-10 text-primary fw-bold active-sidebar-item' : 'text-secondary opacity-75 hover-bg-light fw-medium'}`}
+                  className={`nav-link d-flex align-items-center ${isCollapsed ? 'justify-content-center p-3' : 'gap-3 px-3 py-2'} rounded-3 transition-all ${isActive ? 'bg-primary bg-opacity-10 text-primary fw-bold active-sidebar-item' : 'text-secondary opacity-75 hover-bg-light fw-medium'}`}
                   style={{ fontSize: '0.9rem' }}
+                  title={isCollapsed ? item.label : ''}
                 >
                   <item.icon size={20} className={isActive ? 'text-primary' : 'text-secondary'} />
-                  <span>{item.label}</span>
-                  {isActive && <div className="ms-auto bg-primary rounded-pill" style={{ width: 4, height: 20 }}></div>}
+                  {!isCollapsed && <span>{item.label}</span>}
+                  {isActive && !isCollapsed && <div className="ms-auto bg-primary rounded-pill" style={{ width: 4, height: 20 }}></div>}
                 </Link>
               );
             })}
           </nav>
         </div>
 
-        <div className="p-4 mt-auto">
+        <div className={`p-${isCollapsed ? '2' : '4'} mt-auto text-center`}>
           <button 
             onClick={openSupport} 
-            className="btn w-100 py-2 rounded-pill d-flex align-items-center justify-content-center gap-2 fw-medium border-0"
+            className={`btn w-100 ${isCollapsed ? 'p-3' : 'py-2 rounded-pill'} d-flex align-items-center justify-content-center gap-2 fw-medium border-0`}
             style={{ backgroundColor: '#eeeffe', color: '#4c49ed', fontSize: '0.85rem' }}
+            title={isCollapsed ? 'Liên hệ hỗ trợ' : ''}
           >
-            <Bot size={18} /> <span>Liên hệ hỗ trợ</span>
+            <Bot size={18} /> {!isCollapsed && <span>Liên hệ hỗ trợ</span>}
           </button>
         </div>
       </aside>

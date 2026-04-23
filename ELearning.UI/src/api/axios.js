@@ -19,6 +19,18 @@ const API_URL = (window.location.hostname === 'localhost' || window.location.hos
 // - ngrok: dùng full URL backend + query param ngrok-skip-browser-warning để load ảnh
 export const getUploadUrl = (path) => {
   if (!path) return null;
+  
+  // Kiểm tra nếu là đường dẫn cũ (flat path) sau khi reorganization
+  // Cấu trúc mới phải có dạng: /uploads/{companyId}/{subDir}/{filename}
+  // Nếu chỉ có /uploads/{filename} thì thường là ảnh cũ đã bị xóa hoặc di chuyển
+  if (path.startsWith('/uploads/') || path.startsWith('uploads/')) {
+    const parts = path.split('/').filter(Boolean);
+    // Nếu chỉ có 2 phần (uploads + filename) thì là đường dẫn cũ
+    if (parts.length < 3 && !path.includes('branding') && !path.includes('certificates')) {
+      return '/h_logo.png'; // Trả về logo mặc định để tránh 404
+    }
+  }
+
   const isNgrok = window.location.hostname.includes('ngrok-free.dev');
   let url = path;
 

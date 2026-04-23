@@ -23,6 +23,11 @@ public record CompanyDto(
     bool IsActive,
     int UserCount,
     string? Status,
+    string? Industry,
+    long StorageUsedBytes,
+    long VideoStorageBytes,
+    long ImageStorageBytes,
+    long DocumentStorageBytes,
     DateTime CreatedAt,
     DateTime UpdatedAt
 );
@@ -44,6 +49,7 @@ public record DashboardStatsDto(
     int TotalUsers,
     int TotalCourses,
     int PendingActivations,
+    long TotalStorageUsedBytes,
     List<RecentActivityDto> RecentActivities
 );
 
@@ -113,6 +119,7 @@ public class UpdateCompanyFormDto
     public int? TrialDays { get; set; }
     public IFormFile? LogoFile { get; set; }
     public bool? IsActive { get; set; }
+    public string? Industry { get; set; }
 }
 
 public class CreateUserByAdminDto
@@ -137,6 +144,11 @@ public class CompanySubscriptionInfoDto
     public DateTime? PlanExpiryDate { get; set; }
     public int UserCount { get; set; }
     public int MaxUsers { get; set; }
+    public long StorageUsedBytes { get; set; }
+    public long VideoStorageBytes { get; set; }
+    public long ImageStorageBytes { get; set; }
+    public long DocumentStorageBytes { get; set; }
+    public int StorageLimitGB { get; set; }
     public List<CompanyTransactionDto> Transactions { get; set; } = new();
 }
 

@@ -144,7 +144,9 @@ const Transactions = () => {
     const normalized = (status || '').toString().trim().toLowerCase();
     if (normalized === 'completed') return <span className="badge bg-success">Đã hoàn tất</span>;
     if (normalized === 'pending' || normalized === 'chuathanhtoan' || normalized === 'unpaid' || normalized === 'received') return <span className="badge bg-warning text-dark">Chưa thanh toán</span>;
-    return <span className="badge bg-secondary">{status || 'Chưa xác định'}</span>;
+    if (normalized === 'canceled') return <span className="badge bg-secondary">Hủy thanh toán</span>;
+    if (normalized === 'failed') return <span className="badge bg-danger">Thất bại</span>;
+    return <span className="badge bg-dark">{status || 'Chưa xác định'}</span>;
   }
   const formatVND = (amount) => {
     return new Intl.NumberFormat('vi-VN').format(amount) + ' VNĐ';

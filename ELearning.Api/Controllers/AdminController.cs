@@ -15,53 +15,35 @@ namespace ELearning.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "Admin")]
-public class AdminController : ControllerBase
+public class AdminController : BaseApiController
 {
-    private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IAuditService _audit;
     private readonly IEmailService _emailService;
-    private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
+    private readonly IFileUploadService _fileUpload;
 
-    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IAuditService audit, IEmailService emailService, IConfiguration config, IWebHostEnvironment env)
+    public AdminController(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IAuditService audit, IEmailService emailService, IConfiguration config, IWebHostEnvironment env, IFileUploadService fileUpload)
+        : base(context, config)
     {
-        _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
         _audit = audit;
         _emailService = emailService;
-        _config = config;
         _env = env;
+        _fileUpload = fileUpload;
     }
 
-    private string GetBaseUrl()
+    private async Task<int> GetAdminCompanyId()
     {
-        var configuredDomain = _config["AppSettings:AppDomain"];
-        if (!string.IsNullOrEmpty(configuredDomain)) return configuredDomain.TrimEnd('/');
-        
-        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
-        {
-            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
-            return $"{proto}://{forwardedHost}";
-        }
-
-        var host = Request.Host.Value ?? string.Empty;
-        if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
-        return $"{Request.Scheme}://{host}";
-    }
-
-    private int GetAdminCompanyId()
-    {
-        var companyIdClaim = User.FindFirst("CompanyId")?.Value;
-        return int.TryParse(companyIdClaim, out int id) ? id : 0;
+        return await GetUserCompanyIdAsync() ?? 0;
     }
 
     [HttpGet("users")]
     public async Task<ActionResult<IEnumerable<UserSummaryDto>>> GetCompanyUsers()
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         var users = await _userManager.Users.Include(u => u.Company).Where(u => u.CompanyId == companyId).ToListAsync();
         var userSummaries = new List<UserSummaryDto>();
         foreach (var user in users)
@@ -81,7 +63,8 @@ public class AdminController : ControllerBase
                 SubDomain = user.Company?.SubDomain,
                 IsActive = user.IsActive,
                 EmailConfirmed = user.EmailConfirmed,
-                IsExpired = false
+                IsExpired = !user.EmailConfirmed && (DateTime.UtcNow - user.CreatedAt).TotalHours > 24,
+                Status = !user.IsActive ? "Đã khóa" : (!user.EmailConfirmed ? "Chưa kích hoạt" : "Hoạt động")
             });
         }
         return Ok(userSummaries);
@@ -91,13 +74,14 @@ public class AdminController : ControllerBase
     [HttpPost("users")]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserByAdminDto dto)
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
 
         if (await _userManager.FindByNameAsync(dto.Account) != null)
             return BadRequest("Tên tài khoản này đã tồn tại.");
 
         var user = new ApplicationUser
         {
+            Id = GenerateCleanUserId(dto.Account), // Tạo ID ngắn gọn, không dùng GUID
             UserName = dto.Account,
             Email = dto.Email,
             FullName = dto.FullName,
@@ -109,6 +93,10 @@ public class AdminController : ControllerBase
 
         var result = await _userManager.CreateAsync(user, dto.Password);
         if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
+
+        // ÉP BUỘC DaXacThucEmail = 0 (Chờ kích hoạt)
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE NguoiDung SET DaXacThucEmail = 0 WHERE Id = {user.Id}");
 
         if (!await _roleManager.RoleExistsAsync(dto.Role)) 
             await _roleManager.CreateAsync(new IdentityRole(dto.Role));
@@ -122,10 +110,10 @@ public class AdminController : ControllerBase
         {
             await _emailService.SendActivationEmailAsync(user.Email!, user.FullName, user.UserName!, dto.Password, activationLink);
         } 
-        catch (Exception ex) 
+        catch (Exception) 
         {
             await _userManager.DeleteAsync(user);
-            return BadRequest("Email không hợp lệ hoặc lỗi gửi thư. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
+            return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại. Vui lòng kiểm tra lại.");
         }
 
         await _audit.LogAsync("Create", "User", user.Id, null, $"{user.FullName} ({user.UserName})", $"Tạo nhân viên {dto.Role}");
@@ -135,7 +123,7 @@ public class AdminController : ControllerBase
     [HttpPut("users/{id}")]
     public async Task<IActionResult> UpdateUser(string id, [FromBody] AdminUpdateUserDto dto)
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         var user = await _userManager.FindByIdAsync(id);
         if (user == null || user.CompanyId != companyId) return NotFound();
 
@@ -161,7 +149,7 @@ public class AdminController : ControllerBase
     [HttpPatch("users/{id}/active")]
     public async Task<IActionResult> SetUserActive(string id, [FromBody] SetUserActiveDto dto)
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.Equals(id, currentUserId, StringComparison.Ordinal) && !dto.IsActive)
             return BadRequest("Không thể tự khóa tài khoản của chính bạn.");
@@ -184,7 +172,7 @@ public class AdminController : ControllerBase
     [HttpDelete("users/{id}")]
     public async Task<IActionResult> DeleteUser(string id)
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         var user = await _userManager.FindByIdAsync(id);
         if (user == null || user.CompanyId != companyId) return NotFound();
         var userName = user.UserName;
@@ -197,7 +185,7 @@ public class AdminController : ControllerBase
     [HttpGet("subscription-info")]
     public async Task<ActionResult<CompanySubscriptionInfoDto>> GetSubscriptionInfo()
     {
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         // Use AsNoTracking to get fresh data from database (bypass EF cache)
         var company = await _context.Companies
             .AsNoTracking()
@@ -230,7 +218,10 @@ public class AdminController : ControllerBase
             .ToListAsync();
 
         // Determine current plan: prefer descriptive string field first (since it may contain trial info), then Plan object name, then "Free"
+        // Determine current plan: prefer descriptive string field first (since it may contain trial info), then Plan object name, then "Free"
         string currentPlanName = company.ServicePlan ?? company.Plan?.Name ?? "Free";
+
+        var breakdown = await _fileUpload.GetCompanyStorageBreakdownAsync(companyId);
 
         return Ok(new CompanySubscriptionInfoDto
         {
@@ -238,6 +229,11 @@ public class AdminController : ControllerBase
             PlanExpiryDate = company.PlanExpiresAt,
             UserCount = userCount,
             MaxUsers = company.Plan?.MaxUsers ?? company.MaxUsers ?? 0,
+            StorageUsedBytes = breakdown.TotalBytes,
+            VideoStorageBytes = breakdown.VideoBytes,
+            ImageStorageBytes = breakdown.ImageBytes,
+            DocumentStorageBytes = breakdown.DocumentBytes,
+            StorageLimitGB = company.Plan?.StorageLimitGB ?? 0,
             Transactions = transactions
         });
     }
@@ -249,7 +245,7 @@ public class AdminController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest("Không có file nào được chọn.");
 
-        int companyId = GetAdminCompanyId();
+        int companyId = await GetAdminCompanyId();
         if (companyId <= 0)
             return BadRequest("Không xác định được công ty.");
 
@@ -257,22 +253,43 @@ public class AdminController : ControllerBase
         if (company == null)
             return NotFound();
 
-        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
-        if (!Directory.Exists(uploadDir))
-            Directory.CreateDirectory(uploadDir);
-
-        var fileName = "company_logo_" + companyId + "_" + Guid.NewGuid().ToString("N") + Path.GetExtension(file.FileName);
-        var filePath = Path.Combine(uploadDir, fileName);
-        await using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        company.LogoUrl = $"/uploads/{fileName}";
+        var companyFolder = $"company_{companyId}";
+        company.LogoUrl = await _fileUpload.SaveFileAsync(file, companyId, "branding", $"company_logo_{companyId}");
         company.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         await _audit.LogAsync("Update", "Company", companyId.ToString(), null, $"{company.CompanyName} ({company.SubDomain})", "Cập nhật logo công ty");
         return Ok(new { url = company.LogoUrl });
+    }
+    [HttpGet("dashboard-stats")]
+    public async Task<ActionResult> GetDashboardStats()
+    {
+        int companyId = await GetAdminCompanyId();
+        if (companyId <= 0) return BadRequest("Không xác định được công ty.");
+
+        var totalUsers = await _userManager.Users.CountAsync(u => u.CompanyId == companyId);
+        var activeUsers = await _userManager.Users.CountAsync(u => u.CompanyId == companyId && u.IsActive);
+        var totalCourses = await _context.Courses.CountAsync(c => c.CompanyId == companyId);
+        var pendingTickets = await _context.SupportTickets.CountAsync(t => t.CompanyId == companyId && t.Status == "Open");
+        
+        var recentActivities = await _context.AuditLogs
+            .Where(a => a.UserId != null)
+            .Join(_context.Users.Where(u => u.CompanyId == companyId), a => a.UserId, u => u.Id, (a, u) => a)
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(5)
+            .Select(a => new { Title = a.Action, Description = a.Details, a.CreatedAt, EntityType = a.EntityType })
+            .ToListAsync();
+
+        var company = await _context.Companies.Include(c => c.Plan).FirstOrDefaultAsync(c => c.Id == companyId);
+        
+        return Ok(new {
+            totalUsers,
+            activeUsers,
+            totalCourses,
+            pendingTickets,
+            storageUsedBytes = company?.StorageUsedBytes ?? 0,
+            storageLimitGB = company?.Plan?.StorageLimitGB ?? 0,
+            recentActivities
+        });
     }
 }

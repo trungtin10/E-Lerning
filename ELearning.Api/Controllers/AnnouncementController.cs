@@ -111,7 +111,7 @@ public class AnnouncementController : ControllerBase
         if (isAuthenticated)
         {
             baseQuery = baseQuery.Where(a =>
-                (a.TargetCompanyId == null || (companyId.HasValue && a.TargetCompanyId == companyId.Value))
+                roles.Contains("SuperAdmin") || (a.TargetCompanyId == null || (companyId.HasValue && a.TargetCompanyId == companyId.Value))
             );
         }
         else
@@ -235,10 +235,11 @@ public class AnnouncementController : ControllerBase
 
         // Tạo notification in-app cho user theo target (không realtime/email ở bản đầu)
         var roles = ParseCsv(a.TargetRoles).ToList();
+        string prefix = a.TargetCompanyId.HasValue ? "Thông báo công ty" : "Thông báo hệ thống";
         await _notify.NotifyByTargetAsync(
             a.TargetCompanyId,
             roles.Count > 0 ? roles : null,
-            $"Thông báo mới: {a.Title}",
+            $"{prefix}: {a.Title}",
             a.Content,
             type: "Announcement",
             severity: a.Severity,

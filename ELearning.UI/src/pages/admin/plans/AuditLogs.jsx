@@ -133,26 +133,39 @@ const AuditLogs = () => {
       Transaction: 'Giao dịch'
     };
     const name = entityNames[entityType] || entityType || 'Mục';
-    if (action === 'Create') return `${name} "${newVal || 'mới'}" đã được tạo`;
-    if (action === 'Update') return `${name} "${newVal || ''}" đã được cập nhật`;
+
+    const getDisplayName = (val) => {
+      if (!val) return '';
+      try {
+        const obj = JSON.parse(val);
+        return obj.Name || obj.name || obj.Title || obj.title || obj.UserName || obj.userName || val;
+      } catch {
+        return val;
+      }
+    };
+
+    const cleanNew = getDisplayName(newVal);
+    const cleanOld = getDisplayName(oldVal);
+
+    if (action === 'Create') return `${name} "${cleanNew || 'mới'}" đã được tạo`;
+    if (action === 'Update') return `${name} "${cleanNew || ''}" đã được cập nhật`;
     if (action === 'Delete') {
-      const target = (oldVal || newVal || '').trim();
-      return target ? `${name} "${target}" đã bị xóa` : `${name} đã bị xóa`;
+      return cleanOld ? `${name} "${cleanOld}" đã bị xóa` : (cleanNew ? `${name} "${cleanNew}" đã bị xóa` : `${name} đã bị xóa`);
     }
-    if (action === 'Enroll') return `Đăng ký khóa học ${newVal || ''}`;
-    if (action === 'Complete') return `Hoàn thành bài học ${newVal || ''}`;
-    if (action === 'Generate') return `Cấp chứng chỉ: ${newVal || ''}`;
-    if (action === 'Login' || action === 'GoogleLogin') return `Đăng nhập: ${newVal || ''}`;
-    if (action === 'Submit') return `Nộp bài kiểm tra: ${newVal || ''}`;
+    if (action === 'Enroll') return `Đăng ký khóa học ${cleanNew || ''}`;
+    if (action === 'Complete') return `Hoàn thành bài học ${cleanNew || ''}`;
+    if (action === 'Generate') return `Cấp chứng chỉ: ${cleanNew || ''}`;
+    if (action === 'Login' || action === 'GoogleLogin') return `Đăng nhập: ${cleanNew || ''}`;
+    if (action === 'Submit') return `Nộp bài kiểm tra: ${cleanNew || ''}`;
     if (action === 'Reply' || action === 'Toggle') return details || `${action} ${entityType}`;
-    return details || `${action} ${entityType} ${newVal}`.trim();
+    return details || `${action} ${entityType} ${cleanNew}`.trim();
   };
 
   // Add Escape key listener to close modals
   useEffect(() => {
     const handleEsc = (event) => {
       if (event.key === 'Escape') {
-        setShowLogDetail(null);
+        setSelectedLog(null);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -337,8 +350,15 @@ const AuditLogs = () => {
                 {(selectedLog.oldValue || selectedLog.OldValue) && (
                   <div className="mb-4">
                     <div className="small fw-bold text-danger text-uppercase mb-2">Dữ liệu cũ</div>
-                    <pre className="p-3 bg-white rounded-3 border small mb-0 overflow-auto" style={{ maxHeight: '200px' }}>
-                      {selectedLog.oldValue || selectedLog.OldValue}
+                    <pre className="p-3 bg-white rounded-3 border small mb-0 overflow-auto" style={{ maxHeight: '250px', whiteSpace: 'pre-wrap' }}>
+                      {(() => {
+                        try {
+                          const val = selectedLog.oldValue || selectedLog.OldValue;
+                          return JSON.stringify(JSON.parse(val), null, 2);
+                        } catch {
+                          return selectedLog.oldValue || selectedLog.OldValue;
+                        }
+                      })()}
                     </pre>
                   </div>
                 )}
@@ -346,8 +366,15 @@ const AuditLogs = () => {
                 {(selectedLog.newValue || selectedLog.NewValue) && (
                   <div className="mb-0">
                     <div className="small fw-bold text-success text-uppercase mb-2">Dữ liệu mới</div>
-                    <pre className="p-3 bg-white rounded-3 border small mb-0 overflow-auto" style={{ maxHeight: '200px' }}>
-                      {selectedLog.newValue || selectedLog.NewValue}
+                    <pre className="p-3 bg-white rounded-3 border small mb-0 overflow-auto" style={{ maxHeight: '250px', whiteSpace: 'pre-wrap' }}>
+                      {(() => {
+                        try {
+                          const val = selectedLog.newValue || selectedLog.NewValue;
+                          return JSON.stringify(JSON.parse(val), null, 2);
+                        } catch {
+                          return selectedLog.newValue || selectedLog.NewValue;
+                        }
+                      })()}
                     </pre>
                   </div>
                 )}

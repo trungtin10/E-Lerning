@@ -104,7 +104,6 @@ function AppWithLoading() {
   const { loading } = useLoading();
   return (
     <>
-      <AnnouncementCenter />
       <LoadingBar loading={loading} />
       <AppRoutes />
     </>
@@ -167,12 +166,19 @@ function ProtectedRoute({ children, allowedRoles }) {
 }
 
 function AppRoutes() {
+  const { pathname } = useLocation();
   usePageTitle();
   useFaviconSync();
 
+  const token = sessionStorage.getItem('token') || localStorage.getItem('token');
   const adminRoles = ['SuperAdmin', 'Admin', 'Editor'];
+  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/confirm-email', '/'];
+  const isPublic = publicPaths.some(p => pathname === p || (p !== '/' && pathname.startsWith(p)));
+
   return (
-    <Routes>
+    <>
+      {token && !isPublic && <AnnouncementCenter />}
+      <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -227,6 +233,7 @@ function AppRoutes() {
         {/* Placeholder */}
         <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={adminRoles}><AdminDashboard /></ProtectedRoute>} />
     </Routes>
+    </>
   );
 }
 

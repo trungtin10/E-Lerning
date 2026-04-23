@@ -14,7 +14,6 @@ public class ServicePlan
     [Column("TenGoi")]
     public string Name { get; set; } = string.Empty; // Basic, Pro, Enterprise
 
-    [MaxLength(500)]
     [Column("MoTa")]
     public string? Description { get; set; }
 

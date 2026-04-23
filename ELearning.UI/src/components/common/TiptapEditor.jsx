@@ -161,8 +161,22 @@ const MenuBar = ({ editor }) => {
       <button type="button" onClick={setLink} className={`btn btn-sm ${editor.isActive('link') ? 'btn-primary' : 'btn-white border'}`} title="Chèn liên kết"><LinkIcon size={16} /></button>
       
       <input type="file" className="d-none" accept="image/*" ref={fileInputRef} onChange={handleFileUpload} />
-      <button type="button" onClick={() => fileInputRef.current?.click()} className="btn btn-sm btn-white border" title="Tải ảnh lên" disabled={uploading}>
-        {uploading ? <Loader2 size={16} className="animate-spin text-primary" /> : <ImageIcon size={16} />}
+      <button 
+        type="button" 
+        onClick={() => fileInputRef.current?.click()} 
+        className="btn btn-sm btn-white border" 
+        title="Tải ảnh lên" 
+        disabled={uploading}
+      >
+        {uploading ? (
+          <Loader2 size={16} className="animate-spin text-primary" />
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-image">
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+            <circle cx="9" cy="9" r="2"></circle>
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+          </svg>
+        )}
       </button>
 
       <div className="position-relative" ref={pickerRef}>

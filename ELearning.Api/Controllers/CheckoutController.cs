@@ -125,7 +125,7 @@ public class CheckoutController : ControllerBase
 
         if (response.VnPayResponseCode != "00")
         {
-            transaction.Status = "Failed";
+            transaction.Status = (response.VnPayResponseCode == "24") ? "Canceled" : "Failed";
             transaction.Notes += $" | VNPay Error Code: {response.VnPayResponseCode}";
             await _context.SaveChangesAsync();
             return Redirect(frontendReturnUrl + $"?success=false&error=Code{response.VnPayResponseCode}");
@@ -248,7 +248,8 @@ public class CheckoutController : ControllerBase
         }
         else if (transaction.Status == "Pending")
         {
-            transaction.Status = "Failed";
+            // errorCode 1006 hoặc 49 thường là do người dùng hủy
+            transaction.Status = (errorCode == "1006" || errorCode == "49") ? "Canceled" : "Failed";
             transaction.Notes += $" | MoMo ErrorCode: {errorCode}";
             await _context.SaveChangesAsync();
         }
@@ -322,8 +323,8 @@ public class CheckoutController : ControllerBase
         }
         else
         {
-            // Thanh toán lỗi
-            transaction.Status = "Failed";
+            // Thanh toán lỗi hoặc hủy
+            transaction.Status = (response.VnPayResponseCode == "24") ? "Canceled" : "Failed";
             transaction.Notes += $" | VNPay Error Code: {response.VnPayResponseCode}";
             await _context.SaveChangesAsync();
         }

@@ -15,16 +15,14 @@ namespace ELearning.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = "SuperAdmin")]
-public class SuperAdminController : ControllerBase
+public class SuperAdminController : BaseApiController
 {
-    private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IWebHostEnvironment _env;
     private readonly IEmailService _emailService;
-
-    private readonly IConfiguration _config;
     private readonly IAuditService _audit;
+    private readonly IFileUploadService _fileUpload;
 
     public SuperAdminController(
         ApplicationDbContext context,
@@ -33,70 +31,16 @@ public class SuperAdminController : ControllerBase
         IWebHostEnvironment env,
         IEmailService emailService,
         IConfiguration config,
-        IAuditService audit)
+        IAuditService audit,
+        IFileUploadService fileUpload)
+        : base(context, config)
     {
-        _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
         _env = env;
         _emailService = emailService;
-        _config = config;
         _audit = audit;
-    }
-
-    // Lấy domain động, ưu tiên AppDomain trong config để hỗ trợ ngrok ổn định
-    private string GetBaseUrl()
-    {
-        var configuredDomain = _config["AppSettings:AppDomain"];
-        if (!string.IsNullOrEmpty(configuredDomain))
-        {
-            return configuredDomain.TrimEnd('/');
-        }
-
-        // Fallback sang tự động nhận diện nếu không có config
-        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
-        {
-            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
-            return $"{proto}://{forwardedHost}";
-        }
-
-        var host = Request.Host.Value ?? string.Empty;
-        if (host.Contains("localhost:5211"))
-        {
-            return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
-        }
-
-        return $"{Request.Scheme}://{host}";
-    }
-
-    private async Task<bool> TableExistsAsync(string tableName, IDbContextTransaction? transaction = null)
-    {
-        var connection = _context.Database.GetDbConnection();
-        var currentTransaction = _context.Database.CurrentTransaction;
-
-        bool wasOpen = connection.State == System.Data.ConnectionState.Open;
-        if (!wasOpen) await connection.OpenAsync();
-
-        try
-        {
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tableName";
-            command.Transaction = transaction?.GetDbTransaction();
-
-            var param = command.CreateParameter();
-            param.ParameterName = "@tableName";
-            param.Value = tableName;
-            command.Parameters.Add(param);
-
-            var result = await command.ExecuteScalarAsync();
-            return Convert.ToInt32(result) > 0;
-        }
-        finally
-        {
-            // Chỉ đóng kết nối nếu chúng ta tự mở nó và KHÔNG có transaction nào đang chạy
-            if (!wasOpen && currentTransaction == null && connection.State == System.Data.ConnectionState.Open)
-                await connection.CloseAsync();
-        }
+        _fileUpload = fileUpload;
     }
 
     [HttpGet("users")]
@@ -191,6 +135,7 @@ public class SuperAdminController : ControllerBase
 
             var user = new ApplicationUser
             { 
+                Id = GenerateCleanUserId(dto.Account),
                 UserName = dto.Account, 
                 Email = dto.Email,
                 FullName = dto.FullName, 
@@ -203,6 +148,10 @@ public class SuperAdminController : ControllerBase
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
 
+            // ÉP BUỘC DaXacThucEmail = 0 (Chờ kích hoạt)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE NguoiDung SET DaXacThucEmail = 0 WHERE Id = {user.Id}");
+
             if (!await _roleManager.RoleExistsAsync(dto.Role)) await _roleManager.CreateAsync(new IdentityRole(dto.Role));
             await _userManager.AddToRoleAsync(user, dto.Role);
 
@@ -214,11 +163,11 @@ public class SuperAdminController : ControllerBase
             {
                 await _emailService.SendActivationEmailAsync(user.Email!, user.FullName, user.UserName!, dto.Password, activationLink);
             } 
-            catch (Exception ex) 
+            catch (Exception) 
             {
                 // Rollback user nếu gửi mail lỗi
                 await _userManager.DeleteAsync(user);
-                return BadRequest("Email không tồn tại hoặc không thể gửi thư. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
+                return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại. Vui lòng kiểm tra lại.");
             }
 
             return Ok(new { Message = "Thành công!" });
@@ -238,8 +187,9 @@ public class SuperAdminController : ControllerBase
         var totalUsers = await _userManager.Users.CountAsync();
         var totalCourses = await _context.Courses.CountAsync();
         var pendingActivations = await _userManager.Users.Where(u => !u.EmailConfirmed).CountAsync();
+        var totalStorage = await _context.Companies.SumAsync(c => c.StorageUsedBytes);
         var recentCompanies = await _context.Companies.Where(c => c.SubDomain != "admin").OrderByDescending(c => c.CreatedAt).Take(5).Select(c => new RecentActivityDto(c.CompanyName, $"Đã đăng ký gói {c.ServicePlan ?? "Basic"}", c.CreatedAt, "Company")).ToListAsync();
-        return Ok(new DashboardStatsDto(totalCompanies, activeCompanies, totalUsers, totalCourses, pendingActivations, recentCompanies));
+        return Ok(new DashboardStatsDto(totalCompanies, activeCompanies, totalUsers, totalCourses, pendingActivations, totalStorage, recentCompanies));
     }
 
     [HttpGet("dashboard-analytics")]
@@ -313,29 +263,31 @@ public class SuperAdminController : ControllerBase
     [HttpPost("register-tenant")]
     public async Task<IActionResult> RegisterTenant([FromForm] RegisterTenantFormDto form)
     {
+        // Kiểm tra định dạng Email
+        if (string.IsNullOrWhiteSpace(form.ContactEmail) || !System.Text.RegularExpressions.Regex.IsMatch(form.ContactEmail, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại.");
+
         try
         {
             if (await _context.Companies.AnyAsync(c => c.SubDomain == form.SubDomain))
                 return Conflict("Công ty/subdomain này đã kích hoạt rồi.");
             if (await _userManager.FindByNameAsync(form.Account) != null)
                 return Conflict("Tài khoản admin này đã kích hoạt rồi.");
-            if (!string.IsNullOrEmpty(form.ContactEmail) && await _userManager.FindByEmailAsync(form.ContactEmail) != null)
+            if (!string.IsNullOrEmpty(form.ContactEmail) && await _context.Users.AnyAsync(u => u.Email == form.ContactEmail))
                 return Conflict("Địa chỉ Email này đã được sử dụng bởi một tài khoản khác.");
 
-            string? logoUrl = null;
-            if (form.LogoFile != null && form.LogoFile.Length > 0)
-            {
-                var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
-                if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
-                var fileName = Guid.NewGuid().ToString() + Path.GetExtension(form.LogoFile.FileName);
-                var filePath = Path.Combine(uploadDir, fileName);
-                using (var stream = new FileStream(filePath, FileMode.Create)) { await form.LogoFile.CopyToAsync(stream); }
-                logoUrl = $"/uploads/{fileName}";
-            }
-
-            var company = new Company { CompanyName = form.CompanyName, SubDomain = form.SubDomain, ContactEmail = form.ContactEmail, LogoUrl = logoUrl, ServicePlan = form.ServicePlan ?? "Basic", IsActive = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+            var company = new Company { CompanyName = form.CompanyName, SubDomain = form.SubDomain, ContactEmail = form.ContactEmail, LogoUrl = null, ServicePlan = form.ServicePlan ?? "Basic", IsActive = false, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
             _context.Companies.Add(company);
             await _context.SaveChangesAsync();
+
+            // Initialize company folder structure
+            _fileUpload.EnsureCompanyFolder(company.Id);
+
+            if (form.LogoFile != null && form.LogoFile.Length > 0)
+            {
+                company.LogoUrl = await _fileUpload.SaveFileAsync(form.LogoFile, company.Id, "branding");
+                await _context.SaveChangesAsync();
+            }
 
             // Dùng thử: set gói + hết hạn theo ngày (KHÔNG tạo giao dịch)
             var trialDays = form.ServicePlanDurationDays;
@@ -391,9 +343,14 @@ public class SuperAdminController : ControllerBase
                 }
             }
 
-            var user = new ApplicationUser { UserName = form.Account, Email = form.ContactEmail, FullName = "Admin " + form.CompanyName, CompanyId = company.Id, IsActive = true, EmailConfirmed = false, CreatedAt = DateTime.UtcNow };
+            var user = new ApplicationUser { Id = GenerateCleanUserId(form.Account), UserName = form.Account, Email = form.ContactEmail, FullName = "Admin " + form.CompanyName, CompanyId = company.Id, IsActive = true, EmailConfirmed = false, CreatedAt = DateTime.UtcNow };
             var result = await _userManager.CreateAsync(user, form.Password);
             if (!result.Succeeded) { _context.Companies.Remove(company); await _context.SaveChangesAsync(); return BadRequest(result.Errors.First().Description); }
+
+            // ÉP BUỘC cập nhật CongTyId vào DB (Mặc định là 0 - Chưa kích hoạt)
+            // TrangThaiHoatDong = 1 (Tài khoản khả dụng), DaXacThucEmail = 0 (Chờ kích hoạt)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE NguoiDung SET CongTyId = {company.Id}, TrangThaiHoatDong = 1, DaXacThucEmail = 0 WHERE Id = {user.Id}");
 
             if (!await _roleManager.RoleExistsAsync("Admin"))
                 await _roleManager.CreateAsync(new IdentityRole("Admin"));
@@ -412,7 +369,7 @@ public class SuperAdminController : ControllerBase
                 await _userManager.DeleteAsync(user);
                 _context.Companies.Remove(company);
                 await _context.SaveChangesAsync();
-                return BadRequest("Email không tồn tại hoặc không gửi được thư kích hoạt. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
+                return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại. Vui lòng kiểm tra lại.");
             }
 
             await _audit.LogAsync("Create", "Company", company.Id.ToString(), null, $"{company.CompanyName} ({company.SubDomain})", "Đăng ký tenant mới");
@@ -429,10 +386,16 @@ public class SuperAdminController : ControllerBase
             var company = await _context.Companies.FindAsync(dto.CompanyId);
             if (company == null) return NotFound("Không tìm thấy công ty.");
             if (await _userManager.FindByNameAsync(dto.Account) != null) return BadRequest("Tên tài khoản này đã tồn tại.");
+            if (string.IsNullOrWhiteSpace(dto.Email) || !System.Text.RegularExpressions.Regex.IsMatch(dto.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+                return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại.");
 
-            var user = new ApplicationUser { UserName = dto.Account, Email = dto.Email, FullName = dto.FullName, CompanyId = company.Id, IsActive = true, EmailConfirmed = false, CreatedAt = DateTime.UtcNow };
+            var user = new ApplicationUser { Id = GenerateCleanUserId(dto.Account), UserName = dto.Account, Email = dto.Email, FullName = dto.FullName, CompanyId = company.Id, IsActive = true, EmailConfirmed = false, CreatedAt = DateTime.UtcNow };
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
+
+            // ÉP BUỘC DaXacThucEmail = 0 (Chờ kích hoạt)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE NguoiDung SET DaXacThucEmail = 0 WHERE Id = {user.Id}");
 
             await _roleManager.CreateAsync(new IdentityRole("Admin"));
             await _userManager.AddToRoleAsync(user, "Admin");
@@ -444,11 +407,11 @@ public class SuperAdminController : ControllerBase
             { 
                 await _emailService.SendActivationEmailAsync(user.Email!, user.FullName, user.UserName!, dto.Password, activationLink); 
             } 
-            catch (Exception ex) 
+            catch (Exception)
             { 
                 // Rollback: Xóa user vừa tạo nếu gửi mail lỗi
                 await _userManager.DeleteAsync(user);
-                return BadRequest("Email không tồn tại hoặc không gửi được thư kích hoạt. Vui lòng kiểm tra lại. Lỗi: " + ex.Message);
+                return BadRequest("Địa chỉ Email không chính xác hoặc không tồn tại. Vui lòng kiểm tra lại.");
             }
 
             if (string.IsNullOrWhiteSpace(company.ContactEmail) && !string.IsNullOrWhiteSpace(dto.Email))
@@ -469,37 +432,65 @@ public class SuperAdminController : ControllerBase
     public async Task<IActionResult> ConfirmActivation(string userId, string token)
     {
         var user = await _userManager.FindByIdAsync(userId);
-        if (user == null) return NotFound();
+        if (user == null) return NotFound("Người dùng không tồn tại.");
+
         var result = await _userManager.ConfirmEmailAsync(user, token);
         if (result.Succeeded)
         {
-            if (user.CompanyId.HasValue)
+            // 1. Kích hoạt người dùng (Dùng SQL trực tiếp cho chắc chắn)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE NguoiDung SET TrangThaiHoatDong = 1, DaXacThucEmail = 1 WHERE Id = {userId}");
+
+            // 2. Tìm ID Công ty từ nhiều nguồn để không bị sót
+            var companyId = user.CompanyId;
+            if (!companyId.HasValue)
             {
-                var company = await _context.Companies.FindAsync(user.CompanyId.Value);
-                if (company != null)
-                {
+                // Nếu UserManager không thấy, ta truy vấn trực tiếp DB
+                companyId = await _context.Users.AsNoTracking()
+                    .Where(u => u.Id == userId)
+                    .Select(u => u.CompanyId)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (companyId.HasValue && companyId > 0)
+            {
+                // 3. ÉP BUỘC cập nhật trạng thái Công ty sang 1 (Dấu V xanh)
+                await _context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE CongTy SET TrangThaiHoatDong = 1, NgayCapNhat = {DateTime.UtcNow} WHERE Id = {companyId.Value}");
+                
+                // Lưu lại cả qua Entity Framework để đồng bộ cache
+                var company = await _context.Companies.FindAsync(companyId.Value);
+                if (company != null) {
                     company.IsActive = true;
-                    if (string.IsNullOrWhiteSpace(company.ContactEmail) && !string.IsNullOrWhiteSpace(user.Email))
-                    {
-                        company.ContactEmail = user.Email!.Trim();
-                    }
-                    company.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
                 }
             }
-            return Ok("Kích hoạt thành công!");
+
+            return Ok("Kích hoạt tài khoản và hệ thống công ty thành công!");
         }
-        return BadRequest("Lỗi kích hoạt.");
+        return BadRequest("Mã xác nhận không hợp lệ hoặc đã hết hạn.");
     }
 
     [HttpGet("companies")]
-    public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies()
+    public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies([FromQuery] bool hasEnrollmentsOnly = false)
     {
         var baseUrl = GetBaseUrl();
-        var now = DateTime.UtcNow;
-        return await _context.Companies
-            .OrderByDescending(c => c.CreatedAt)
-            .Select(c => new CompanyDto(
+        var query = _context.Companies.Include(c => c.Users).AsNoTracking();
+
+        if (hasEnrollmentsOnly)
+        {
+            query = query.Where(c => _context.CourseEnrollments.Any(e => e.User != null && e.User.CompanyId == c.Id));
+        }
+
+        var companies = await query.OrderByDescending(c => c.CreatedAt).ToListAsync();
+        var result = new List<CompanyDto>();
+
+        foreach (var c in companies)
+        {
+            var breakdown = await _fileUpload.GetCompanyStorageBreakdownAsync(c.Id);
+            var hasPaid = await _context.Transactions.AnyAsync(t => t.CompanyId == c.Id && t.Status == "Completed");
+
+            result.Add(new CompanyDto(
                 c.Id,
                 c.CompanyName,
                 c.SubDomain,
@@ -508,14 +499,21 @@ public class SuperAdminController : ControllerBase
                 c.ServicePlan,
                 c.ServicePlanId,
                 c.PlanExpiresAt,
-                _context.Transactions.Any(t => t.CompanyId == c.Id && t.Status == "Completed"),
+                hasPaid,
                 c.ContactEmail,
                 c.IsActive,
                 c.Users.Count,
                 c.IsActive ? "Đang hoạt động" : "Chưa kích hoạt",
+                c.Industry,
+                breakdown.Total,
+                breakdown.Videos,
+                breakdown.Images,
+                breakdown.Documents,
                 c.CreatedAt,
-                c.UpdatedAt))
-            .ToListAsync();
+                c.UpdatedAt));
+        }
+
+        return Ok(result);
     }
 
     [HttpPut("companies/{id}")]
@@ -530,6 +528,7 @@ public class SuperAdminController : ControllerBase
             company.SubDomain = form.SubDomain;
             company.ContactEmail = form.ContactEmail;
             company.ServicePlan = form.ServicePlan;
+            company.Industry = form.Industry;
             company.UpdatedAt = DateTime.UtcNow;
 
             if (form.IsActive.HasValue) 
@@ -559,11 +558,7 @@ public class SuperAdminController : ControllerBase
 
             if (form.LogoFile != null && form.LogoFile.Length > 0)
             {
-                var uploadDir = Path.Combine(_env.ContentRootPath, "uploads");
-                var fileName = Guid.NewGuid().ToString() + Path.GetExtension(form.LogoFile.FileName);
-                var filePath = Path.Combine(uploadDir, fileName);
-                using (var stream = new FileStream(filePath, FileMode.Create)) { await form.LogoFile.CopyToAsync(stream); }
-                company.LogoUrl = $"/uploads/{fileName}";
+                company.LogoUrl = await _fileUpload.SaveFileAsync(form.LogoFile, company.Id, "branding");
             }
             await _context.SaveChangesAsync();
             await _audit.LogAsync("Update", "Company", id.ToString(), null, $"{company.CompanyName} ({company.SubDomain})");
@@ -648,67 +643,25 @@ public class SuperAdminController : ControllerBase
     [HttpDelete("users/{userId}")]
     public async Task<IActionResult> DeleteUser(string userId)
     {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null) return NotFound();
-        if (user.UserName == "superadmin") return BadRequest("Không thể xóa SuperAdmin.");
-        
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            if (await TableExistsAsync("LearnerBehaviorEvents", transaction))
-            {
-                var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => e.UserId == userId).ToListAsync();
-                _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
-            }
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) return NotFound();
+            if (user.UserName == "superadmin") return BadRequest("Không thể xóa SuperAdmin.");
 
-            if (await TableExistsAsync("AnnouncementUserStates", transaction))
-            {
-                var announcementStates = await _context.AnnouncementUserStates.Where(s => s.UserId == userId).ToListAsync();
-                _context.AnnouncementUserStates.RemoveRange(announcementStates);
-            }
-
-            var quizAttempts = await _context.QuizAttempts.Where(qa => qa.UserId == userId).ToListAsync();
-            _context.QuizAttempts.RemoveRange(quizAttempts);
-
-            var progress = await _context.LessonProgresses.Where(lp => lp.Enrollment.UserId == userId).ToListAsync();
-            _context.LessonProgresses.RemoveRange(progress);
-
-            var certificates = await _context.Certificates.Where(cert => cert.UserId == userId).ToListAsync();
-            _context.Certificates.RemoveRange(certificates);
-
-            var enrollments = await _context.CourseEnrollments.Where(ce => ce.UserId == userId).ToListAsync();
-            _context.CourseEnrollments.RemoveRange(enrollments);
-
-            var userPosts = await _context.SupportTicketPosts.Where(p => p.UserId == userId).ToListAsync();
-            _context.SupportTicketPosts.RemoveRange(userPosts);
-
-            var userTickets = await _context.SupportTickets.Where(t => t.UserId == userId).ToListAsync();
-            var ticketIds = userTickets.Select(t => t.Id).ToList();
-            if (ticketIds.Any())
-            {
-                var ticketsPosts = await _context.SupportTicketPosts.Where(p => ticketIds.Contains(p.SupportTicketId)).ToListAsync();
-                _context.SupportTicketPosts.RemoveRange(ticketsPosts);
-            }
-            _context.SupportTickets.RemoveRange(userTickets);
-            
-            await _context.SaveChangesAsync();
-
+            // NOTE: Manual cleanup removed as requested. User will execute SQL.
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
             {
-                await transaction.RollbackAsync();
                 return BadRequest(result.Errors.FirstOrDefault()?.Description ?? "Lỗi khi xóa người dùng.");
             }
             
             await _audit.LogAsync("Delete", "User", userId, user.UserName, null, $"Xóa user {user.FullName} ({user.UserName})");
-            
-            await transaction.CommitAsync();
             return Ok();
         }
         catch (Exception ex)
         {
-            try { await transaction.RollbackAsync(); } catch { /* Ignore if already completed */ }
-            return StatusCode(500, $"Lỗi hệ thống khi xóa user: {ex.Message} {(ex.InnerException != null ? " -> " : "")}{ex.InnerException?.Message}"); 
+            return StatusCode(500, $"Lỗi hệ thống khi xóa user: {ex.Message}");
         }
     }
 
@@ -717,94 +670,242 @@ public class SuperAdminController : ControllerBase
     {
         try
         {
-            var company = await _context.Companies
-                .Include(c => c.Users)
-                .Include(c => c.Courses).ThenInclude(crs => crs.Lessons).ThenInclude(l => l.Quizzes)
-                .Include(c => c.Categories)
-                .Include(c => c.Departments)
-                .AsSplitQuery()
-                .FirstOrDefaultAsync(c => c.Id == id);
-                
+            var company = await _context.Companies.FindAsync(id);
             if (company == null) return NotFound();
-
-            var userIds = company.Users.Select(u => u.Id).ToList();
-            var courseIds = company.Courses.Select(c => c.Id).ToList();
-            var lessonIds = company.Courses.SelectMany(c => c.Lessons).Select(l => l.Id).ToList();
-            var quizIds = company.Courses.SelectMany(c => c.Lessons).SelectMany(l => l.Quizzes).Select(q => q.Id).ToList();
-
-            // 1. Dọn dẹp dữ liệu tương tác của Users (Foreign Key: NoAction)
-            if (await TableExistsAsync("LearnerBehaviorEvents", null))
-            {
-                var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => userIds.Contains(e.UserId!) || courseIds.Contains(e.CourseId)).ToListAsync();
-                _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
-            }
-
-            if (await TableExistsAsync("AnnouncementUserStates", null))
-            {
-                var announcementStates = await _context.AnnouncementUserStates.Where(s => userIds.Contains(s.UserId)).ToListAsync();
-                _context.AnnouncementUserStates.RemoveRange(announcementStates);
-            }
-
-            var quizAttempts = await _context.QuizAttempts.Where(qa => userIds.Contains(qa.UserId)).ToListAsync();
-            _context.QuizAttempts.RemoveRange(quizAttempts);
-
-            var progress = await _context.LessonProgresses.Where(lp => userIds.Contains(lp.Enrollment.UserId)).ToListAsync();
-            _context.LessonProgresses.RemoveRange(progress);
-
-            var certificates = await _context.Certificates.Where(cert => userIds.Contains(cert.UserId)).ToListAsync();
-            _context.Certificates.RemoveRange(certificates);
-
-            var enrollments = await _context.CourseEnrollments.Where(ce => userIds.Contains(ce.UserId)).ToListAsync();
-            _context.CourseEnrollments.RemoveRange(enrollments);
-
-            // 2. Dọn dẹp dữ liệu Giao dịch và Hỗ trợ
-            var transactions = await _context.Transactions.Where(t => t.CompanyId == id).ToListAsync();
-            _context.Transactions.RemoveRange(transactions);
-
-            var tickets = await _context.SupportTickets.Where(t => t.CompanyId == id).ToListAsync();
-            var ticketIds = tickets.Select(t => t.Id).ToList();
-            var posts = await _context.SupportTicketPosts.Where(p => ticketIds.Contains(p.SupportTicketId)).ToListAsync();
-            _context.SupportTicketPosts.RemoveRange(posts);
-            _context.SupportTickets.RemoveRange(tickets);
-
-            // 3. Dọn dẹp Khóa học & Bài tập (Quizzes -> Lessons -> Courses)
-            var questions = await _context.Questions.Where(q => quizIds.Contains(q.QuizId)).ToListAsync();
-            var questionIds = questions.Select(q => q.Id).ToList();
-            var answers = await _context.Answers.Where(a => questionIds.Contains(a.QuestionId)).ToListAsync();
-            
-            _context.Answers.RemoveRange(answers);
-            _context.Questions.RemoveRange(questions);
-            foreach (var course in company.Courses) {
-                foreach (var lesson in course.Lessons) {
-                    _context.Quizzes.RemoveRange(lesson.Quizzes);
-                }
-                _context.Lessons.RemoveRange(course.Lessons);
-            }
-            _context.Courses.RemoveRange(company.Courses);
-
-            // 4. Xóa Users (Identity Flow: Xóa Roles, Logins trước)
-            foreach (var user in company.Users.ToList()) {
-                await _userManager.DeleteAsync(user);
-            }
-
-            // 5. Xóa các thực thể khác và Company
-            _context.Categories.RemoveRange(company.Categories);
-            _context.Departments.RemoveRange(company.Departments);
-            
-            var announcements = await _context.Announcements.Where(a => a.TargetCompanyId == id).ToListAsync();
-            _context.Announcements.RemoveRange(announcements);
 
             var companyName = company.CompanyName;
             var subDomain = company.SubDomain;
+
+            // Dọn dẹp dữ liệu liên quan để tránh lỗi khóa ngoại (FK) và dữ liệu mồ côi
+            var courseIds = await _context.Courses.Where(c => c.CompanyId == id).Select(c => c.Id).ToListAsync();
+            var userIds = await _context.Users.Where(u => u.CompanyId == id).Select(u => u.Id).ToListAsync();
+
+            // 1. Xóa các Giao dịch và Hỗ trợ
+            _context.Transactions.RemoveRange(_context.Transactions.Where(t => t.CompanyId == id));
+            
+            var tickets = await _context.SupportTickets.Where(t => t.CompanyId == id).ToListAsync();
+            var ticketIds = tickets.Select(t => t.Id).ToList();
+            var ticketPosts = _context.SupportTicketPosts.Where(p => ticketIds.Contains(p.SupportTicketId));
+            var postIds = await ticketPosts.Select(p => p.Id).ToListAsync();
+            _context.SupportTicketAttachments.RemoveRange(_context.SupportTicketAttachments.Where(a => postIds.Contains(a.SupportTicketPostId)));
+            _context.SupportTicketPosts.RemoveRange(ticketPosts);
+            _context.SupportTickets.RemoveRange(tickets);
+
+            // 2. Xóa các thực thể liên quan đến học tập của User thuộc công ty
+            if (userIds.Count > 0)
+            {
+                var enrollments = _context.CourseEnrollments.Where(e => userIds.Contains(e.UserId));
+                var enrollmentIds = await enrollments.Select(e => e.Id).ToListAsync();
+                
+                _context.LessonProgresses.RemoveRange(_context.LessonProgresses.Where(lp => enrollmentIds.Contains(lp.EnrollmentId)));
+                _context.LearnerBehaviorEvents.RemoveRange(_context.LearnerBehaviorEvents.Where(be => userIds.Contains(be.UserId) || (be.EnrollmentId.HasValue && enrollmentIds.Contains(be.EnrollmentId.Value))));
+                
+                var attempts = _context.QuizAttempts.Where(a => userIds.Contains(a.UserId));
+                var attemptIds = await attempts.Select(a => a.Id).ToListAsync();
+                _context.QuizAttemptAnswers.RemoveRange(_context.QuizAttemptAnswers.Where(aa => attemptIds.Contains(aa.QuizAttemptId)));
+                _context.QuizAttempts.RemoveRange(attempts);
+
+                _context.Certificates.RemoveRange(_context.Certificates.Where(c => userIds.Contains(c.UserId)));
+                _context.UserNotifications.RemoveRange(_context.UserNotifications.Where(n => userIds.Contains(n.UserId)));
+                _context.AnnouncementUserStates.RemoveRange(_context.AnnouncementUserStates.Where(s => userIds.Contains(s.UserId)));
+                _context.UserNotes.RemoveRange(_context.UserNotes.Where(n => userIds.Contains(n.UserId)));
+                _context.CourseDiscussions.RemoveRange(_context.CourseDiscussions.Where(d => userIds.Contains(d.UserId)));
+                
+                _context.CourseEnrollments.RemoveRange(enrollments);
+            }
+
+            // 3. Xóa dữ liệu liên quan đến Khóa học của công ty
+            if (courseIds.Count > 0)
+            {
+                var quizzes = _context.Quizzes.Where(q => courseIds.Contains(q.CourseId));
+                var quizIds = await quizzes.Select(q => q.Id).ToListAsync();
+                var questions = _context.Questions.Where(q => quizIds.Contains(q.QuizId));
+                var questionIds = await questions.Select(q => q.Id).ToListAsync();
+                
+                _context.Answers.RemoveRange(_context.Answers.Where(a => questionIds.Contains(a.QuestionId)));
+                _context.Questions.RemoveRange(questions);
+                _context.Quizzes.RemoveRange(quizzes);
+                _context.Lessons.RemoveRange(_context.Lessons.Where(l => courseIds.Contains(l.CourseId)));
+                
+                // Enrollment cho các khóa học này (đối với user công ty khác nếu có ghi danh)
+                var externalEnrollments = _context.CourseEnrollments.Where(e => courseIds.Contains(e.CourseId));
+                var externalIds = await externalEnrollments.Select(e => e.Id).ToListAsync();
+                _context.LessonProgresses.RemoveRange(_context.LessonProgresses.Where(lp => externalIds.Contains(lp.EnrollmentId)));
+                _context.CourseEnrollments.RemoveRange(externalEnrollments);
+                
+                _context.Courses.RemoveRange(_context.Courses.Where(c => courseIds.Contains(c.Id)));
+            }
+
+            // 4. Xóa Thông báo nhắm đến công ty
+            _context.Announcements.RemoveRange(_context.Announcements.Where(a => a.TargetCompanyId == id));
+
+            // 5. Xóa Người dùng (Nhân viên)
+            var usersToDelete = _context.Users.Where(u => u.CompanyId == id);
+            _context.Users.RemoveRange(usersToDelete);
+
+            // 6. Xóa các phòng ban và danh mục
+            _context.Departments.RemoveRange(_context.Departments.Where(d => d.CompanyId == id));
+            _context.Categories.RemoveRange(_context.Categories.Where(c => c.CompanyId == id));
+
+            // 7. Xóa mẫu chứng chỉ
+            _context.CertificateTemplates.RemoveRange(_context.CertificateTemplates.Where(t => t.CompanyId == id));
+
+            // 8. Cuối cùng mới xóa Công ty
             _context.Companies.Remove(company);
 
             await _context.SaveChangesAsync();
-            await _audit.LogAsync("Delete", "Company", id.ToString(), $"{companyName} ({subDomain})", null, $"Xóa công ty {companyName}");
+            
+            // Xóa thư mục vật lý chứa file của công ty
+            var companyPath = Path.Combine(_env.ContentRootPath, "uploads", id.ToString());
+            if (Directory.Exists(companyPath))
+            {
+                try { Directory.Delete(companyPath, true); } catch { /* bỏ qua lỗi xóa folder */ }
+            }
+
+            await _audit.LogAsync("Delete", "Company", id.ToString(), $"{companyName} ({subDomain})", null, $"Xóa công ty {companyName} và toàn bộ dữ liệu liên quan");
             return Ok();
         }
-        catch (Exception ex) 
-        { 
-            return StatusCode(500, $"Lỗi hệ thống khi xóa công ty: {ex.Message} {(ex.InnerException != null ? " -> " + ex.InnerException.Message : "")}"); 
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException != null ? ex.InnerException.Message : "";
+            return StatusCode(500, $"Lỗi hệ thống khi xóa công ty: {ex.Message}. Chi tiết: {innerMsg}");
+        }
+    }
+    [HttpPost("maintenance/reorganize-uploads")]
+    public async Task<IActionResult> ReorganizeUploads()
+    {
+        try
+        {
+            int movedCount = 0;
+            var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+
+            // 1. Reorganize Company Logos
+            var companies = await _context.Companies.Where(c => !string.IsNullOrEmpty(c.LogoUrl)).ToListAsync();
+            foreach (var company in companies)
+            {
+                // If it's a flat path like /uploads/logo.png, move it
+                if (company.LogoUrl != null && company.LogoUrl.Count(f => f == '/') == 2) 
+                {
+                    var oldPath = Path.Combine(_env.ContentRootPath, company.LogoUrl.TrimStart('/'));
+                    if (System.IO.File.Exists(oldPath))
+                    {
+                        company.LogoUrl = await MoveFileToNewStructure(oldPath, company.Id, "branding");
+                        movedCount++;
+                    }
+                }
+            }
+
+            // 2. Reorganize Course Thumbnails and Intro Videos
+            var courses = await _context.Courses.ToListAsync();
+            foreach (var course in courses)
+            {
+                if (!string.IsNullOrEmpty(course.ThumbnailUrl) && !course.ThumbnailUrl.StartsWith("http") && course.ThumbnailUrl.Count(f => f == '/') == 2)
+                {
+                    var oldPath = Path.Combine(_env.ContentRootPath, course.ThumbnailUrl.TrimStart('/'));
+                    if (System.IO.File.Exists(oldPath))
+                    {
+                        course.ThumbnailUrl = await MoveFileToNewStructure(oldPath, course.CompanyId, "thumbnails");
+                        movedCount++;
+                    }
+                }
+                if (!string.IsNullOrEmpty(course.IntroVideoUrl) && !course.IntroVideoUrl.StartsWith("http") && course.IntroVideoUrl.Count(f => f == '/') == 2)
+                {
+                    var oldPath = Path.Combine(_env.ContentRootPath, course.IntroVideoUrl.TrimStart('/'));
+                    if (System.IO.File.Exists(oldPath))
+                    {
+                        course.IntroVideoUrl = await MoveFileToNewStructure(oldPath, course.CompanyId, "videos");
+                        movedCount++;
+                    }
+                }
+            }
+
+            // 3. Reorganize User Avatars and Covers
+            var users = await _context.Users.ToListAsync();
+            foreach (var user in users)
+            {
+                if (!string.IsNullOrEmpty(user.AvatarUrl) && user.AvatarUrl.Count(f => f == '/') == 2)
+                {
+                    var oldPath = Path.Combine(_env.ContentRootPath, user.AvatarUrl.TrimStart('/'));
+                    if (System.IO.File.Exists(oldPath))
+                    {
+                        user.AvatarUrl = await MoveFileToNewStructure(oldPath, user.CompanyId, "avatars");
+                        movedCount++;
+                    }
+                }
+                if (!string.IsNullOrEmpty(user.CoverPhotoUrl) && user.CoverPhotoUrl.Count(f => f == '/') == 2)
+                {
+                    var oldPath = Path.Combine(_env.ContentRootPath, user.CoverPhotoUrl.TrimStart('/'));
+                    if (System.IO.File.Exists(oldPath))
+                    {
+                        user.CoverPhotoUrl = await MoveFileToNewStructure(oldPath, user.CompanyId, "covers");
+                        movedCount++;
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return Ok(new { message = $"Đã tổ chức lại {movedCount} tệp tin thành công.", movedCount });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Lỗi bảo trì: {ex.Message}");
+        }
+    }
+
+    private async Task<string> MoveFileToNewStructure(string oldPath, int? companyId, string subDir)
+    {
+        string companyFolder = companyId.HasValue && companyId.Value > 0 ? companyId.Value.ToString() : "system";
+
+        var fileName = Path.GetFileName(oldPath);
+        var newDir = Path.Combine(_env.ContentRootPath, "uploads", companyFolder, subDir);
+        
+        if (!Directory.Exists(newDir)) Directory.CreateDirectory(newDir);
+        
+        var newPath = Path.Combine(newDir, fileName);
+        
+        // If file already exists in new location, just return the new URL
+        if (!System.IO.File.Exists(newPath))
+        {
+            System.IO.File.Move(oldPath, newPath);
+        }
+        
+        return $"/uploads/{companyFolder}/{subDir}/{fileName}";
+    }
+
+    /// <summary>Dọn dẹp thư mục uploads: xóa thư mục rỗng và tạo lại cấu trúc cho từng khoá học.</summary>
+    [HttpPost("cleanup-uploads")]
+    public async Task<IActionResult> CleanupUploads()
+    {
+        try
+        {
+            var companies = await _context.Companies.ToListAsync();
+            int foldersCreated = 0;
+
+            foreach (var company in companies)
+            {
+                // Đảm bảo thư mục gốc công ty tồn tại
+                _fileUpload.EnsureCompanyFolder(company.Id);
+
+                // Đảm bảo mỗi khoá học có thư mục đúng chuẩn
+                var courses = await _context.Courses
+                    .Where(c => c.CompanyId == company.Id)
+                    .ToListAsync();
+
+                foreach (var course in courses)
+                {
+                    _fileUpload.EnsureCourseFolder(company.Id, course.Id);
+                    foldersCreated++;
+                }
+
+                // Xóa thư mục rỗng thừa
+                _fileUpload.CleanupEmptyFolders(company.Id);
+            }
+
+            return Ok(new { message = $"Đã dọn dẹp xong. Tạo/kiểm tra {foldersCreated} thư mục khóa học.", foldersCreated });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Lỗi cleanup: {ex.Message}");
         }
     }
 }

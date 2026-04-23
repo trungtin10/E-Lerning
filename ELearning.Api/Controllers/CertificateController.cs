@@ -4,80 +4,116 @@ using ELearning.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
-namespace ELearning.Api.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class CertificateController : ControllerBase
+namespace ELearning.Api.Controllers
 {
-    private readonly ApplicationDbContext _context;
-    private readonly IWebHostEnvironment _env;
-    private readonly IAuditService _audit;
-
-    public CertificateController(ApplicationDbContext context, IWebHostEnvironment env, IAuditService audit)
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class CertificateController : BaseApiController
     {
-        _context = context;
-        _env = env;
-        _audit = audit;
-    }
+        private readonly ICertificateService _certService;
 
-    // 1. CẤP CHỨNG CHỈ TỰ ĐỘNG
-    [HttpPost("generate/{courseId}")]
-    public async Task<IActionResult> GenerateCertificate(int courseId)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-        // Kiểm tra điều kiện: Hoàn thành 100% khóa học
-        var enrollment = await _context.CourseEnrollments
-            .Include(e => e.Course)
-            .Include(e => e.User)
-            .FirstOrDefaultAsync(e => e.UserId == userId && e.CourseId == courseId);
-
-        if (enrollment == null || enrollment.Status != "Completed")
-            return BadRequest("Bạn chưa hoàn thành khóa học này.");
-
-        // Kiểm tra xem đã có chứng chỉ chưa
-        var existing = await _context.Certificates
-            .FirstOrDefaultAsync(c => c.UserId == userId && c.CourseId == courseId);
-        if (existing != null) return Ok(new { Message = "Chứng chỉ đã tồn tại.", Url = existing.CertificateUrl });
-
-        // LOGIC TẠO FILE PDF (Giả lập lưu đường dẫn)
-        // Trong thực tế sẽ dùng thư viện QuestPDF để vẽ ảnh/pdf
-        string fileName = $"Cert_{userId}_{courseId}.pdf";
-        string filePath = $"/uploads/certificates/{fileName}";
-
-        var certificate = new Certificate
+        public CertificateController(ApplicationDbContext context, IConfiguration config, ICertificateService certService)
+            : base(context, config)
         {
-            UserId = userId!,
-            CourseId = courseId,
-            IssuedAt = DateTime.UtcNow,
-            CertificateUrl = filePath
-        };
+            _certService = certService;
+        }
 
-        _context.Certificates.Add(certificate);
-        await _context.SaveChangesAsync();
-        await _audit.LogAsync("Generate", "Certificate", certificate.Id.ToString(), null, enrollment.Course?.Title ?? courseId.ToString(), "Cấp chứng chỉ khóa học");
-        return Ok(new { Message = "Cấp chứng chỉ thành công!", Url = filePath });
+        [HttpGet("templates")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<ActionResult<IEnumerable<CertificateTemplate>>> GetTemplates()
+        {
+            var companyId = await GetUserCompanyIdAsync();
+            var query = _context.CertificateTemplates.AsQueryable();
+            if (companyId.HasValue) query = query.Where(t => t.CompanyId == companyId);
+            return await query.ToListAsync();
+        }
+
+        [HttpPost("templates")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<ActionResult<CertificateTemplate>> CreateTemplate([FromBody] CertificateTemplate template)
+        {
+            var companyId = await GetUserCompanyIdAsync();
+            template.CompanyId = companyId;
+            template.CreatedAt = DateTime.UtcNow;
+            _context.CertificateTemplates.Add(template);
+            await _context.SaveChangesAsync();
+            return Ok(template);
+        }
+
+        [HttpPost("generate/{courseId}")]
+        public async Task<IActionResult> GenerateCertificate(int courseId)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var result = await _certService.CheckAndIssueCertificateAsync(userId, courseId);
+            if (result.Success) return Ok(new { Message = result.Message, Url = result.Url, Code = result.Code });
+            return BadRequest(result.Message);
+        }
+
+        // CẤP CHỨNG CHỈ THỦ CÔNG (ADMIN)
+        [HttpPost("issue-manual")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<IActionResult> IssueManual([FromBody] IssueManualRequest request)
+        {
+            var result = await _certService.IssueCertificateManualAsync(request.UserId, request.CourseId);
+            if (result.Success) return Ok(new { Message = result.Message, Url = result.Url, Code = result.Code });
+            return BadRequest(result.Message);
+        }
+
+        // CẤP CHỨNG CHỈ HÀNG LOẠT (ADMIN)
+        [HttpPost("batch-issue")]
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        public async Task<IActionResult> BatchIssue([FromBody] List<IssueManualRequest> requests)
+        {
+            int successCount = 0;
+            foreach (var req in requests)
+            {
+                var result = await _certService.IssueCertificateManualAsync(req.UserId, req.CourseId);
+                if (result.Success) successCount++;
+            }
+            return Ok(new { Message = $"Đã cấp thành công {successCount}/{requests.Count} chứng chỉ." });
+        }
+
+        [HttpGet("download/{id}")]
+        public async Task<IActionResult> DownloadCertificate(int id)
+        {
+            try
+            {
+                var pdfBytes = await _certService.GenerateCertificatePdfAsync(id);
+                return File(pdfBytes, "application/pdf", $"Certificate_{id}.pdf");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("my-certificates")]
+        public async Task<ActionResult> GetMyCertificates()
+        {
+            var userId = CurrentUserId;
+            var certs = await _context.Certificates
+                .Include(c => c.Course)
+                .Where(c => c.UserId == userId)
+                .OrderByDescending(c => c.IssuedAt)
+                .Select(c => new {
+                    c.Id,
+                    CourseTitle = c.Course.Title,
+                    c.IssuedAt,
+                    c.CertificateUrl,
+                    c.CertificateCode
+                })
+                .ToListAsync();
+            return Ok(certs);
+        }
     }
 
-    // 2. LẤY DANH SÁCH CHỨNG CHỈ CỦA TÔI
-    [HttpGet("my-certificates")]
-    public async Task<ActionResult> GetMyCertificates()
+    public class IssueManualRequest
     {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var certs = await _context.Certificates
-            .Include(c => c.Course)
-            .Where(c => c.UserId == userId)
-            .Select(c => new {
-                c.Id,
-                CourseTitle = c.Course.Title,
-                c.IssuedAt,
-                c.CertificateUrl
-            })
-            .ToListAsync();
-        return Ok(certs);
+        public string UserId { get; set; } = string.Empty;
+        public int CourseId { get; set; }
     }
 }

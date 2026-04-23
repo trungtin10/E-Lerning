@@ -4,8 +4,9 @@ import api from '../../api/axios';
 import { motion } from 'framer-motion';
 import {
   Search, Loader2, BookOpen, Clock, ClipboardCheck, Eye,
-  GraduationCap, TrendingUp, CheckCircle2, Activity, Video, PlayCircle, Building2, ChevronRight, ArrowLeft
+  GraduationCap, TrendingUp, CheckCircle2, Activity, Video, PlayCircle, Building2, ChevronRight, ArrowLeft, Trash2, MoreVertical
 } from 'lucide-react';
+import { useNotify } from '../../context/NotifyContext';
 
 const Learners = () => {
   const [enrollments, setEnrollments] = useState([]);
@@ -18,11 +19,16 @@ const Learners = () => {
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [detailModal, setDetailModal] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [quizHistoryModal, setQuizHistoryModal] = useState(null); // { enrollmentId, quizId, quizTitle, attempts: [] }
+  const [quizHistoryModal, setQuizHistoryModal] = useState(null);
   const [quizHistoryLoading, setQuizHistoryLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [issuing, setIssuing] = useState(false);
+  const { toast, confirm } = useNotify();
   const [user] = useState(() => {
     try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
   });
+  const [actionLoading, setActionLoading] = useState(false);
   const isSuperAdmin = user.roles?.includes('SuperAdmin');
 
   const effectiveCompanyId = isSuperAdmin && selectedCompanyId ? selectedCompanyId : filterCompanyId;
@@ -47,8 +53,12 @@ const Learners = () => {
       if (filterCourseId) params.set('courseId', filterCourseId);
       if (isSuperAdmin && effectiveCompanyId) params.set('companyId', effectiveCompanyId);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
+
       const response = await api.get(`/learner/enrollments?${params}`);
-      setEnrollments(Array.isArray(response.data) ? response.data : []);
+
+      const responseData = response.data?.data || response.data?.items || response.data;
+
+      setEnrollments(Array.isArray(responseData) ? responseData : []);
     } catch (err) {
       console.error(err);
       setEnrollments([]);
@@ -60,7 +70,8 @@ const Learners = () => {
   const fetchCourses = async () => {
     try {
       const response = await api.get('/course');
-      setCourses(Array.isArray(response.data) ? response.data : []);
+      const responseData = response.data?.data || response.data?.items || response.data;
+      setCourses(Array.isArray(responseData) ? responseData : []);
     } catch (err) {
       console.error(err);
     }
@@ -68,8 +79,9 @@ const Learners = () => {
 
   const fetchCompanies = async () => {
     try {
-      const response = await api.get('/superadmin/companies');
-      setCompanies(Array.isArray(response.data) ? response.data : []);
+      const response = await api.get('/superadmin/companies?hasEnrollmentsOnly=true');
+      const responseData = response.data?.data || response.data?.items || response.data;
+      setCompanies(Array.isArray(responseData) ? responseData : []);
     } catch (err) {
       console.error(err);
     }
@@ -84,7 +96,7 @@ const Learners = () => {
     setDetailLoading(true);
     try {
       const response = await api.get(`/learner/enrollments/${enrollmentId}`);
-      setDetailModal(response.data);
+      setDetailModal(response.data?.data || response.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -98,7 +110,7 @@ const Learners = () => {
     setQuizHistoryLoading(true);
     try {
       const res = await api.get(`/learner/enrollments/${enrollmentId}/quizzes/${quizId}/attempts`);
-      const attempts = Array.isArray(res.data) ? res.data : [];
+      const attempts = Array.isArray(res.data?.data || res.data) ? (res.data?.data || res.data) : [];
       setQuizHistoryModal(prev => prev ? { ...prev, attempts } : prev);
     } catch (err) {
       console.error(err);
@@ -108,7 +120,7 @@ const Learners = () => {
   };
 
   const formatTime = (minutes) => {
-    if (!minutes || minutes < 0) return '0 phút';
+    if (!minutes || minutes <= 0) return '0 phút';
     if (minutes < 60) return `${minutes} phút`;
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
@@ -125,13 +137,9 @@ const Learners = () => {
   const filteredCourses = isSuperAdmin && effectiveCompanyId
     ? courses.filter(c => c.companyId == null || c.companyId === parseInt(effectiveCompanyId, 10))
     : courses;
-  const filteredBySearch = enrollments.filter(e => {
-    // Chỉ hiện học viên đã có hoạt động học tập thực tế
-    const hasActivity = e.totalLearningTimeMinutes > 0 || e.quizAttemptsCount > 0;
-    if (!hasActivity) return false;
 
-    // Loại bỏ các tài khoản Biên tập/Hệ thống
-    if (e.fullName?.includes('Biên tập') || e.userName === 'admin') return false;
+  const filteredBySearch = enrollments.filter(e => {
+    if (filterStatus && e.status !== filterStatus) return false;
 
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
@@ -145,7 +153,82 @@ const Learners = () => {
 
   const displayCompanies = companies.filter(c => c.subDomain !== 'admin');
 
-  // Add Escape key listener to close modals
+  const handleIssueCertificate = async (userId, courseId) => {
+    const ok = await confirm({
+      title: 'Cấp chứng chỉ',
+      message: 'Bạn có chắc chắn muốn cấp chứng chỉ cho học viên này?',
+      confirmText: 'Cấp ngay'
+    });
+    if (!ok) return;
+    setIssuing(true);
+    try {
+      const res = await api.post('/certificate/issue-manual', { userId, courseId });
+      toast(res.data.message || 'Cấp chứng chỉ thành công!', 'success');
+      fetchEnrollments();
+    } catch (err) {
+      toast(err.response?.data || 'Có lỗi xảy ra khi cấp chứng chỉ.', 'error');
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    const ok = await confirm({
+      title: 'Xóa tài khoản',
+      message: 'Bạn có chắc chắn muốn xóa tài khoản học viên này? Hành động này không thể hoàn tác.',
+      confirmText: 'Xóa ngay'
+    });
+    if (!ok) return;
+
+    setActionLoading(true);
+    try {
+      await api.delete(`/superadmin/users/${userId}`);
+      toast('Xóa tài khoản học viên thành công.', 'success');
+      fetchEnrollments();
+    } catch (err) {
+      toast(err.response?.data?.message || 'Không thể xóa tài khoản.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBatchIssue = async () => {
+    const selected = filteredBySearch.filter(e => selectedIds.includes(e.enrollmentId));
+    if (selected.length === 0) return toast('Vui lòng chọn ít nhất một học viên.', 'warning');
+
+    const ok = await confirm({
+      title: 'Cấp chứng chỉ hàng loạt',
+      message: `Bạn có chắc chắn muốn cấp chứng chỉ cho ${selected.length} học viên đã chọn?`,
+      confirmText: 'Cấp tất cả'
+    });
+    if (!ok) return;
+
+    setIssuing(true);
+    try {
+      const requests = selected.map(e => ({ userId: e.userId, courseId: e.courseId }));
+      const res = await api.post('/certificate/batch-issue', requests);
+      toast(res.data.message || 'Cấp chứng chỉ thành công', 'success');
+      setSelectedIds([]);
+      fetchEnrollments();
+    } catch (err) {
+      toast(err.response?.data || 'Có lỗi xảy ra.', 'error');
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredBySearch.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredBySearch.map(e => e.enrollmentId));
+    }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   useEffect(() => {
     const handleEsc = (event) => {
       if (event.key === 'Escape') {
@@ -165,11 +248,10 @@ const Learners = () => {
           Theo dõi học viên
         </h2>
         <p className="text-muted extra-small mb-0">
-          Dữ liệu chỉ hiển thị các học viên đã có hoạt động học tập thực tế.
+          Dữ liệu bao gồm tất cả học viên đã được ghi danh.
         </p>
       </div>
 
-      {/* 2. Bộ lọc - trên khung nội dung */}
       {!showCompanyList && (
         <div className="card border-0 shadow-sm rounded-4 mb-3">
           <div className="card-body p-2 px-3">
@@ -202,10 +284,34 @@ const Learners = () => {
                 </div>
               </div>
               <div className="col-md-2">
-                <button className="btn btn-primary btn-sm w-100 rounded-3 fw-bold" onClick={handleSearch}>
+                <label className="form-label extra-small fw-bold text-secondary mb-1">Trạng thái</label>
+                <select
+                  className="form-select form-select-sm rounded-3"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="">Tất cả</option>
+                  <option value="Completed">Hoàn thành</option>
+                  <option value="InProgress">Đang học</option>
+                </select>
+              </div>
+              <div className="col-md-2">
+                <button className="btn btn-primary btn-sm w-100 rounded-3 fw-bold mt-4" onClick={handleSearch}>
                   Tìm kiếm
                 </button>
               </div>
+              {selectedIds.length > 0 && (
+                <div className="col-md-2">
+                  <button
+                    className="btn btn-success btn-sm w-100 rounded-3 fw-bold mt-4 d-flex align-items-center justify-content-center gap-1"
+                    onClick={handleBatchIssue}
+                    disabled={issuing}
+                  >
+                    {issuing ? <Loader2 size={14} className="animate-spin" /> : <GraduationCap size={14} />}
+                    Cấp {selectedIds.length} chứng chỉ
+                  </button>
+                </div>
+              )}
               {isSuperAdmin && !showCompanyList && (
                 <div className="col-md-3 text-end">
                   <span className="badge bg-primary bg-opacity-10 text-primary p-2 px-3 rounded-pill fw-bold" style={{ fontSize: '0.7rem' }}>
@@ -228,7 +334,6 @@ const Learners = () => {
         </div>
       )}
 
-      {/* 3. Khung nội dung: Danh sách công ty HOẶC Bảng học viên */}
       {showCompanyList ? (
         <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
           <div className="card-body p-4">
@@ -263,64 +368,77 @@ const Learners = () => {
           </div>
         </div>
       ) : (
-        <div className="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div className="card border-0 shadow-sm rounded-4">
           <div className="card-body p-0">
-        <div className="table-responsive admin-table-framed-wrapper">
-          <table className="table table-hover align-middle mb-0 admin-table-framed">
-            <thead className="bg-light border-bottom">
-              <tr>
-                <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase">Học viên</th>
-                <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Khóa học</th>
-                {isSuperAdmin && !selectedCompanyId && <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Công ty</th>}
-                <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center">Tiến độ</th>
-                <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center">Thời gian học</th>
-                <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center">Bài làm</th>
-                <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end">Hành động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={isSuperAdmin && !selectedCompanyId ? 7 : 6} className="text-center py-5">
-                    <Loader2 className="animate-spin text-primary" size={32} />
-                  </td>
-                </tr>
-              ) : filteredBySearch.length === 0 ? (
-                <tr>
-                  <td colSpan={isSuperAdmin && !selectedCompanyId ? 7 : 6} className="text-center py-5 text-muted">
-                    Chưa có học viên nào đăng ký khóa học.
-                  </td>
-                </tr>
-              ) : (
-                filteredBySearch.map((e) => (
-                  <tr key={e.enrollmentId}>
-                    <td className="px-4 py-3">
-                      <motion.div whileHover={{ x: 3 }} className="d-flex flex-column">
-                        <span className="fw-bold text-dark">{e.fullName}</span>
-                        <span className="text-muted small">{e.email || e.userName || '—'}</span>
-                      </motion.div>
-                    </td>
-                    <td className="py-3">
-                      <div className="d-flex align-items-center gap-2">
-                        <BookOpen size={16} className="text-primary flex-shrink-0" />
-                        <span>{e.courseTitle}</span>
-                      </div>
-                    </td>
-                    {isSuperAdmin && !selectedCompanyId && (
-                      <td className="py-3">
-                        <span className="badge bg-light text-dark border">{e.companyName || '—'}</span>
+            <div className="table-responsive admin-table-framed-wrapper" style={{ minHeight: '250px', overflowY: 'visible' }}>
+              <table className="table table-hover align-middle mb-0 admin-table-framed">
+                <thead className="bg-light border-bottom">
+                  <tr>
+                    <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase" style={{ width: 40 }}>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={filteredBySearch.length > 0 && selectedIds.length === filteredBySearch.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
+                    <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase">Học viên</th>
+                    <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Khóa học</th>
+                    {isSuperAdmin && !selectedCompanyId && <th className="py-3 border-0 text-secondary small fw-bold text-uppercase">Công ty</th>}
+                    <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center">Tiến độ</th>
+                    <th className="py-3 border-0 text-secondary small fw-bold text-uppercase text-center">Thời gian học</th>
+                    <th className="px-4 py-3 border-0 text-secondary small fw-bold text-uppercase text-end">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={isSuperAdmin && !selectedCompanyId ? 7 : 6} className="text-center py-5">
+                        <Loader2 className="animate-spin text-primary" size={32} />
                       </td>
-                    )}
-                    <td className="py-3 text-center">
-                      {e.enrollmentId === 0 ? (
-                        <span className="text-muted small">—</span>
-                      ) : (
-                        <>
+                    </tr>
+                  ) : filteredBySearch.length === 0 ? (
+                    <tr>
+                      <td colSpan={isSuperAdmin && !selectedCompanyId ? 7 : 6} className="text-center py-5 text-muted">
+                        {courses.length === 0 
+                          ? "Chưa có khóa học" 
+                          : "Chưa có dữ liệu học viên đăng ký khóa học (hoặc không khớp bộ lọc)."}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredBySearch.map((e) => (
+                      <tr key={e.enrollmentId || e.userId} className={selectedIds.includes(e.enrollmentId) ? 'table-primary bg-opacity-10' : ''}>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={selectedIds.includes(e.enrollmentId)}
+                            onChange={() => toggleSelect(e.enrollmentId)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <motion.div whileHover={{ x: 3 }} className="d-flex flex-column">
+                            <span className="fw-bold text-dark">{e.fullName}</span>
+                            <span className="text-muted small">{e.email || e.userName || '—'}</span>
+                          </motion.div>
+                        </td>
+                        <td className="py-3">
+                          <div className="d-flex align-items-center gap-2">
+                            <BookOpen size={16} className="text-primary flex-shrink-0" />
+                            <span>{e.courseTitle}</span>
+                          </div>
+                        </td>
+                        {isSuperAdmin && !selectedCompanyId && (
+                          <td className="py-3">
+                            <span className="badge bg-light text-dark border">{e.companyName || '—'}</span>
+                          </td>
+                        )}
+                        <td className="py-3 text-center">
                           <div className="d-flex align-items-center justify-content-center gap-2">
                             <div className="progress flex-grow-1" style={{ maxWidth: 80, height: 8 }}>
                               <div
                                 className={`progress-bar bg-${getProgressColor(e.progressPercentage)}`}
-                                style={{ width: `${Math.min(100, e.progressPercentage)}%` }}
+                                style={{ width: `${Math.min(100, e.progressPercentage || 0)}%` }}
                               />
                             </div>
                             <span className="small fw-bold" style={{ minWidth: 42 }}>
@@ -328,53 +446,66 @@ const Learners = () => {
                             </span>
                           </div>
                           <div className="small text-muted mt-1">
-                            {e.completedLessons}/{e.totalLessons} bài
+                            {e.completedLessons || 0}/{e.totalLessons || 0} bài
                           </div>
-                        </>
-                      )}
-                    </td>
-                    <td className="py-3 text-center">
-                      <div className="d-flex align-items-center justify-content-center gap-1">
-                        <Clock size={14} className="text-muted" />
-                        <span>{formatTime(e.totalLearningTimeMinutes)}</span>
-                      </div>
-                      {!e.hasStartedLearning && (
-                        <span className="badge bg-secondary-subtle text-secondary small mt-1">Chưa bắt đầu</span>
-                      )}
-                    </td>
-                    <td className="py-3 text-center">
-                      {e.enrollmentId === 0 ? (
-                        <span className="badge bg-secondary-subtle text-secondary">—</span>
-                      ) : e.quizAttemptsCount === 0 ? (
-                        <span className="badge bg-secondary-subtle text-secondary">Chưa làm</span>
-                      ) : (
-                        <div className="d-flex align-items-center justify-content-center gap-1 flex-wrap">
-                          <ClipboardCheck size={14} className="text-primary" />
-                          <span className="small">
-                            {e.quizPassedCount}/{e.quizAttemptsCount} đạt
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-end">
-                      {e.enrollmentId === 0 ? (
-                        <span className="text-muted small">Chưa có dữ liệu</span>
-                      ) : (
-                        <button
-                          className="btn btn-white btn-sm p-2 rounded-3 border shadow-sm text-primary hover-bg-primary-subtle transition-all"
-                          onClick={() => openDetail(e.enrollmentId)}
-                          title="Xem chi tiết tiến độ"
-                        >
-                          <Eye size={18} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                        </td>
+                        <td className="py-3 text-center">
+                          <div className="d-flex align-items-center justify-content-center gap-1">
+                            <Clock size={14} className="text-muted" />
+                            <span>{formatTime(e.totalLearningTimeMinutes)}</span>
+                          </div>
+                          {!e.hasStartedLearning && (
+                            <span className="badge bg-secondary-subtle text-secondary small mt-1">Chưa bắt đầu</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-end">
+                          <div className="dropdown">
+                            <button
+                              className="btn btn-white btn-sm p-2 rounded-3 text-secondary border shadow-sm transition-all"
+                              type="button"
+                              data-bs-toggle="dropdown"
+                              aria-expanded="false"
+                              data-bs-boundary="window"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                            <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                              <li>
+                                <button
+                                  className="dropdown-item d-flex align-items-center gap-2 py-2 text-primary"
+                                  onClick={() => openDetail(e.enrollmentId)}
+                                >
+                                  <Eye size={16} /> Xem tiến độ
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  className={`dropdown-item d-flex align-items-center gap-2 py-2 ${e.hasCertificate ? 'text-success' : 'text-info'}`}
+                                  onClick={() => !e.hasCertificate && handleIssueCertificate(e.userId, e.courseId)}
+                                  disabled={issuing || e.hasCertificate}
+                                >
+                                  <GraduationCap size={16} /> {e.hasCertificate ? 'Đã cấp chứng chỉ' : 'Cấp chứng chỉ'}
+                                </button>
+                              </li>
+                              <li><hr className="dropdown-divider" /></li>
+                              <li>
+                                <button
+                                  className="dropdown-item d-flex align-items-center gap-2 py-2 text-danger"
+                                  onClick={() => handleDeleteUser(e.userId)}
+                                  disabled={actionLoading}
+                                >
+                                  <Trash2 size={16} /> Xóa tài khoản
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -442,7 +573,7 @@ const Learners = () => {
                         </thead>
                         <tbody>
                           {(detailModal.lessonProgress || []).map((lp, i) => (
-                            <tr key={lp.lessonId}>
+                            <tr key={lp.lessonId || i}>
                               <td>{i + 1}</td>
                               <td>{lp.lessonTitle}</td>
                               <td className="text-center">
@@ -477,8 +608,8 @@ const Learners = () => {
                               <td colSpan="4" className="text-center text-muted py-3">Chưa có bài làm nào</td>
                             </tr>
                           ) : (
-                            (detailModal.quizAttempts || []).map((qa) => (
-                              <tr key={qa.attemptId}>
+                            (detailModal.quizAttempts || []).map((qa, i) => (
+                              <tr key={qa.attemptId || i}>
                                 <td>
                                   <button
                                     type="button"
@@ -489,7 +620,7 @@ const Learners = () => {
                                     {qa.quizTitle}
                                   </button>
                                 </td>
-                                <td className="text-center fw-bold">{(qa.score / 10).toFixed(1)}</td>
+                                <td className="text-center fw-bold">{qa.score != null ? (qa.score / 10).toFixed(1) : '—'}</td>
                                 <td className="text-center">{qa.correctAnswers}/{qa.totalQuestions}</td>
                                 <td className="text-center">
                                   {qa.isPassed ? (
@@ -513,7 +644,7 @@ const Learners = () => {
                         <div className="p-4 text-center text-muted small">Chưa có dữ liệu hành vi</div>
                       ) : (
                         <div className="list-group list-group-flush">
-                          {(detailModal.behaviorEvents || []).map((evt) => {
+                          {(detailModal.behaviorEvents || []).map((evt, i) => {
                             const label = {
                               PageEnter: { icon: PlayCircle, text: 'Vào trang học', color: 'primary' },
                               LessonViewed: { icon: BookOpen, text: 'Xem bài học', color: 'info' },
@@ -529,12 +660,12 @@ const Learners = () => {
                                 const m = JSON.parse(evt.metadata);
                                 if (m.lessonTitle) meta = m.lessonTitle;
                                 if (m.sectionNum) meta += meta ? ` - Mục ${m.sectionNum}` : `Mục ${m.sectionNum}`;
-                                if (m.score != null) meta += (meta ? ' | ' : '') + `Điểm: ${(m.score/10).toFixed(1)}`;
+                                if (m.score != null) meta += (meta ? ' | ' : '') + `Điểm: ${(m.score / 10).toFixed(1)}`;
                                 if (m.isPassed != null) meta += (meta ? ' ' : '') + (m.isPassed ? '(Đạt)' : '(Chưa đạt)');
                               }
                             } catch { meta = evt.metadata || ''; }
                             return (
-                              <div key={evt.id} className="list-group-item d-flex align-items-center gap-3 py-2 px-3 border-0 border-bottom">
+                              <div key={evt.id || i} className="list-group-item d-flex align-items-center gap-3 py-2 px-3 border-0 border-bottom">
                                 <div className={`p-1 rounded-2 bg-${label.color} bg-opacity-25`}>
                                   <Icon size={16} className={`text-${label.color}`} />
                                 </div>
@@ -543,7 +674,7 @@ const Learners = () => {
                                   {meta && <div className="small text-muted text-truncate">{meta}</div>}
                                 </div>
                                 <div className="small text-muted flex-shrink-0">
-                                  {new Date(evt.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                                  {evt.createdAt ? new Date(evt.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
                                 </div>
                               </div>
                             );
@@ -595,7 +726,7 @@ const Learners = () => {
                           <tr key={a.attemptId || idx}>
                             <td className="text-center">{idx + 1}</td>
                             <td>{a.completedAt ? new Date(a.completedAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
-                            <td className="text-center fw-bold">{(a.score / 10).toFixed(1)}</td>
+                            <td className="text-center fw-bold">{a.score != null ? (a.score / 10).toFixed(1) : '—'}</td>
                             <td className="text-center">{a.correctAnswers}/{a.totalQuestions}</td>
                             <td className="text-center">
                               {a.isPassed ? <span className="badge bg-success">Đạt</span> : <span className="badge bg-danger">Chưa đạt</span>}

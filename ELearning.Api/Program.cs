@@ -52,6 +52,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+// Vô hiệu hóa việc tự động viết hoa (Normalization) để hỗ trợ phân biệt chữ hoa/thường theo ý người dùng
+builder.Services.AddSingleton<ILookupNormalizer, CustomLookupNormalizer>();
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -104,13 +107,13 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IMoMoService, MoMoService>();
+builder.Services.AddScoped<IFileUploadService, FileUploadService>();
+builder.Services.AddScoped<ICertificateService, CertificateService>();
 builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-// Áp dụng migrations tự động - Đã xóa để chuyển sang quản lý SQL thủ công
 
-// Seed dữ liệu mặc định - Đã gỡ bỏ theo yêu cầu: Quản lý SQL thủ công 100%
 
 app.UseForwardedHeaders();
 
@@ -120,15 +123,19 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Tắt HttpsRedirection để tránh lỗi với ngrok
-// app.UseHttpsRedirection();
+
 
 // Cấu hình phục vụ file tĩnh từ thư mục 'uploads'
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(
         Path.Combine(builder.Environment.ContentRootPath, "uploads")),
-    RequestPath = "/uploads"
+    RequestPath = "/uploads",
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    }
 });
 
 app.UseCors(MyAllowSpecificOrigins);
@@ -140,3 +147,9 @@ app.MapControllers();
 app.MapAuthProfileEndpoints();
 
 app.Run();
+
+public class CustomLookupNormalizer : ILookupNormalizer
+{
+    public string? NormalizeEmail(string? email) => email;
+    public string? NormalizeName(string? name) => name;
+}

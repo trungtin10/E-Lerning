@@ -8,9 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ELearning.Api;
 
-/// <summary>
-/// Hồ sơ người dùng đăng ký qua minimal API để tránh trường hợp MapControllers không map được route "me".
-/// </summary>
 public static class AuthProfileEndpoints
 {
     public static WebApplication MapAuthProfileEndpoints(this WebApplication app)
@@ -29,27 +26,27 @@ public static class AuthProfileEndpoints
         IFormFile file,
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IWebHostEnvironment env,
+        IFileUploadService fileUpload,
         IAuditService audit)
     {
-        return await HandleFileUpload(file, principal, userManager, env, audit, "avatar");
+        return await HandleFileUpload(file, principal, userManager, fileUpload, audit, "avatar");
     }
 
     private static async Task<IResult> UploadCoverAsync(
         IFormFile file,
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IWebHostEnvironment env,
+        IFileUploadService fileUpload,
         IAuditService audit)
     {
-        return await HandleFileUpload(file, principal, userManager, env, audit, "cover");
+        return await HandleFileUpload(file, principal, userManager, fileUpload, audit, "cover");
     }
 
     private static async Task<IResult> HandleFileUpload(
         IFormFile file,
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IWebHostEnvironment env,
+        IFileUploadService fileUpload,
         IAuditService audit,
         string type)
     {
@@ -59,18 +56,9 @@ public static class AuthProfileEndpoints
         var user = await userManager.FindByIdAsync(userId!);
         if (user == null) return Results.NotFound();
 
-        var uploads = Path.Combine(env.ContentRootPath, "uploads");
-        if (!Directory.Exists(uploads)) Directory.CreateDirectory(uploads);
+        var subDir = type == "avatar" ? "avatars" : "covers";
+        var url = await fileUpload.SaveFileAsync(file, user.CompanyId, subDir);
 
-        var fileName = $"{type}_{user.Id}_{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
-        var filePath = Path.Combine(uploads, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        var url = $"/uploads/{fileName}";
         if (type == "avatar") user.AvatarUrl = url;
         else user.CoverPhotoUrl = url;
 

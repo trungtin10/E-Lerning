@@ -12,55 +12,26 @@ namespace ELearning.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class CourseController : ControllerBase
+public class CourseController : BaseApiController
 {
-    private readonly ApplicationDbContext _context;
     private readonly IWebHostEnvironment _env;
-    private readonly IConfiguration _config;
     private readonly IAuditService _audit;
     private readonly ILogger<CourseController> _logger;
+    private readonly IFileUploadService _fileUpload;
 
-    public CourseController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config, IAuditService audit, ILogger<CourseController> logger)
+    public CourseController(ApplicationDbContext context, IWebHostEnvironment env, IConfiguration config, IAuditService audit, ILogger<CourseController> logger, IFileUploadService fileUpload)
+        : base(context, config)
     {
-        _context = context;
         _env = env;
-        _config = config;
         _audit = audit;
         _logger = logger;
+        _fileUpload = fileUpload;
     }
 
     private bool IsContentStaff() =>
         User.IsInRole("SuperAdmin") || User.IsInRole("Admin") || User.IsInRole("Editor");
 
-    private async Task<int?> GetUserCompanyIdAsync()
-    {
-        var claim = User.FindFirst("CompanyId")?.Value
-            ?? User.FindFirst(c => string.Equals(c.Type, "CompanyId", StringComparison.OrdinalIgnoreCase))?.Value;
-        if (int.TryParse(claim, out int cid)) return cid;
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (!string.IsNullOrEmpty(userId))
-        {
-            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-            return user?.CompanyId;
-        }
-        return null;
-    }
 
-    private string GetBaseUrl()
-    {
-        var configuredDomain = _config["AppSettings:AppDomain"];
-        if (!string.IsNullOrEmpty(configuredDomain)) return configuredDomain.TrimEnd('/');
-        
-        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
-        {
-            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
-            return $"{proto}://{forwardedHost}";
-        }
-
-        var host = Request.Host.Value ?? string.Empty;
-        if (host.Contains("localhost:5211")) return $"{Request.Scheme}://{host.Replace("5211", "5173")}";
-        return $"{Request.Scheme}://{host}";
-    }
 
     [AllowAnonymous]
     [HttpGet]
@@ -207,33 +178,53 @@ public class CourseController : ControllerBase
         }
     }
 
-    private async Task<string?> SaveVideoFile(IFormFile? file)
+    private async Task<string?> SaveVideoFile(IFormFile? file, int? companyId, int? lessonId = null, int? courseId = null)
     {
         if (file == null || file.Length == 0) return null;
-        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads/videos");
-        if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
-        var fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
-        var filePath = Path.Combine(uploadDir, fileName);
-        using (var stream = new FileStream(filePath, FileMode.Create)) { await file.CopyToAsync(stream); }
-        return $"/uploads/videos/{fileName}";
+        string subDir = "videos";
+        
+        if (lessonId.HasValue)
+        {
+            // Nếu có lessonId, lấy thêm courseId nếu chưa có để tạo cấu trúc: courses/{courseId}/lessons/{lessonId}/videos
+            if (!courseId.HasValue)
+            {
+                var lesson = await _context.Lessons.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lessonId.Value);
+                courseId = lesson?.CourseId;
+            }
+            subDir = courseId.HasValue 
+                ? $"courses/{courseId}/lessons/{lessonId}/videos" 
+                : $"lessons/{lessonId}/videos";
+        }
+        else if (courseId.HasValue)
+        {
+            subDir = $"courses/{courseId}/intro/videos";
+        }
+        
+        return await _fileUpload.SaveFileAsync(file, companyId, subDir);
     }
 
-    private async Task<string?> SaveDocFile(IFormFile? file)
+    private async Task<string?> SaveDocFile(IFormFile? file, int? companyId, int? lessonId = null, int? courseId = null)
     {
         if (file == null || file.Length == 0) return null;
-        var uploadDir = Path.Combine(_env.ContentRootPath, "uploads/documents");
-        if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
-        
-        string originalName = Path.GetFileNameWithoutExtension(file.FileName);
-        // Only replace truly invalid characters, keep spaces and other valid chars
-        var invalidChars = Path.GetInvalidFileNameChars();
-        var nameParts = originalName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries);
-        originalName = string.Join("-", nameParts); // Use hyphen as a safer separator for invalid chars
-        
-        var fileName = $"{originalName}---{Guid.NewGuid().ToString("N")[..8]}{Path.GetExtension(file.FileName)}";
-        var filePath = Path.Combine(uploadDir, fileName);
-        using (var stream = new FileStream(filePath, FileMode.Create)) { await file.CopyToAsync(stream); }
-        return $"/uploads/documents/{fileName}";
+        string subDir = "documents";
+
+        if (lessonId.HasValue)
+        {
+            if (!courseId.HasValue)
+            {
+                var lesson = await _context.Lessons.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lessonId.Value);
+                courseId = lesson?.CourseId;
+            }
+            subDir = courseId.HasValue 
+                ? $"courses/{courseId}/lessons/{lessonId}/docs" 
+                : $"lessons/{lessonId}/docs";
+        }
+        else if (courseId.HasValue)
+        {
+            subDir = $"courses/{courseId}/intro/docs";
+        }
+
+        return await _fileUpload.SaveFileAsync(file, companyId, subDir, file.FileName);
     }
 
     [HttpPut("{id}")]
@@ -309,7 +300,7 @@ public class CourseController : ControllerBase
                 // Tài liệu tổng quan
                 if (fName.StartsWith("IntroDocFile_"))
                 {
-                    var url = await SaveDocFile(file);
+                    var url = await SaveDocFile(file, course.CompanyId, null, course.Id);
                     if (url != null) introDocUrls?.Add(url);
                 }
                 
@@ -319,7 +310,7 @@ public class CourseController : ControllerBase
                     var parts = fName.Split('_');
                     if (parts.Length > 1 && int.TryParse(parts[1], out int sIdx) && sIdx < introSections.Count)
                     {
-                        var url = await SaveVideoFile(file);
+                        var url = await SaveVideoFile(file, course.CompanyId, null, course.Id);
                         if (url != null) introSections[sIdx].VideoUrl = url;
                     }
                 }
@@ -330,7 +321,7 @@ public class CourseController : ControllerBase
                     var parts = fName.Split('_');
                     if (parts.Length > 1 && int.TryParse(parts[1], out int sIdx) && sIdx < introSections.Count)
                     {
-                        var url = await SaveDocFile(file);
+                        var url = await SaveDocFile(file, course.CompanyId, null, course.Id);
                         if (url != null) 
                         {
                             if (introSections[sIdx].DocUrls == null) introSections[sIdx].DocUrls = new List<string>();
@@ -343,7 +334,7 @@ public class CourseController : ControllerBase
             course.IntroDocUrlsJson = JsonSerializer.Serialize(introDocUrls, jsonOpts);
             course.IntroSectionsJson = JsonSerializer.Serialize(introSections, jsonOpts);
 
-            var introVid = await SaveVideoFile(form.IntroVideoFile);
+            var introVid = await SaveVideoFile(form.IntroVideoFile, course.CompanyId, null, course.Id);
             if (introVid != null) course.IntroVideoUrl = introVid;
             await _context.SaveChangesAsync();
             await _audit.LogAsync("Update", "Course", id.ToString(), null, course.Title, "Cập nhật khóa học");
@@ -363,7 +354,7 @@ public class CourseController : ControllerBase
     {
         try
         {
-            var lesson = await _context.Lessons.FindAsync(id);
+            var lesson = await _context.Lessons.Include(l => l.Course).FirstOrDefaultAsync(l => l.Id == id);
             if (lesson == null) return NotFound();
 
             lesson.Title = form.Title ?? lesson.Title;
@@ -397,7 +388,7 @@ public class CourseController : ControllerBase
                             if (parts.Length >= 3 && int.TryParse(parts[1], out int sectionIndex) && sectionIndex >= 0 && sectionIndex < sections.Count)
                             {
                                 sections[sectionIndex].VideoUrls ??= new List<string>();
-                                var url = await SaveVideoFile(file);
+                                var url = await SaveVideoFile(file, lesson.Course?.CompanyId, lesson.Id);
                                 if (url != null) sections[sectionIndex].VideoUrls!.Add(url);
                             }
                         }
@@ -407,7 +398,7 @@ public class CourseController : ControllerBase
                             if (parts.Length >= 2 && int.TryParse(parts[1], out int sectionIndex) && sectionIndex >= 0 && sectionIndex < sections.Count)
                             {
                                 sections[sectionIndex].DocUrls ??= new List<string>();
-                                var url = await SaveDocFile(file);
+                                var url = await SaveDocFile(file, lesson.Course?.CompanyId, lesson.Id);
                                 if (url != null) sections[sectionIndex].DocUrls!.Add(url);
                             }
                         }
@@ -480,11 +471,11 @@ public class CourseController : ControllerBase
                 lesson.ExternalVideoUrl1 = form.ExternalVideoUrl1; lesson.ExternalVideoUrl2 = form.ExternalVideoUrl2;
                 lesson.ExternalVideoUrl3 = form.ExternalVideoUrl3; lesson.ExternalVideoUrl4 = form.ExternalVideoUrl4;
                 lesson.ExternalVideoUrl5 = form.ExternalVideoUrl5;
-                var v1 = await SaveVideoFile(form.VideoFile1); if (v1 != null) lesson.VideoUrl1 = v1;
-                var v2 = await SaveVideoFile(form.VideoFile2); if (v2 != null) lesson.VideoUrl2 = v2;
-                var v3 = await SaveVideoFile(form.VideoFile3); if (v3 != null) lesson.VideoUrl3 = v3;
-                var v4 = await SaveVideoFile(form.VideoFile4); if (v4 != null) lesson.VideoUrl4 = v4;
-                var v5 = await SaveVideoFile(form.VideoFile5); if (v5 != null) lesson.VideoUrl5 = v5;
+                var v1 = await SaveVideoFile(form.VideoFile1, lesson.Course?.CompanyId, lesson.Id); if (v1 != null) lesson.VideoUrl1 = v1;
+                var v2 = await SaveVideoFile(form.VideoFile2, lesson.Course?.CompanyId, lesson.Id); if (v2 != null) lesson.VideoUrl2 = v2;
+                var v3 = await SaveVideoFile(form.VideoFile3, lesson.Course?.CompanyId, lesson.Id); if (v3 != null) lesson.VideoUrl3 = v3;
+                var v4 = await SaveVideoFile(form.VideoFile4, lesson.Course?.CompanyId, lesson.Id); if (v4 != null) lesson.VideoUrl4 = v4;
+                var v5 = await SaveVideoFile(form.VideoFile5, lesson.Course?.CompanyId, lesson.Id); if (v5 != null) lesson.VideoUrl5 = v5;
             }
 
             await _context.SaveChangesAsync();
@@ -503,6 +494,14 @@ public class CourseController : ControllerBase
             var lesson = new Lesson { CourseId = form.CourseId, Title = form.Title ?? "Bài học mới", OrderIndex = form.OrderIndex };
             _context.Lessons.Add(lesson);
             await _context.SaveChangesAsync();
+
+            // Initialize lesson folder structure
+            var course = await _context.Courses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == form.CourseId);
+            if (course != null && course.CompanyId.HasValue)
+            {
+                _fileUpload.EnsureLessonFolder(course.CompanyId.Value, lesson.Id, course.Id);
+            }
+
             await _audit.LogAsync("Create", "Lesson", lesson.Id.ToString(), null, lesson.Title, "Tạo bài học mới");
             return Ok(new { Id = lesson.Id, Title = lesson.Title });
         }
@@ -532,8 +531,7 @@ public class CourseController : ControllerBase
             if (course == null) return NotFound();
             if (!string.IsNullOrEmpty(course.IntroVideoUrl))
             {
-                var filePath = Path.Combine(_env.ContentRootPath, course.IntroVideoUrl.TrimStart('/'));
-                if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
+                await _fileUpload.DeleteFileAsync(course.IntroVideoUrl, course.CompanyId);
                 course.IntroVideoUrl = null;
                 await _context.SaveChangesAsync();
                 await _audit.LogAsync("Delete", "Course", id.ToString(), null, null, "Xóa video giới thiệu khóa học");
@@ -595,8 +593,8 @@ public class CourseController : ControllerBase
             }
             if (!string.IsNullOrEmpty(videoUrl))
             {
-                var filePath = Path.Combine(_env.ContentRootPath, videoUrl.TrimStart('/'));
-                if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
+                var lessonWithCourse = await _context.Lessons.Include(l => l.Course).FirstOrDefaultAsync(l => l.Id == id);
+                await _fileUpload.DeleteFileAsync(videoUrl, lessonWithCourse?.Course?.CompanyId);
                 await _context.SaveChangesAsync();
                 await _audit.LogAsync("Delete", "Lesson", id.ToString(), null, null, $"Xóa video bài học mục {num}");
             }
@@ -610,28 +608,22 @@ public class CourseController : ControllerBase
     {
         try
         {
-            var exists = await _context.Lessons.AnyAsync(l => l.Id == id);
-            if (!exists) return NotFound();
+            var lesson = await _context.Lessons.Include(l => l.Course).FirstOrDefaultAsync(l => l.Id == id);
+            if (lesson == null) return NotFound();
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // 1. Xóa LessonProgress
-                await _context.Database.ExecuteSqlRawAsync("DELETE FROM LessonProgresses WHERE LessonId = {0}", id);
-                // 2. Bỏ liên kết Quiz
-                await _context.Database.ExecuteSqlRawAsync("UPDATE Quizzes SET LessonId = NULL WHERE LessonId = {0}", id);
-                // 3. Xóa Lesson
-                await _context.Database.ExecuteSqlRawAsync("DELETE FROM Lessons WHERE Id = {0}", id);
+            var companyId = lesson.Course?.CompanyId;
+            var courseId = lesson.CourseId;
 
-                await transaction.CommitAsync();
-                await _audit.LogAsync("Delete", "Lesson", id.ToString(), null, null, "Xóa bài học");
-                return Ok();
-            }
-            catch
+            _context.Lessons.Remove(lesson);
+            await _context.SaveChangesAsync();
+            await _audit.LogAsync("Delete", "Lesson", id.ToString(), null, null, "Xóa bài học");
+
+            if (companyId.HasValue && companyId.Value > 0)
             {
-                await transaction.RollbackAsync();
-                throw;
+                await _fileUpload.DeleteLessonFolderAsync(companyId.Value, id, courseId);
             }
+
+            return Ok();
         }
         catch (Exception ex)
         {
@@ -689,8 +681,20 @@ public class CourseController : ControllerBase
                 if (firstCat != null) course.CategoryId = firstCat.Id;
             }
             
+
+
+            // Save the new course to the database
             _context.Courses.Add(course);
             await _context.SaveChangesAsync();
+
+            // Ensure directory structure for the company and the new course
+            if (companyId.HasValue && companyId.Value > 0)
+            {
+                _fileUpload.EnsureCompanyFolder(companyId.Value);
+                _fileUpload.EnsureCourseFolder(companyId.Value, course.Id);
+            }
+
+            // Log creation event after the course has been persisted
             try
             {
                 await _audit.LogAsync("Create", "Course", course.Id.ToString(), null, course.Title, $"Khóa học {course.Title} đã được tạo");
@@ -716,7 +720,7 @@ public class CourseController : ControllerBase
         {
             var companyId = await GetUserCompanyIdAsync() ?? 0;
             if (companyId > 0)
-                query = query.Where(c => c.CompanyId == companyId);
+                query = query.Where(c => c.CompanyId == companyId || c.CompanyId == null);
             else
                 query = query.Where(c => c.CompanyId == null);
         }
@@ -800,95 +804,38 @@ public class CourseController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteCourse(int id)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            var course = await _context.Courses
-                .Include(c => c.Lessons)
-                .ThenInclude(l => l.Quizzes)
-                .FirstOrDefaultAsync(c => c.Id == id);
+            var course = await _context.Courses.FindAsync(id);
             if (course == null) return NotFound();
 
-        // Scoped: Admin chỉ xóa khóa học của công ty mình (SuperAdmin được xóa tất cả)
-        if (!User.IsInRole("SuperAdmin"))
-        {
-            var companyId = await GetUserCompanyIdAsync() ?? 0;
-            if (course.CompanyId != companyId) return StatusCode(403, "Không có quyền xóa khóa học này.");
-        }
-
-        // Xóa toàn bộ dữ liệu liên quan để không bị lỗi khóa ngoại
-        // Thứ tự xóa: QuizAttemptAnswers -> QuizAttempts -> LessonProgresses -> Enrollments -> Certificates -> LearnerBehaviorEvents -> Answers -> Questions -> Quizzes -> Lessons -> Course
-        var quizIds = course.Lessons.SelectMany(l => l.Quizzes).Select(q => q.Id).ToList();
-
-        if (quizIds.Count > 0)
-        {
-            var quizAttemptIds = await _context.QuizAttempts
-                .AsNoTracking()
-                .Where(qa => quizIds.Contains(qa.QuizId))
-                .Select(qa => qa.Id)
-                .ToListAsync();
-
-            if (quizAttemptIds.Count > 0)
+            // Authorization: only SuperAdmin can delete any course; others can delete only their company's course
+            if (!User.IsInRole("SuperAdmin"))
             {
-                var quizAttemptAnswers = await _context.QuizAttemptAnswers
-                    .Where(a => quizAttemptIds.Contains(a.QuizAttemptId))
-                    .ToListAsync();
-                _context.QuizAttemptAnswers.RemoveRange(quizAttemptAnswers);
-
-                var quizAttempts = await _context.QuizAttempts.Where(qa => quizAttemptIds.Contains(qa.Id)).ToListAsync();
-                _context.QuizAttempts.RemoveRange(quizAttempts);
+                var companyId = await GetUserCompanyIdAsync() ?? 0;
+                if (course.CompanyId != companyId) return StatusCode(403, "Không có quyền xóa khóa học này.");
             }
-        }
 
-        var enrollments = await _context.CourseEnrollments.Where(e => e.CourseId == id).ToListAsync();
-        var enrollmentIds = enrollments.Select(e => e.Id).ToList();
+            var title = course.Title;
+            var companyIdToClean = course.CompanyId; // remember for folder cleanup
 
-        var progresses = await _context.LessonProgresses.Where(lp => enrollmentIds.Contains(lp.EnrollmentId)).ToListAsync();
-        _context.LessonProgresses.RemoveRange(progresses);
+            _context.Courses.Remove(course);
+            await _context.SaveChangesAsync();
+            await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học");
 
-        _context.CourseEnrollments.RemoveRange(enrollments);
+            // Clean up physical folder for the course if it belongs to a company
+            if (companyIdToClean.HasValue && companyIdToClean.Value > 0)
+            {
+                await _fileUpload.DeleteCourseFolderAsync(companyIdToClean.Value, id);
+                // Also attempt to remove any now‑empty parent folders for the company
+                _fileUpload.CleanupEmptyFolders(companyIdToClean.Value);
+            }
 
-        var certificates = await _context.Certificates.Where(c => c.CourseId == id).ToListAsync();
-        _context.Certificates.RemoveRange(certificates);
-
-        var behaviorEvents = await _context.LearnerBehaviorEvents.Where(e => e.CourseId == id).ToListAsync();
-        _context.LearnerBehaviorEvents.RemoveRange(behaviorEvents);
-
-        // Xóa thảo luận và ghi chú
-        var discussions = await _context.CourseDiscussions.Where(d => d.CourseId == id).ToListAsync();
-        _context.CourseDiscussions.RemoveRange(discussions);
-
-        var notes = await _context.UserNotes.Where(n => n.CourseId == id).ToListAsync();
-        _context.UserNotes.RemoveRange(notes);
-
-        if (quizIds.Count > 0)
-        {
-            var questions = await _context.Questions.Where(q => quizIds.Contains(q.QuizId)).ToListAsync();
-            var questionIds = questions.Select(q => q.Id).ToList();
-            var answers = await _context.Answers.Where(a => questionIds.Contains(a.QuestionId)).ToListAsync();
-            _context.Answers.RemoveRange(answers);
-            _context.Questions.RemoveRange(questions);
-        }
-
-        // Xóa quiz (FK Quiz->Lesson OnDelete SetNull, nhưng ta xóa luôn để gọn DB)
-        var quizzes = course.Lessons.SelectMany(l => l.Quizzes).ToList();
-        _context.Quizzes.RemoveRange(quizzes);
-
-        _context.Lessons.RemoveRange(course.Lessons);
-
-        var title = course.Title;
-        _context.Courses.Remove(course);
-
-        await _context.SaveChangesAsync();
-            await _audit.LogAsync("Delete", "Course", id.ToString(), title, null, "Xóa khóa học (kèm dữ liệu liên quan)");
-            
-            await transaction.CommitAsync();
             return Ok();
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
-            return StatusCode(500, $"Lỗi khi xóa khóa học: {ex.Message} {(ex.InnerException != null ? " -> " + ex.InnerException.Message : "")}");
+            return StatusCode(500, $"Lỗi khi xóa khóa học: {ex.Message}");
         }
     }
 }

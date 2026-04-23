@@ -93,18 +93,30 @@ const NotificationBell = () => {
                 <div className="p-3 text-center text-muted small">Chưa có thông báo.</div>
               ) : (
                 items.map(n => (
-                  <div key={n.id} className={`px-3 py-2 border-bottom ${n.isRead ? 'bg-white' : 'bg-warning bg-opacity-10'}`}>
-                    <div className="d-flex align-items-start justify-content-between gap-2">
-                      <div className="min-w-0">
-                        <div className="fw-bold small text-dark text-truncate">{n.title}</div>
-                        {n.content && <div className="small text-muted text-truncate">{n.content}</div>}
-                        <div className="small text-muted" style={{ fontSize: '0.75rem' }}>
-                          {n.createdAt ? new Date(n.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : ''}
+                  <div key={n.id} className={`px-3 py-3 border-bottom transition-all ${n.isRead ? 'bg-white' : 'bg-primary bg-opacity-10'}`}>
+                    <div className="d-flex align-items-start justify-content-between gap-3">
+                      <div className="min-w-0 flex-grow-1">
+                        <div className="fw-bold text-dark mb-1" style={{ fontSize: '0.88rem', lineHeight: '1.4' }}>{n.title}</div>
+                        {n.content && (
+                          <div 
+                            className="text-muted mb-2 notification-content-html" 
+                            style={{ fontSize: '0.82rem', lineHeight: '1.5' }}
+                            dangerouslySetInnerHTML={{ __html: n.content }}
+                          />
+                        )}
+                        <div className="text-muted d-flex align-items-center gap-1" style={{ fontSize: '0.72rem' }}>
+                          <span className="opacity-75">{n.createdAt ? new Date(n.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
                         </div>
                       </div>
                       {!n.isRead && (
-                        <button type="button" className="btn btn-sm btn-light border" onClick={() => markRead(n.id)} title="Đánh dấu đã đọc">
-                          <Check size={14} />
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-light border-0 shadow-sm rounded-circle p-1" 
+                          style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          onClick={() => markRead(n.id)} 
+                          title="Đánh dấu đã đọc"
+                        >
+                          <Check size={14} className="text-success" />
                         </button>
                       )}
                     </div>

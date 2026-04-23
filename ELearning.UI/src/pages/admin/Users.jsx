@@ -282,6 +282,7 @@ const Users = () => {
                         >
                           <MoreVertical size={16} />
                         </button>
+
                         <ul className="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
                           <li>
                             <button className="dropdown-item d-flex align-items-center gap-2 py-2" onClick={() => handleToggleActive(user)} disabled={actionLoading}>
@@ -306,6 +307,7 @@ const Users = () => {
                               <Trash2 size={16} /> Xóa tài khoản
                             </button>
                           </li>
+
                         </ul>
                       </div>
                     </td>

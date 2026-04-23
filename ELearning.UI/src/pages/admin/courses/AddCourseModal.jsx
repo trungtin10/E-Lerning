@@ -45,7 +45,10 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
   const handleQuickAddCategory = async () => {
     if (!newCategoryName) return;
     try {
-      const response = await api.post('/course/categories', { name: newCategoryName });
+      const response = await api.post('/course/categories', { 
+        name: newCategoryName,
+        companyId: formData.companyId || null
+      });
       setCategories([...categories, response.data]);
       setFormData({ ...formData, categoryId: response.data.id });
       setNewCategoryName('');
@@ -64,7 +67,10 @@ const AddCourseModal = ({ isOpen, onClose, onSuccess }) => {
     // Tự động lưu Danh mục tạo nhanh nếu user nhập nhưng quên nhấn Lưu
     if (showQuickAddCategory && newCategoryName.trim()) {
       try {
-        const response = await api.post('/course/categories', { name: newCategoryName.trim() });
+        const response = await api.post('/course/categories', { 
+          name: newCategoryName.trim(),
+          companyId: formData.companyId || null
+        });
         setCategories(prev => [...prev, response.data]);
         finalCategoryId = response.data.id;
         setNewCategoryName('');

@@ -16,46 +16,29 @@ namespace ELearning.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public class AuthController : BaseApiController
 {
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
     private readonly IEmailService _emailService;
-    private readonly ApplicationDbContext _context;
     private readonly IAuditService _audit;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IConfiguration config,
         ILogger<AuthController> logger,
         IEmailService emailService,
         ApplicationDbContext context,
         IAuditService audit)
+        : base(context, config)
     {
         _userManager = userManager;
-        _configuration = configuration;
         _logger = logger;
         _emailService = emailService;
-        _context = context;
         _audit = audit;
     }
 
-    private string GetBaseUrl()
-    {
-        var configuredDomain = _configuration["AppSettings:AppDomain"];
-        if (!string.IsNullOrEmpty(configuredDomain))
-            return configuredDomain.TrimEnd('/');
-        if (Request.Headers.TryGetValue("X-Forwarded-Host", out var forwardedHost))
-        {
-            var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? "https";
-            return $"{proto}://{forwardedHost}";
-        }
-        var host = Request.Host.Value ?? string.Empty;
-        if (host.Contains("localhost:5211"))
-            return $"{Request.Scheme}://localhost:5173";
-        return $"{Request.Scheme}://{host}";
-    }
+
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
@@ -115,7 +98,10 @@ public class AuthController : ControllerBase
         var roles = await _userManager.GetRolesAsync(user);
         var token = GenerateJwtToken(user, roles);
 
-        var (companyLogoUrl, subDomain, companyName) = await GetCompanyBrandingAsync(user.CompanyId);
+        var (companyLogoUrl, subDomain, companyName, isCompanyActive) = await GetCompanyBrandingAsync(user.CompanyId);
+
+        if (user.CompanyId.HasValue && user.CompanyId.Value > 0 && !isCompanyActive)
+            return BadRequest("Công ty của bạn hiện đang bị tạm khóa. Vui lòng liên hệ quản trị.");
 
         await _audit.LogAsync("Login", "User", user.Id, null, user.UserName ?? user.Email, "Đăng nhập thành công", user.Id, user.UserName ?? user.FullName);
         return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl, user.Email, user.PhoneNumber, subDomain, companyName));
@@ -147,7 +133,7 @@ public class AuthController : ControllerBase
         {
             var settings = new GoogleJsonWebSignature.ValidationSettings()
             {
-                Audience = new List<string>() { _configuration["Authentication:Google:ClientId"]! }
+                Audience = new List<string>() { _config["Authentication:Google:ClientId"]! }
             };
 
             var payload = await GoogleJsonWebSignature.ValidateAsync(dto.IdToken, settings);
@@ -165,7 +151,10 @@ public class AuthController : ControllerBase
             var roles = await _userManager.GetRolesAsync(user);
             var token = GenerateJwtToken(user, roles);
 
-            var (companyLogoUrl, subDomain, companyName) = await GetCompanyBrandingAsync(user.CompanyId);
+            var (companyLogoUrl, subDomain, companyName, isCompanyActive) = await GetCompanyBrandingAsync(user.CompanyId);
+
+            if (user.CompanyId.HasValue && user.CompanyId.Value > 0 && !isCompanyActive)
+                return BadRequest("Công ty của bạn hiện đang bị tạm khóa. Vui lòng liên hệ quản trị.");
 
             await _audit.LogAsync("GoogleLogin", "User", user.Id, null, user.UserName ?? user.Email, "Đăng nhập Google", user.Id, user.UserName ?? user.FullName);
             return Ok(new AuthResponseDto(token, user.FullName, user.UserName!, roles.ToList(), user.CompanyId, companyLogoUrl, user.Email, user.PhoneNumber, subDomain, companyName));
@@ -176,15 +165,15 @@ public class AuthController : ControllerBase
         }
     }
 
-    private async Task<(string? LogoUrl, string? SubDomain, string? CompanyName)> GetCompanyBrandingAsync(int? companyId)
+    private async Task<(string? LogoUrl, string? SubDomain, string? CompanyName, bool IsActive)> GetCompanyBrandingAsync(int? companyId)
     {
         if (!companyId.HasValue || companyId.Value <= 0)
-            return (null, null, null);
+            return (null, null, null, true);
         var row = await _context.Companies.AsNoTracking()
             .Where(c => c.Id == companyId.Value)
-            .Select(c => new { c.LogoUrl, c.SubDomain, c.CompanyName })
+            .Select(c => new { c.LogoUrl, c.SubDomain, c.CompanyName, c.IsActive })
             .FirstOrDefaultAsync();
-        return row == null ? (null, null, null) : (row.LogoUrl, row.SubDomain, row.CompanyName);
+        return row == null ? (null, null, null, true) : (row.LogoUrl, row.SubDomain, row.CompanyName, row.IsActive);
     }
 
     private string GenerateJwtToken(ApplicationUser user, IList<string> roles)
@@ -199,13 +188,13 @@ public class AuthController : ControllerBase
 
         foreach (var role in roles) claims.Add(new Claim(ClaimTypes.Role, role));
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var expires = DateTime.Now.AddMinutes(Convert.ToDouble(_configuration["Jwt:ExpiryInMinutes"]));
+        var expires = DateTime.Now.AddMinutes(Convert.ToDouble(_config["Jwt:ExpiryInMinutes"]));
 
         var token = new JwtSecurityToken(
-            _configuration["Jwt:Issuer"],
-            _configuration["Jwt:Audience"],
+            _config["Jwt:Issuer"],
+            _config["Jwt:Audience"],
             claims,
             expires: expires,
             signingCredentials: creds

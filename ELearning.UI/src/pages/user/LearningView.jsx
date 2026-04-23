@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import api from "../../api/axios";
+import api, { getUploadUrl } from "../../api/axios";
 import { useLanguage } from "../../context/LanguageContext";
 import { useNotify } from "../../context/NotifyContext";
 import {
@@ -375,6 +375,7 @@ const LearningView = () => {
   const [sectionViewMode, setSectionViewMode] = useState("content"); // 'content' | 'video' | 'quiz'
   const [activeIntroIdx, setActiveIntroIdx] = useState(null);
   const [expandedSections, setExpandedSections] = useState(new Set());
+  const [showFinishModal, setShowFinishModal] = useState(false);
   
   // Discussion & Notes states
   const [discussions, setDiscussions] = useState([]);
@@ -1023,6 +1024,10 @@ const LearningView = () => {
         setActiveSection(ns.length > 0 ? ns[0].num : 1);
         setSectionViewMode("content");
         setFinishedVideos(new Set());
+      } else {
+        // Hết khóa học
+        setShowFinishModal(true);
+        trackEvent("CourseCompleted", "Course", String(courseId), null);
       }
       fetchProgress().then((d) => {
         if (d && activeLesson) {
@@ -1250,12 +1255,7 @@ const LearningView = () => {
                     >
                       <span className="text-dark">• Tài liệu {di + 1}:</span>
                       <a
-                        href={
-                          doc.FileName.startsWith("http")
-                            ? doc.FileName
-                            : api.defaults.baseURL?.replace("/api", "") +
-                              doc.FileName
-                        }
+                        href={getUploadUrl(doc.FileName)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary fw-medium text-decoration-none"
@@ -1294,11 +1294,7 @@ const LearningView = () => {
                   >
                     <span className="text-dark">• Tài liệu {di + 1}:</span>
                     <a
-                      href={
-                        url.startsWith("http")
-                          ? url
-                          : api.defaults.baseURL?.replace("/api", "") + url
-                      }
+                      href={getUploadUrl(url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary fw-medium text-decoration-none"
@@ -1646,12 +1642,28 @@ const LearningView = () => {
             >
               <ChevronLeft size={20} /> {t("backToContent")}
             </button>
-            <button
-              className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2"
-              onClick={goNext}
-            >
-              {t("next")} <ChevronRight size={20} />
-            </button>
+            {(() => {
+              const sections = getSections(activeLesson);
+              const isLastSec = sections.findIndex(s => s.num === activeSection) === sections.length - 1;
+              const isLastLesson = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId) === data.lessons.length - 1;
+              const isLastStep = isLastSec && isLastLesson && sectionViewMode === "quiz";
+              
+              if (isLastStep) {
+                return (
+                  <button className="btn btn-success px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2 shadow-sm" onClick={goNext}>
+                    <CheckCircle2 size={20} /> Hoàn thành khóa học
+                  </button>
+                );
+              }
+              return (
+                <button
+                  className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2"
+                  onClick={goNext}
+                >
+                  {t("next")} <ChevronRight size={20} />
+                </button>
+              );
+            })()}
           </div>
         </div>
       );
@@ -1868,11 +1880,7 @@ const LearningView = () => {
                   {getDocs(activeLesson, activeSection).urls.map((url, di) => (
                     <a
                       key={url}
-                      href={
-                        url.startsWith("http")
-                          ? url
-                          : api.defaults.baseURL?.replace("/api", "") + url
-                      }
+                      href={getUploadUrl(url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="list-group-item list-group-item-action d-flex align-items-center justify-content-between py-3 px-4 bg-light bg-opacity-50"
@@ -1910,12 +1918,33 @@ const LearningView = () => {
           >
             <ChevronLeft size={20} /> {t("prev")}
           </button>
-          <button
-            className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2"
-            onClick={goNext}
-          >
-            {t("next")} <ChevronRight size={20} />
-          </button>
+          {(() => {
+              const sections = getSections(activeLesson);
+              const isLastSec = sections.findIndex(s => s.num === activeSection) === sections.length - 1;
+              const isLastLesson = data.lessons.findIndex(l => l.lessonId === activeLesson.lessonId) === data.lessons.length - 1;
+              
+              const hasVideo = getVideo(activeLesson, activeSection).show;
+              const hasQuiz = getQuiz(activeLesson, activeSection);
+              const isLastMode = (sectionViewMode === "quiz") || (sectionViewMode === "video" && !hasQuiz) || (sectionViewMode === "content" && !hasVideo && !hasQuiz);
+
+              const isLastStep = isLastSec && isLastLesson && isLastMode;
+              
+              if (isLastStep) {
+                return (
+                  <button className="btn btn-success px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2 shadow-sm" onClick={goNext}>
+                    <CheckCircle2 size={20} /> Hoàn thành khóa học
+                  </button>
+                );
+              }
+              return (
+                <button
+                  className="btn btn-primary px-5 py-2 rounded-3 fw-semibold d-flex align-items-center gap-2"
+                  onClick={goNext}
+                >
+                  {t("next")} <ChevronRight size={20} />
+                </button>
+              );
+            })()}
         </div>
       </div>
     );
@@ -2599,6 +2628,56 @@ const LearningView = () => {
         .toc-active { background-color: rgba(99,102,241,0.08) !important; }
         .toc-collapsed { overflow: hidden; }
       `}</style>
+
+      {showFinishModal && (
+        <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.7)", zIndex: 2000 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden text-center p-5">
+              <div className="mb-4">
+                <div 
+                  className="d-inline-flex align-items-center justify-content-center rounded-circle bg-success bg-opacity-10 mb-4"
+                  style={{ width: 80, height: 80 }}
+                >
+                  <Award size={48} className="text-success" />
+                </div>
+                <h3 className="fw-bold text-dark mb-2">Chúc mừng bạn!</h3>
+                <p className="text-muted">Bạn đã hoàn thành toàn bộ khóa học <strong>{data?.courseTitle}</strong></p>
+              </div>
+
+              <div className="bg-light p-4 rounded-3 mb-4">
+                <div className="d-flex align-items-center justify-content-center gap-3 mb-2">
+                   <ProgressCircle percentage={100} size={60} />
+                   <div className="text-start">
+                      <div className="fw-bold text-dark">Hoàn tất 100%</div>
+                      <div className="small text-muted">Tất cả bài học đã được chinh phục</div>
+                   </div>
+                </div>
+              </div>
+
+              <div className="d-grid gap-3">
+                <button 
+                  className="btn btn-primary py-3 rounded-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2"
+                  onClick={() => navigate(`/course/${courseId}`)}
+                >
+                   <CheckCircle2 size={18} /> Xem chứng chỉ & Đánh giá
+                </button>
+                <button 
+                  className="btn btn-outline-secondary py-3 rounded-3 fw-bold"
+                  onClick={() => setShowFinishModal(false)}
+                >
+                  Tiếp tục xem lại bài học
+                </button>
+                <button 
+                  className="btn btn-link text-decoration-none text-muted small"
+                  onClick={() => navigate("/dashboard")}
+                >
+                  Quay về trang chủ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
